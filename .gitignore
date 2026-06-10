@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+
+# Env
+.env
+.env.local
+
+# Data (generated DB / caches — keep out of git; app recreates the dir at runtime)
+/data/
+data/*.duckdb
+data/*.parquet
+data/**/*.parquet
+data/cache/
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+.turbo/
+*.tsbuildinfo
+frontend/.env.local
+
+# OS / Editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
