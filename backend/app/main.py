@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api import backtest, data, portfolio, screening
 from app.core.config import get_settings
-from app.data import fundamentals_crawler, store
+from app.data import fundamentals_crawler, price_scheduler, store
 
 settings = get_settings()
 
@@ -35,6 +35,9 @@ def _startup() -> None:
     # Background fundamentals crawler (same process → shares the DuckDB writer,
     # no lock conflicts). Stores a snapshot only when values change.
     fundamentals_crawler.start()
+    # Background price scheduler: periodically accumulate today's OHLCV bar for
+    # the whole KR board into DuckDB (same process → same writer connection).
+    price_scheduler.start()
 
 
 @app.get("/api/health", tags=["meta"])

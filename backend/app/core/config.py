@@ -22,6 +22,14 @@ class Settings(BaseSettings):
     # DART (전자공시) open API key — enables 5% major-holder names by ticker.
     dart_api_key: str = ""
 
+    # Background price scheduler: periodically snapshot the whole KR board and
+    # upsert today's OHLCV bar into DuckDB, so the price series accumulates
+    # forward without a manual ingest run. Set PRICE_INGEST=false to disable.
+    price_ingest: bool = True
+    # Seconds between price snapshots (default 5 min). Intraday ticks refresh
+    # today's bar in place; each new trading day appends a fresh row.
+    price_ingest_interval: float = 300.0
+
     @property
     def duckdb_path(self) -> Path:
         return self.data_dir / "market.duckdb"

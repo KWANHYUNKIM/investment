@@ -6,7 +6,7 @@ import time
 
 from fastapi import APIRouter, HTTPException, Query
 
-from app.data import dart, feed, fundamentals_crawler, investor, market_report, news, report, store
+from app.data import dart, feed, fundamentals_crawler, investor, market_report, news, price_scheduler, report, store
 
 router = APIRouter(prefix="/api/data", tags=["data"])
 
@@ -113,6 +113,12 @@ def screen_table():
 def crawler_status():
     """Background crawler progress (fundamentals + investor flow)."""
     return fundamentals_crawler.status()
+
+
+@router.get("/price-scheduler-status")
+def price_scheduler_status():
+    """Background price scheduler progress (daily OHLCV bars → DuckDB)."""
+    return price_scheduler.status()
 
 
 @router.get("/investor-flow")
