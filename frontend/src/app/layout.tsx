@@ -13,8 +13,12 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Quant Investment · Screening · Backtest · Portfolio",
-  description: "Factor screening, backtesting, and portfolio construction for KR/US equities.",
+  // 회사용 위장: 브라우저 탭에는 엑셀 파일처럼 보이게 한다.
+  title: "매출분석_2026_상반기.xlsx - Excel",
+  description: "Microsoft Excel Worksheet",
+  icons: {
+    icon: "/icon.svg",
+  },
 };
 
 export default function RootLayout({

@@ -143,9 +143,35 @@ export interface FlowSeller {
   foreign: number | null;
   organ: number | null;
 }
+export interface InvestorDriver {
+  type: string; // 외국인 / 개인 / 기관
+  key: "foreign" | "individual" | "organ";
+  action: string; // 순매수 / 순매도 / 관망 / 데이터 없음
+  qty: number | null;
+  reasons: string[];
+}
+export interface InsightNews {
+  title: string | null;
+  link: string | null;
+  source: string | null;
+}
+export interface StockInsight {
+  ticker: string;
+  name: string | null;
+  sector: string | null;
+  close: number | null;
+  change: number | null;
+  change_pct: number | null;
+  volume: number | null;
+  foreign_ratio: number | null;
+  foreign_ratio_delta: number | null;
+  investors: InvestorDriver[];
+  news: InsightNews[];
+}
 export interface MarketReport {
   date: string | null;
   breadth: { up: number; down: number; flat: number; total: number };
+  insights: StockInsight[];
   gainers: MoverRow[];
   losers: MoverRow[];
   most_traded: MoverRow[];

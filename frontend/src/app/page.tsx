@@ -46,11 +46,19 @@ export default function Home() {
     <div className="flex h-screen flex-col overflow-hidden">
       {/* top bar — full width app chrome */}
       <header className="flex h-14 shrink-0 items-center gap-7 border-b border-slate-800 bg-slate-950 px-6">
+        {/* 회사용 위장: 엑셀로 열린 문서처럼 보이게 한다 */}
         <div className="flex items-center gap-2">
-          <span className="text-xl font-extrabold tracking-tight text-white">
-            퀀트<span className="text-[#ff5252]">증권</span>
+          <svg viewBox="0 0 32 32" className="h-5 w-5" aria-hidden>
+            <rect x="2" y="2" width="28" height="28" rx="4" fill="#217346" />
+            <path
+              d="M11.2 9.5h2.7l2.1 3.6 2.1-3.6h2.6l-3.3 5.5 3.5 5.8h-2.7l-2.3-3.9-2.3 3.9h-2.6l3.5-5.8z"
+              fill="#ffffff"
+            />
+          </svg>
+          <span className="text-[15px] font-semibold tracking-tight text-slate-200">
+            매출분석_2026_상반기.xlsx
           </span>
-          <span className="hidden text-xs text-slate-500 sm:inline">QuantSec</span>
+          <span className="hidden text-xs text-slate-500 sm:inline">Excel</span>
         </div>
         <nav className="flex h-full items-stretch gap-1">
           {TABS.map((t) => (

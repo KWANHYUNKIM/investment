@@ -1,20 +1,25 @@
 """Market-wide daily report (시장 전체 데일리 리포트).
 
-Aggregates the price-factor grid into the day's top movers / most-traded names,
-ranks who foreign & institutional investors sold the most among the heavily
-traded names, pulls market-level news, and writes a templated summary. Cached
-~10 min; opening it on any day yields that day's report.
+Centerpiece: for the day's most actively traded names, infer — without any LLM —
+*why each investor type (외국인 / 개인 / 기관) was likely buying or selling*, by
+combining net-buy direction, foreign-ratio change, price momentum, valuation, and
+the themes read out of each stock's news headlines (see `insight.build`). Each
+card also carries that stock's top headlines. Market breadth and mover tables are
+kept as supporting context. Cached ~10 min; opening it on any day yields that
+day's report.
 """
 from __future__ import annotations
 
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from app.data import investor, news, store
+from app.data import insight, investor, news, store
 
 _lock = threading.Lock()
 _cache: dict = {"ts": 0.0, "data": None}
 TTL = 600.0
+N_INSIGHTS = 8  # how many most-traded names to analyse in depth
 
 
 def _slim(r: dict) -> dict:
@@ -26,6 +31,59 @@ def _slim(r: dict) -> dict:
         "change_pct": r.get("change_pct"),
         "change": r.get("change"),
         "volume": r.get("volume"),
+    }
+
+
+def _stock_insight(row: dict) -> dict | None:
+    """Heavy per-stock work (investor flow + news) — run in a thread pool."""
+    ticker, name = row["ticker"], row["name"]
+    try:
+        inv = investor.investors(ticker)
+    except Exception:
+        inv = []
+    if not inv:
+        return None
+    f = inv[0]
+    prev = inv[1] if len(inv) > 1 else {}
+    fr = f.get("foreign_ratio")
+    fr_prev = prev.get("foreign_ratio")
+    fr_delta = (fr - fr_prev) if (fr is not None and fr_prev is not None) else None
+
+    arts: list[dict] = []
+    try:
+        nw = news.news_for(name or ticker, limit=6)
+        arts = (nw.get("domestic") or [])[:3]
+    except Exception:
+        pass
+
+    sig = {
+        "individual": f.get("individual"),
+        "foreign": f.get("foreign"),
+        "organ": f.get("organ"),
+        "foreign_ratio": fr,
+        "foreign_ratio_delta": fr_delta,
+        "change_pct": row.get("change_pct"),
+        "ret_1m": row.get("ret_1m"),
+        "pct_from_high": row.get("pct_from_high"),
+        "per": row.get("per"),
+        "pbr": row.get("pbr"),
+        "roe": row.get("roe"),
+        "div_yield": row.get("div_yield"),
+    }
+    titles = [a.get("title", "") for a in arts]
+
+    return {
+        "ticker": ticker,
+        "name": name,
+        "sector": row.get("sector"),
+        "close": row.get("close"),
+        "change": row.get("change"),
+        "change_pct": row.get("change_pct"),
+        "volume": row.get("volume"),
+        "foreign_ratio": fr,
+        "foreign_ratio_delta": round(fr_delta, 2) if fr_delta is not None else None,
+        "investors": insight.build(sig, titles),
+        "news": [{"title": a.get("title"), "link": a.get("link"), "source": a.get("source")} for a in arts],
     }
 
 
@@ -44,18 +102,29 @@ def market_report() -> dict:
         [r for r in rows if r.get("volume")], key=lambda r: r["volume"], reverse=True
     )[:25]
 
-    # Investor net-buy among the most heavily traded names (cached per ticker).
+    # --- per-stock investor reasoning for the most-traded names (parallel) ---
+    insights: list[dict] = []
+    targets = most_traded[:N_INSIGHTS]
+    if targets:
+        with ThreadPoolExecutor(max_workers=8) as ex:
+            futs = {ex.submit(_stock_insight, r): r for r in targets}
+            by_ticker: dict[str, dict] = {}
+            for fut in as_completed(futs):
+                try:
+                    res = fut.result()
+                except Exception:
+                    res = None
+                if res:
+                    by_ticker[res["ticker"]] = res
+        # preserve most-traded ordering
+        insights = [by_ticker[r["ticker"]] for r in targets if r["ticker"] in by_ticker]
+
+    # --- seller tables (reuse the flow we already pulled) ---
     flows: list[dict] = []
-    for r in most_traded[:20]:
-        try:
-            inv = investor.investors(r["ticker"])
-            if inv:
-                f = inv[0]
-                flows.append(
-                    {"ticker": r["ticker"], "name": r["name"], "foreign": f["foreign"], "organ": f["organ"]}
-                )
-        except Exception:
-            pass
+    for ins in insights:
+        fv = next((iv["qty"] for iv in ins["investors"] if iv["key"] == "foreign"), None)
+        ov = next((iv["qty"] for iv in ins["investors"] if iv["key"] == "organ"), None)
+        flows.append({"ticker": ins["ticker"], "name": ins["name"], "foreign": fv, "organ": ov})
     foreign_sellers = sorted([x for x in flows if x["foreign"] is not None], key=lambda x: x["foreign"])[:8]
     organ_sellers = sorted([x for x in flows if x["organ"] is not None], key=lambda x: x["organ"])[:8]
 
@@ -70,22 +139,30 @@ def market_report() -> dict:
     except Exception:
         pass
 
+    # --- market-level summary, including who was net buying overall ---
     parts: list[str] = []
     if date:
         parts.append(f"{date} 기준, 상승 {up:,}종목 · 하락 {down:,}종목 · 보합 {flat:,}종목.")
     if gainers:
-        g = gainers[0]
-        parts.append(f"최고 상승은 {g['name']}({g['change_pct']:+.2f}%), ")
-    if losers:
-        l = losers[0]
-        parts[-1] = parts[-1] + f"최대 하락은 {l['name']}({l['change_pct']:+.2f}%)였습니다." if parts else ""
-    if foreign_sellers and foreign_sellers[0]["foreign"] is not None and foreign_sellers[0]["foreign"] < 0:
-        fs = foreign_sellers[0]
-        parts.append(f"거래 상위 종목 중 외국인은 {fs['name']}을(를) 가장 많이 순매도했습니다.")
+        parts.append(f"최고 상승 {gainers[0]['name']}({gainers[0]['change_pct']:+.2f}%), "
+                     f"최대 하락 {losers[0]['name']}({losers[0]['change_pct']:+.2f}%).")
+
+    def _net_dir(key: str) -> tuple[int, int]:
+        buy = sum(1 for ins in insights for iv in ins["investors"] if iv["key"] == key and (iv["qty"] or 0) > 0)
+        sell = sum(1 for ins in insights for iv in ins["investors"] if iv["key"] == key and (iv["qty"] or 0) < 0)
+        return buy, sell
+
+    if insights:
+        fb, fs = _net_dir("foreign")
+        ib, is_ = _net_dir("individual")
+        f_word = "순매수 우위" if fb > fs else "순매도 우위" if fs > fb else "혼조"
+        i_word = "순매수 우위" if ib > is_ else "순매도 우위" if is_ > ib else "혼조"
+        parts.append(f"거래 상위 {len(insights)}종목 기준 외국인은 {f_word}, 개인은 {i_word}였습니다.")
 
     data = {
         "date": date,
         "breadth": {"up": up, "down": down, "flat": flat, "total": len(valid)},
+        "insights": insights,
         "gainers": [_slim(r) for r in gainers],
         "losers": [_slim(r) for r in losers],
         "most_traded": [_slim(r) for r in most_traded[:12]],
