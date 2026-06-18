@@ -12,7 +12,10 @@ import threading
 import time
 
 from app.core.config import get_settings
-from app.data import dart, dart_financials, financials, industry, industry_research, store
+from app.data import (
+    dart, dart_financials, financials, finnhub, global_map, global_universe,
+    industry, industry_research, store,
+)
 
 _state = {
     "running": False,
@@ -20,6 +23,7 @@ _state = {
     "profiles": 0,
     "financials": 0,
     "dart_financials": 0,
+    "foreign_fin": 0,
     "snapshots": 0,
     "last_run": None,
     "last_profile_refresh": None,
@@ -74,6 +78,19 @@ def _tick() -> None:
                 _state["dart_financials"] = store.dart_financials_count()
         except Exception:
             pass
+
+    # 1d) 해외 경쟁사 펀더멘털(Finnhub): 키가 있으면 하루 1회 갱신(글로벌 경쟁지도).
+    if finnhub.enabled():
+        fin_date = _state.get("last_foreign_refresh")
+        if store.foreign_fin_count() == 0 or fin_date != date:
+            try:
+                got = finnhub.refresh_many(global_universe.all_foreign_symbols())
+                if got:
+                    _state["foreign_fin"] = store.foreign_fin_count()
+                    _state["last_foreign_refresh"] = date
+                    global_map.invalidate()
+            except Exception:
+                pass
 
     # 2) research snapshot once per (trading) day.
     res = industry_research.snapshot()

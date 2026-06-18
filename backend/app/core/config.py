@@ -22,6 +22,10 @@ class Settings(BaseSettings):
     # DART (전자공시) open API key — enables 5% major-holder names by ticker.
     dart_api_key: str = ""
 
+    # Finnhub (finnhub.io) free API key — enables 해외 종목 펀더멘털(영업이익률·시총·
+    # 섹터·국가) for the 글로벌 경쟁지도. yfinance가 429로 막혀 그 대체 소스로 쓴다.
+    finnhub_api_key: str = ""
+
     # Demo mode: synthesize small intraday ticks on top of the settled snapshot
     # so the live grid visibly moves without a brokerage streaming API.
     mock_ticks: bool = True

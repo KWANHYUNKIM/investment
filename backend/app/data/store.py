@@ -105,6 +105,23 @@ CREATE TABLE IF NOT EXISTS financials (
     PRIMARY KEY (market, ticker, period)
 );
 
+-- 해외 종목 펀더멘털(Finnhub) — 글로벌 경쟁지도용. 시총은 USD 환산, 마진은 %.
+CREATE TABLE IF NOT EXISTS foreign_fin (
+    symbol         VARCHAR NOT NULL,
+    name           VARCHAR,
+    country        VARCHAR,
+    exchange       VARCHAR,
+    currency       VARCHAR,
+    industry       VARCHAR,
+    market_cap_usd DOUBLE,            -- 시가총액 (USD)
+    op_margin      DOUBLE,            -- 영업이익률 (%)
+    net_margin     DOUBLE,            -- 순이익률 (%)
+    price          DOUBLE,            -- 현재가 (현지통화)
+    change_pct     DOUBLE,            -- 당일 등락률 (%)
+    updated        VARCHAR,
+    PRIMARY KEY (symbol)
+);
+
 -- DART 전자공시 전체 재무제표(전 계정·연도별). 회계 원장 그대로 — 재무상태표(BS)/
 -- 손익계산서(IS·CIS)/현금흐름표(CF)의 모든 계정을 long-format으로 적재. 금액은 원(KRW).
 CREATE TABLE IF NOT EXISTS dart_financials (
@@ -317,6 +334,24 @@ def financials_series(ticker: str) -> pd.DataFrame:
             "FROM financials WHERE ticker = ? ORDER BY period",
             [ticker],
         ).df()
+
+
+def upsert_foreign_fin(df: pd.DataFrame) -> int:
+    """Upsert 해외 종목 펀더멘털(Finnhub)."""
+    return _upsert("foreign_fin", df, ["symbol"])
+
+
+def foreign_fin_map() -> dict[str, dict]:
+    """symbol -> {name, country, market_cap_usd, op_margin, ...} (글로벌 클러스터용)."""
+    with connection() as conn:
+        df = conn.execute("SELECT * FROM foreign_fin").df()
+    return {r["symbol"]: r for r in df.to_dict("records")}
+
+
+def foreign_fin_count() -> int:
+    with connection() as conn:
+        v = conn.execute("SELECT COUNT(*) FROM foreign_fin").fetchone()
+    return int(v[0]) if v else 0
 
 
 def upsert_dart_financials(df: pd.DataFrame) -> int:

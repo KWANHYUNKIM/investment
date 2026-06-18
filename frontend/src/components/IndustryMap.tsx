@@ -9,6 +9,7 @@ import {
   ThemeBucket,
   ThemeItem,
 } from "@/lib/api";
+import { GlobalMap } from "./GlobalMap";
 
 const RED = "#c92a2a";
 const BLUE = "#1971c2";
@@ -53,6 +54,7 @@ function retStyle(v: number | null | undefined): React.CSSProperties {
 }
 
 export function IndustryMap() {
+  const [view, setView] = useState<"kr" | "global">("kr");
   const [index, setIndex] = useState<IndustryIndexItem[]>([]);
   const [selected, setSelected] = useState<string>("");
   const [detail, setDetail] = useState<IndustryDetailResponse | null>(null);
@@ -92,8 +94,35 @@ export function IndustryMap() {
 
   if (err) return <div className="py-20 text-center text-sm text-rose-600">{err}</div>;
 
+  const Toggle = (
+    <div className="mb-2 inline-flex rounded-md border border-[#cfcfcf] bg-white p-0.5 text-xs font-semibold">
+      <button
+        onClick={() => setView("kr")}
+        className={`rounded px-3 py-1 transition ${view === "kr" ? "bg-[#217346] text-white" : "text-[#555] hover:bg-[#eef6f0]"}`}
+      >
+        🏭 국내 업종
+      </button>
+      <button
+        onClick={() => setView("global")}
+        className={`rounded px-3 py-1 transition ${view === "global" ? "bg-[#1a3a5e] text-white" : "text-[#555] hover:bg-[#eef6ff]"}`}
+      >
+        🌍 글로벌 경쟁
+      </button>
+    </div>
+  );
+
+  if (view === "global")
+    return (
+      <div>
+        {Toggle}
+        <GlobalMap />
+      </div>
+    );
+
   return (
-    <div className="overflow-hidden rounded-md border border-[#d0d0d0] bg-white shadow-sm">
+    <div>
+      {Toggle}
+      <div className="overflow-hidden rounded-md border border-[#d0d0d0] bg-white shadow-sm">
       {/* sheet title bar */}
       <div className="flex items-center justify-between bg-[#217346] px-4 py-2 text-white">
         <span className="flex items-center gap-2 text-sm font-semibold">🏭 산업·경쟁지도.xlsx</span>
@@ -168,6 +197,7 @@ export function IndustryMap() {
             <Detail detail={detail} loading={loadingDetail} />
           )}
         </main>
+      </div>
       </div>
     </div>
   );

@@ -443,6 +443,35 @@ export interface DartFinancials {
   available: boolean;
 }
 
+export interface GlobalMember {
+  market: "KR" | "GL";
+  code: string;
+  name: string | null;
+  country: string | null;
+  market_cap_usd: number | null;
+  op_margin: number | null; // 영업이익률 %
+  change_pct: number | null;
+  note: string | null; // 주요제품 / 업종
+}
+export interface GlobalCluster {
+  key: string;
+  label: string;
+  desc: string;
+  count: number;
+  kr_count: number;
+  foreign_count: number;
+  countries: string[];
+  market_cap_usd: number;
+  avg_op_margin: number | null;
+  leader: string | null;
+  members?: GlobalMember[];
+}
+export interface GlobalClustersResponse {
+  clusters: GlobalCluster[];
+  finnhub: boolean;
+  foreign_loaded: number;
+}
+
 export interface ReportResponse {
   ticker: string;
   name: string;
@@ -642,6 +671,8 @@ export const api = {
   fundamentals: (ticker: string) => request<FundamentalsResponse>(`/api/data/fundamentals?ticker=${ticker}`),
   financials: (ticker: string) => request<FinancialsResponse>(`/api/data/financials?ticker=${ticker}`),
   dartFinancials: (ticker: string) => request<DartFinancials>(`/api/data/dart-financials?ticker=${ticker}`),
+  globalClusters: () => request<GlobalClustersResponse>(`/api/data/global-clusters`),
+  globalCluster: (key: string) => request<GlobalCluster>(`/api/data/global-cluster?key=${encodeURIComponent(key)}`),
   ohlc: (params: { ticker: string; start?: string; end?: string }) => {
     const q = new URLSearchParams({ ticker: params.ticker });
     if (params.start) q.set("start", params.start);
