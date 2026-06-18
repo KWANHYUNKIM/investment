@@ -16,6 +16,7 @@ import pandas as pd
 import FinanceDataReader as fdr
 
 from app.data import store
+from app.data import naver_sector
 
 _lock = threading.Lock()
 _cache: dict = {"ts": 0.0, "data": None}
@@ -49,9 +50,10 @@ def _marcap_map() -> dict[str, float]:
 
 
 def refresh_profiles() -> int:
-    """Fetch KRX-DESC industry/products, enrich with marcap, upsert to DuckDB."""
+    """Fetch KRX-DESC industry/products, enrich with marcap + WICS 업종, upsert."""
     desc = fdr.StockListing("KRX-DESC")
     marcap = _marcap_map()
+    wics = naver_sector.sector_map()  # ticker -> WICS 업종 (네이버 금융)
 
     rows: list[dict] = []
     for r in desc.itertuples(index=False):
@@ -66,6 +68,7 @@ def refresh_profiles() -> int:
                 "ticker": ticker,
                 "name": getattr(r, "Name", None),
                 "industry": (getattr(r, "Industry", None) or "기타"),
+                "wics_sector": wics.get(ticker),
                 "products": getattr(r, "Products", None),
                 "region": getattr(r, "Region", None),
                 "representative": getattr(r, "Representative", None),
@@ -94,7 +97,11 @@ def _moves() -> dict[str, dict]:
 
 
 def industries(min_members: int = 2) -> list[dict]:
-    """Companies grouped by KSIC industry, largest-cap industries first.
+    """Companies grouped by WICS 업종 (네이버 금융), largest-cap industries first.
+
+    WICS is the revenue-based classification 네이버·증권사 use, so competitors land
+    together. Names without a WICS 업종 (newly listed, scrape miss) fall back to
+    their KSIC industry, then "기타".
 
     Each group: {industry, count, market_cap (sum), avg_change_pct, members:[...]}.
     Members carry name/ticker/products/market_cap/change_pct, sorted by cap.
@@ -107,7 +114,7 @@ def industries(min_members: int = 2) -> list[dict]:
     moves = _moves()
     groups: dict[str, list[dict]] = {}
     for rec in prof.to_dict("records"):
-        ind = rec.get("industry") or "기타"
+        ind = rec.get("wics_sector") or rec.get("industry") or "기타"
         mv = moves.get(rec["ticker"], {})
         groups.setdefault(ind, []).append(
             {

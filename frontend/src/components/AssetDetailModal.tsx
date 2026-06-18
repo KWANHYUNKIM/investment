@@ -86,24 +86,24 @@ export function AssetDetailModal({ assetKey, onClose }: { assetKey: string; onCl
         ) : err || !d || !s ? (
           <div className="py-28 text-center text-sm text-rose-600">{err || "데이터를 불러오지 못했습니다."}</div>
         ) : (
-          <div className="mx-auto max-w-6xl space-y-5 p-5">
+          <div className="mx-auto max-w-screen-2xl space-y-6 p-6">
             {/* session close hero */}
-            <div className="flex flex-wrap items-end justify-between gap-4 rounded-xl border px-5 py-4" style={{ borderColor: `${accent}33`, background: `${accent}0d` }}>
+            <div className="flex flex-wrap items-end justify-between gap-4 rounded-xl border px-6 py-5" style={{ borderColor: `${accent}33`, background: `${accent}0d` }}>
               <div>
-                <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-[#217346]">
+                <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-[#217346]">
                   <span>장 마감</span>
                   {s.date && <span className="font-normal normal-case tracking-normal text-[#888]">· {s.date}</span>}
                 </div>
-                <div className="mt-0.5 text-4xl font-bold leading-none tabular-nums text-[#1f1f1f]">{fmt(s.close, unit)}</div>
+                <div className="mt-1 text-6xl font-bold leading-none tabular-nums text-[#1f1f1f]">{fmt(s.close, unit)}</div>
               </div>
-              <div className="text-right text-xl font-bold tabular-nums" style={{ color: accent }}>
+              <div className="text-right text-3xl font-bold tabular-nums" style={{ color: accent }}>
                 <div>{s.change != null ? `${s.change > 0 ? "▲ " : s.change < 0 ? "▼ " : ""}${fmt(Math.abs(s.change), unit)}` : ""}</div>
-                <div className="text-lg">{s.change_pct != null ? `${s.change_pct > 0 ? "+" : ""}${s.change_pct}%` : "—"}</div>
+                <div className="text-2xl">{s.change_pct != null ? `${s.change_pct > 0 ? "+" : ""}${s.change_pct}%` : "—"}</div>
               </div>
             </div>
 
             {/* OHLC + 52w */}
-            <div className="grid grid-cols-2 gap-x-6 gap-y-1.5 rounded-lg border border-[#e6e6e6] bg-white px-4 py-3 text-sm sm:grid-cols-3">
+            <div className="grid grid-cols-2 gap-x-8 gap-y-2.5 rounded-lg border border-[#e6e6e6] bg-white px-5 py-4 text-base sm:grid-cols-3">
               <Stat label="시가" v={fmt(s.open, unit)} />
               <Stat label="고가" v={fmt(s.high, unit)} />
               <Stat label="저가" v={fmt(s.low, unit)} />
@@ -114,10 +114,10 @@ export function AssetDetailModal({ assetKey, onClose }: { assetKey: string; onCl
 
             {/* recent sessions */}
             <Sheet title="최근 시세 (일별)">
-              <div className="max-h-72 overflow-y-auto rounded border border-[#d0d0d0]">
-                <table className="w-full border-collapse text-[13px]">
+              <div className="max-h-[28rem] overflow-y-auto rounded border border-[#d0d0d0]">
+                <table className="w-full border-collapse text-[15px]">
                   <thead className="sticky top-0">
-                    <tr className="bg-[#217346] text-xs text-white">
+                    <tr className="bg-[#217346] text-sm text-white">
                       <Th>일자</Th><Th right>시가</Th><Th right>고가</Th><Th right>저가</Th><Th right>종가</Th><Th center>등락%</Th><Th right>거래량</Th>
                     </tr>
                   </thead>
@@ -167,18 +167,18 @@ const CGROUPS: { key: GKey; label: string; bg: string; fg: string }[] = [
   { key: "ret", label: "기간 수익률", bg: "#f4b084", fg: "#7a3a0c" },
 ];
 const CCOLS: CCol[] = [
-  { key: "symbol", label: "코드", group: "id", w: 96, type: "code" },
-  { key: "name", label: "종목명", group: "id", w: 240, type: "name" },
-  { key: "sector", label: "섹터", group: "id", w: 150, type: "text" },
-  { key: "close", label: "현재가", group: "price", w: 110, type: "price" },
-  { key: "change", label: "전일대비", group: "price", w: 100, type: "chg" },
-  { key: "change_pct", label: "등락(%)", group: "ret", w: 92, type: "ret" },
-  { key: "ret_1w", label: "1주(%)", group: "ret", w: 88, type: "ret" },
-  { key: "ret_1m", label: "1개월(%)", group: "ret", w: 92, type: "ret" },
-  { key: "ret_3m", label: "3개월(%)", group: "ret", w: 92, type: "ret" },
-  { key: "ret_12m", label: "1년(%)", group: "ret", w: 88, type: "ret" },
+  { key: "symbol", label: "코드", group: "id", w: 110, type: "code" },
+  { key: "name", label: "종목명", group: "id", w: 280, type: "name" },
+  { key: "sector", label: "섹터", group: "id", w: 175, type: "text" },
+  { key: "close", label: "현재가", group: "price", w: 128, type: "price" },
+  { key: "change", label: "전일대비", group: "price", w: 116, type: "chg" },
+  { key: "change_pct", label: "등락(%)", group: "ret", w: 106, type: "ret" },
+  { key: "ret_1w", label: "1주(%)", group: "ret", w: 102, type: "ret" },
+  { key: "ret_1m", label: "1개월(%)", group: "ret", w: 106, type: "ret" },
+  { key: "ret_3m", label: "3개월(%)", group: "ret", w: 106, type: "ret" },
+  { key: "ret_12m", label: "1년(%)", group: "ret", w: 102, type: "ret" },
 ];
-const GUTTER = 44;
+const GUTTER = 50;
 
 type Row = AssetConstituent & Partial<ConstituentQuote>;
 
@@ -319,7 +319,7 @@ function ConstituentGrid({ detail }: { detail: AssetDetail }) {
           </div>
           {/* rows */}
           {shown.map((row, ri) => (
-            <div key={row.symbol} className="flex text-[13px] tabular-nums hover:bg-[#fff7e6]">
+            <div key={row.symbol} className="flex text-[15px] tabular-nums hover:bg-[#fff7e6]">
               <div style={{ width: GUTTER }} className="flex shrink-0 items-center justify-center border-b border-r border-[#e0e0e0] bg-[#f0f0f0] text-xs text-[#999]">
                 {ri + 2}
               </div>
@@ -376,8 +376,8 @@ function Sheet({ title, meta, children }: { title: string; meta?: string; childr
 function Stat({ label, v }: { label: string; v: string }) {
   return (
     <div className="flex items-baseline justify-between gap-2">
-      <span className="text-xs text-[#888]">{label}</span>
-      <span className="font-semibold tabular-nums text-[#1f1f1f]">{v}</span>
+      <span className="text-sm text-[#888]">{label}</span>
+      <span className="text-lg font-semibold tabular-nums text-[#1f1f1f]">{v}</span>
     </div>
   );
 }

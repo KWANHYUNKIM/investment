@@ -83,7 +83,8 @@ CREATE TABLE IF NOT EXISTS company_profile (
     market         VARCHAR NOT NULL,
     ticker         VARCHAR NOT NULL,
     name           VARCHAR,
-    industry       VARCHAR,        -- KSIC industry (the grouping "공통분모")
+    industry       VARCHAR,        -- KSIC industry (사업자등록 표준산업분류)
+    wics_sector    VARCHAR,        -- WICS 업종 (네이버 금융 = 증권사 표준, 그룹핑 기준)
     products       VARCHAR,        -- 주요 제품/사업
     region         VARCHAR,
     representative VARCHAR,
@@ -99,6 +100,11 @@ def _connect() -> duckdb.DuckDBPyConnection:
     settings = get_settings()
     conn = duckdb.connect(str(settings.duckdb_path))
     conn.execute(_SCHEMA)
+    # Backfill wics_sector on DBs created before the WICS grouping landed.
+    try:
+        conn.execute("ALTER TABLE company_profile ADD COLUMN IF NOT EXISTS wics_sector VARCHAR")
+    except Exception:
+        pass
     return conn
 
 

@@ -84,7 +84,7 @@ export function IndustryMap() {
       <div className="flex items-center justify-between bg-[#217346] px-4 py-2 text-white">
         <span className="flex items-center gap-2 text-sm font-semibold">🏭 산업·경쟁지도.xlsx</span>
         <span className="text-xs text-white/80">
-          {index.length}개 업종 · KSIC 기준 · 기술·M&A·계약·실적·전략 취합
+          {index.length}개 업종 · WICS(네이버 금융) 기준 · 기술·M&A·계약·실적·전략 취합
         </span>
       </div>
 

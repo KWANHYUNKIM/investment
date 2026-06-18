@@ -395,7 +395,7 @@ function CrossAssetBlock({ ca: initial }: { ca: CrossAssetLayer | null }) {
     <Block label="💵 크로스에셋 자금 흐름 · 미국/글로벌 증시 · 금 · 비트코인" color="#ffe08a" fg="#7a5b00">
       {/* money-flow verdict banner */}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-[#eee] bg-[#fffaf0] px-3 py-2">
-        <span className="rounded-full px-2.5 py-0.5 text-xs font-bold text-white" style={{ background: tone }}>
+        <span className="rounded-full px-3 py-1 text-sm font-bold text-white" style={{ background: tone }}>
           {flow.verdict}
         </span>
         <span className="flex items-center gap-1 text-[11px] font-bold" style={{ color: live ? "#2f9e44" : "#aaa" }}>
@@ -403,16 +403,16 @@ function CrossAssetBlock({ ca: initial }: { ca: CrossAssetLayer | null }) {
           {live ? "LIVE" : "…"}
           {ca.as_of && <span className="font-normal text-[#999]">{ca.as_of.slice(11)}</span>}
         </span>
-        <span className="text-[13px] text-[#444]">{flow.desc}</span>
-        <span className="ml-auto text-[11px] text-[#999]">
+        <span className="text-[15px] text-[#444]">{flow.desc}</span>
+        <span className="ml-auto text-[13px] text-[#999]">
           글로벌 증시 {fmtSigned(flow.metrics.equities)} · 암호화폐 {fmtSigned(flow.metrics.crypto)} · 금 {fmtSigned(flow.metrics.gold)} · 원/달러 {fmtSigned(flow.metrics.usdkrw)}
         </span>
       </div>
       <div className="grid sm:grid-cols-2 xl:grid-cols-4">
         {ca.groups.map((g) => (
           <div key={g.group} className="border-b border-r border-[#eee]">
-            <div className="bg-[#fafafa] px-3 py-1 text-xs font-bold text-[#7a5b00]">{g.group}</div>
-            <table className="w-full border-collapse text-[13px]">
+            <div className="bg-[#fafafa] px-3 py-1.5 text-sm font-bold text-[#7a5b00]">{g.group}</div>
+            <table className="w-full border-collapse text-[15px]">
               <tbody>
                 {g.assets.map((a) => (
                   <tr
@@ -421,12 +421,12 @@ function CrossAssetBlock({ ca: initial }: { ca: CrossAssetLayer | null }) {
                     className="cursor-pointer hover:bg-[#fff7e6]"
                     title="클릭하면 장 마감 상세가 열립니다"
                   >
-                    <td className="border-t border-[#f0f0f0] px-3 py-1 font-medium text-[#1155cc] hover:underline">{a.label}</td>
-                    <td className="border-t border-[#f0f0f0] px-2 py-1 text-right tabular-nums text-[#1f1f1f]">
+                    <td className="border-t border-[#f0f0f0] px-3 py-2 font-medium text-[#1155cc] hover:underline">{a.label}</td>
+                    <td className="border-t border-[#f0f0f0] px-2 py-2 text-right tabular-nums text-[#1f1f1f]">
                       {assetValue(a)}
                     </td>
                     <td
-                      className="border-t border-[#f0f0f0] px-2 py-1 text-right font-bold tabular-nums"
+                      className="border-t border-[#f0f0f0] px-2 py-2 text-right font-bold tabular-nums"
                       style={retStyle(a.change_pct)}
                     >
                       {a.change_pct != null ? `${a.change_pct > 0 ? "+" : ""}${a.change_pct}%` : "—"}
@@ -438,7 +438,7 @@ function CrossAssetBlock({ ca: initial }: { ca: CrossAssetLayer | null }) {
           </div>
         ))}
       </div>
-      <p className="px-3 py-1.5 text-[11px] text-[#999]">
+      <p className="px-3 py-1.5 text-[12px] text-[#999]">
         종목을 클릭하면 그 장이 어떻게 끝났는지(장 마감 OHLC·최근 시세·구성종목) 엑셀로 열립니다. 금리(국채 10년)·원/달러 상승은 위험회피(현금·안전자산 선호), 증시·비트코인 상승은 위험선호 신호로 읽습니다. 시세 FinanceDataReader · 30초마다 실시간 갱신(해외장은 지연 시세).
       </p>
       {picked && <AssetDetailModal assetKey={picked} onClose={() => setPicked(null)} />}
