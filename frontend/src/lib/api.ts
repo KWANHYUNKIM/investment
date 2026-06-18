@@ -449,7 +449,18 @@ export interface GlobalMember {
   name: string | null;
   country: string | null;
   market_cap_usd: number | null;
+  revenue_usd?: number | null; // 매출액 (USD)
+  op_profit_usd?: number | null; // 영업이익 (USD)
+  net_income_usd?: number | null; // 순이익 (USD)
   op_margin: number | null; // 영업이익률 %
+  net_margin?: number | null; // 순이익률 %
+  gross_margin?: number | null; // 매출총이익률 %
+  roe?: number | null; // ROE %
+  debt_equity?: number | null; // 부채/자본 %
+  pe?: number | null; // PER
+  pb?: number | null; // PBR
+  div_yield?: number | null; // 배당수익률 %
+  fy?: string | null; // 기준 사업연도
   change_pct: number | null;
   note: string | null; // 주요제품 / 업종
 }

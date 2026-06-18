@@ -278,71 +278,128 @@ function MemberRow({
   );
 }
 
-// 선택한 기업들을 열로 세워 나란히 비교 (지표=행). 최고치는 강조.
-function CompareTable({ picked }: { picked: GlobalMember[] }) {
-  const best = (vals: (number | null)[]) => {
-    const nums = vals.filter((v): v is number => v != null);
-    return nums.length ? Math.max(...nums) : null;
-  };
-  const bestCap = best(picked.map((m) => m.market_cap_usd));
-  const bestMargin = best(picked.map((m) => m.op_margin));
+// 선택한 기업들을 열로 세워 나란히 비교 — 애널리스트 보고서급 (규모·수익성·재무·밸류).
+function pct(v: number | null | undefined): string {
+  return v == null ? "—" : `${v}%`;
+}
+function num(v: number | null | undefined, suffix = ""): string {
+  return v == null ? "—" : `${v}${suffix}`;
+}
 
+function CompareTable({ picked }: { picked: GlobalMember[] }) {
+  const bestMax = (f: (m: GlobalMember) => number | null | undefined) => {
+    const ns = picked.map(f).filter((v): v is number => v != null);
+    return ns.length ? Math.max(...ns) : null;
+  };
+  const bestMin = (f: (m: GlobalMember) => number | null | undefined) => {
+    const ns = picked.map(f).filter((v): v is number => v != null);
+    return ns.length ? Math.min(...ns) : null;
+  };
+  const bCap = bestMax((m) => m.market_cap_usd);
+  const bRev = bestMax((m) => m.revenue_usd);
+  const bOp = bestMax((m) => m.op_profit_usd);
+  const bOpM = bestMax((m) => m.op_margin);
+  const bNetM = bestMax((m) => m.net_margin);
+  const bRoe = bestMax((m) => m.roe);
+  const bDe = bestMin((m) => m.debt_equity); // 낮을수록 좋음
+  const bPe = bestMin((m) => m.pe); // 낮을수록 저평가
+
+  // 같은 사업이면 비교가 의미. 모두 같은 note면 배너로 강조.
+  const notes = picked.map((m) => (m.note ?? "").trim()).filter(Boolean);
+  const sameBiz = notes.length === picked.length && new Set(notes.map((n) => n.toLowerCase())).size === 1;
+
+  const Section = ({ title }: { title: string }) => (
+    <tr>
+      <th
+        colSpan={picked.length + 1}
+        className="sticky left-0 border border-[#e0e0e0] bg-[#dbe7f3] px-2 py-1 text-left text-[11px] font-bold text-[#1a3a5e]"
+      >
+        {title}
+      </th>
+    </tr>
+  );
   const Row = ({
     label,
     render,
+    medal,
   }: {
     label: string;
     render: (m: GlobalMember) => React.ReactNode;
+    medal?: (m: GlobalMember) => boolean;
   }) => (
     <tr className="hover:bg-[#fafafa]">
-      <th className="sticky left-0 z-10 border border-[#e0e0e0] bg-[#f3f6fa] px-2 py-2 text-left text-xs font-bold text-[#1a3a5e]">
+      <th className="sticky left-0 z-10 border border-[#e0e0e0] bg-[#f3f6fa] px-2 py-1.5 text-left text-xs font-semibold text-[#333]">
         {label}
       </th>
       {picked.map((m) => (
-        <td key={`${m.market}-${m.code}`} className="border border-[#e0e0e0] px-2 py-2 text-center tabular-nums">
+        <td key={`${m.market}-${m.code}`} className="border border-[#e0e0e0] px-2 py-1.5 text-center text-[13px] tabular-nums">
           {render(m)}
+          {medal && medal(m) ? " 🥇" : ""}
         </td>
       ))}
     </tr>
   );
 
   return (
-    <div className="overflow-x-auto p-3">
-      <table className="w-full border-collapse text-[13px]">
-        <thead>
-          <tr>
-            <th className="sticky left-0 z-10 min-w-[110px] border border-[#e0e0e0] bg-[#eef2f7] px-2 py-2 text-left text-xs font-bold text-[#1a3a5e]">
-              항목 ＼ 기업
-            </th>
-            {picked.map((m) => (
-              <th key={`${m.market}-${m.code}`} className="min-w-[120px] border border-[#e0e0e0] bg-[#1a3a5e] px-2 py-2 text-center text-white">
-                <div className="text-lg">{flag(m.country)}</div>
-                <div className="text-[13px] font-bold leading-tight">{m.name ?? m.code}</div>
-                <div className="text-[10px] font-normal text-white/70">{m.market === "KR" ? `KR ${m.code}` : m.code}</div>
+    <div className="space-y-2 p-3">
+      {sameBiz && (
+        <div className="rounded bg-[#eef6f0] px-3 py-1.5 text-[12px] text-[#244d1a]">
+          ✓ 동일 사업군 — <b>{notes[0]}</b> · 같은 제품/사업을 두고 직접 경쟁하는 기업들입니다.
+        </div>
+      )}
+      <div className="overflow-x-auto">
+        <table className="w-full border-collapse">
+          <thead>
+            <tr>
+              <th className="sticky left-0 z-10 min-w-[120px] border border-[#e0e0e0] bg-[#eef2f7] px-2 py-2 text-left text-xs font-bold text-[#1a3a5e]">
+                항목 ＼ 기업
               </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          <Row label="시총(USD)" render={(m) => (
-            <span className={m.market_cap_usd != null && m.market_cap_usd === bestCap ? "font-bold text-[#1a3a5e]" : "text-[#1f1f1f]"}>
-              {usd(m.market_cap_usd)}{m.market_cap_usd != null && m.market_cap_usd === bestCap && bestCap ? " 🥇" : ""}
-            </span>
-          )} />
-          <Row label="영업이익률" render={(m) => (
-            <span style={marginStyle(m.op_margin)} className="font-semibold">
-              {m.op_margin != null ? `${m.op_margin}%` : "—"}{m.op_margin != null && m.op_margin === bestMargin ? " 🥇" : ""}
-            </span>
-          )} />
-          <Row label="당일 등락%" render={(m) => (
-            <span style={retStyle(m.change_pct)} className="rounded px-1.5 py-0.5 font-bold">
-              {m.change_pct != null ? `${m.change_pct > 0 ? "+" : ""}${m.change_pct}%` : "—"}
-            </span>
-          )} />
-          <Row label="국가" render={(m) => <span>{flag(m.country)} {m.country ?? "—"}</span>} />
-          <Row label="사업/업종" render={(m) => <span className="text-[11px] text-[#666]">{m.note ?? "—"}</span>} />
-        </tbody>
-      </table>
+              {picked.map((m) => (
+                <th key={`${m.market}-${m.code}`} className="min-w-[130px] border border-[#e0e0e0] bg-[#1a3a5e] px-2 py-2 text-center text-white">
+                  <div className="text-lg">{flag(m.country)}</div>
+                  <div className="text-[13px] font-bold leading-tight">{m.name ?? m.code}</div>
+                  <div className="text-[10px] font-normal text-white/70">{m.market === "KR" ? `KR ${m.code}` : m.code}{m.fy ? ` · ${m.fy}` : ""}</div>
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            <Section title="규모" />
+            <Row label="시가총액(USD)" render={(m) => usd(m.market_cap_usd)} medal={(m) => m.market_cap_usd != null && m.market_cap_usd === bCap} />
+            <Row label="매출액(USD)" render={(m) => usd(m.revenue_usd)} medal={(m) => m.revenue_usd != null && m.revenue_usd === bRev} />
+            <Row label="영업이익(USD)" render={(m) => <span style={marginStyle(m.op_profit_usd)}>{usd(m.op_profit_usd)}</span>} medal={(m) => m.op_profit_usd != null && m.op_profit_usd === bOp} />
+            <Row label="순이익(USD)" render={(m) => <span style={marginStyle(m.net_income_usd)}>{usd(m.net_income_usd)}</span>} />
+
+            <Section title="수익성 (얼마나 남는지)" />
+            <Row label="영업이익률" render={(m) => <span style={marginStyle(m.op_margin)} className="font-semibold">{pct(m.op_margin)}</span>} medal={(m) => m.op_margin != null && m.op_margin === bOpM} />
+            <Row label="순이익률" render={(m) => <span style={marginStyle(m.net_margin)}>{pct(m.net_margin)}</span>} medal={(m) => m.net_margin != null && m.net_margin === bNetM} />
+            <Row label="매출총이익률" render={(m) => pct(m.gross_margin)} />
+            <Row label="ROE" render={(m) => <span style={marginStyle(m.roe)}>{pct(m.roe)}</span>} medal={(m) => m.roe != null && m.roe === bRoe} />
+
+            <Section title="재무 안정성 · 밸류에이션" />
+            <Row label="부채비율(부채/자본)" render={(m) => pct(m.debt_equity)} medal={(m) => m.debt_equity != null && m.debt_equity === bDe} />
+            <Row label="PER" render={(m) => num(m.pe)} medal={(m) => m.pe != null && m.pe > 0 && m.pe === bPe} />
+            <Row label="PBR" render={(m) => num(m.pb)} />
+            <Row label="배당수익률" render={(m) => pct(m.div_yield)} />
+
+            <Section title="시장 · 사업" />
+            <Row label="당일 등락%" render={(m) => <span style={retStyle(m.change_pct)} className="rounded px-1.5 py-0.5 font-bold">{m.change_pct != null ? `${m.change_pct > 0 ? "+" : ""}${m.change_pct}%` : "—"}</span>} />
+            <Row label="국가" render={(m) => <span>{flag(m.country)} {m.country ?? "—"}</span>} />
+            <tr>
+              <th className="sticky left-0 z-10 border border-[#e0e0e0] bg-[#f3f6fa] px-2 py-1.5 text-left text-xs font-semibold text-[#333]">주요 사업/제품</th>
+              {picked.map((m) => (
+                <td key={`${m.market}-${m.code}`} className="border border-[#e0e0e0] px-2 py-1.5 text-left text-[11px] leading-snug text-[#555]">
+                  {m.note ?? "—"}
+                </td>
+              ))}
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p className="text-[11px] leading-relaxed text-[#999]">
+        🥇 = 항목별 최우수(부채비율·PER은 낮을수록). 해외는 Finnhub(TTM), 한국은 DART·FnGuide(최근 사업연도) 기준이라 시점이 다소 다를 수 있습니다.
+        제품·사업부문별 영업이익(발생처 세분)은 공개 무료 데이터로는 정량화가 어려워 '주요 사업/제품' 수준으로 제공합니다.
+      </p>
     </div>
   );
 }

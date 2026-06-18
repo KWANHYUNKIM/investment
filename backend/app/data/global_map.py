@@ -9,7 +9,7 @@ from __future__ import annotations
 import threading
 import time
 
-from app.data import industry, store, finnhub, global_universe
+from app.data import industry, store, finnhub, financials, global_universe
 
 _lock = threading.Lock()
 _cache: dict = {"ts": 0.0, "data": None}
@@ -39,12 +39,37 @@ def _kr_members_by_wics() -> dict[str, list[dict]]:
     return out
 
 
-def _unify_kr(m: dict, krw: float) -> dict:
+def _eok_to_usd(v, krw: float):
+    """억원 → USD."""
+    n = _num(v)
+    return n * 1e8 * krw if n is not None else None
+
+
+def _unify_kr(m: dict, krw: float, fmap: dict, fund: dict, bs: dict) -> dict:
     cap = _num(m.get("market_cap"))
+    tk = m.get("ticker")
+    f = fmap.get(tk, {})
+    fu = fund.get(tk, {})
+    b = bs.get(tk, {})
+    sales = _num(f.get("sales"))
+    op = _num(f.get("op_profit"))
+    ni = _num(f.get("net_income"))
+    net_margin = round(ni / sales * 100, 2) if (sales and ni is not None) else None
+    debt, equity = _num(b.get("부채총계")), _num(b.get("자본총계"))
+    de = round(debt / equity * 100, 1) if (debt is not None and equity) else None
     return {
-        "market": "KR", "code": m.get("ticker"), "name": m.get("name"),
-        "country": "KR", "market_cap_usd": (cap * krw) if cap else None,
-        "op_margin": _num(m.get("op_margin")), "change_pct": _num(m.get("change_pct")),
+        "market": "KR", "code": tk, "name": m.get("name"), "country": "KR",
+        "market_cap_usd": (cap * krw) if cap else None,
+        "revenue_usd": _eok_to_usd(sales, krw),
+        "op_profit_usd": _eok_to_usd(op, krw),
+        "net_income_usd": _eok_to_usd(ni, krw),
+        "op_margin": _num(f.get("op_margin")), "net_margin": net_margin,
+        "gross_margin": None,
+        "roe": _num(fu.get("roe")), "debt_equity": de,
+        "pe": _num(fu.get("per")), "pb": _num(fu.get("pbr")),
+        "div_yield": _num(fu.get("div_yield")),
+        "fy": f.get("period"),
+        "change_pct": _num(m.get("change_pct")),
         "note": m.get("products"),
     }
 
@@ -64,7 +89,16 @@ def _unify_foreign(sym: str, label: str, country: str, fin: dict | None) -> dict
         "market": "GL", "code": sym, "name": _clean_str(f.get("name")) or label,
         "country": _clean_str(f.get("country")) or country,
         "market_cap_usd": _num(f.get("market_cap_usd")),
-        "op_margin": _num(f.get("op_margin")), "change_pct": _num(f.get("change_pct")),
+        "revenue_usd": _num(f.get("revenue_usd")),
+        "op_profit_usd": _num(f.get("op_profit_usd")),
+        "net_income_usd": _num(f.get("net_income_usd")),
+        "op_margin": _num(f.get("op_margin")), "net_margin": _num(f.get("net_margin")),
+        "gross_margin": _num(f.get("gross_margin")),
+        "roe": _num(f.get("roe")), "debt_equity": _num(f.get("debt_equity")),
+        "pe": _num(f.get("pe")), "pb": _num(f.get("pb")),
+        "div_yield": _num(f.get("div_yield")),
+        "fy": None,
+        "change_pct": _num(f.get("change_pct")),
         "note": _clean_str(f.get("industry")),
     }
 
@@ -73,6 +107,9 @@ def _assemble() -> list[dict]:
     krw = _krw_usd()
     kr_by_wics = _kr_members_by_wics()
     fmap = store.foreign_fin_map()
+    kr_fin = financials.latest_op_map()        # ticker -> 매출/영업이익/순이익
+    kr_fund = store.fundamentals_latest_map()  # ticker -> per/pbr/roe/div_yield
+    kr_bs = store.dart_latest_bs_map()         # ticker -> 부채총계/자본총계
 
     clusters: list[dict] = []
     for c in global_universe.CLUSTERS:
@@ -80,7 +117,7 @@ def _assemble() -> list[dict]:
         # 한국 멤버
         for wics in c["kr_wics"]:
             for m in kr_by_wics.get(wics, []):
-                members.append(_unify_kr(m, krw))
+                members.append(_unify_kr(m, krw, kr_fin, kr_fund, kr_bs))
         # 해외 멤버
         for sym, label, country in c["foreign"]:
             if sym.endswith(".KS"):

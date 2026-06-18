@@ -114,8 +114,17 @@ CREATE TABLE IF NOT EXISTS foreign_fin (
     currency       VARCHAR,
     industry       VARCHAR,
     market_cap_usd DOUBLE,            -- 시가총액 (USD)
+    revenue_usd    DOUBLE,            -- 매출액 (USD, TTM)
+    op_profit_usd  DOUBLE,            -- 영업이익 (USD, 추정=매출×영업이익률)
+    net_income_usd DOUBLE,            -- 순이익 (USD, 추정=매출×순이익률)
     op_margin      DOUBLE,            -- 영업이익률 (%)
     net_margin     DOUBLE,            -- 순이익률 (%)
+    gross_margin   DOUBLE,            -- 매출총이익률 (%)
+    roe            DOUBLE,            -- 자기자본이익률 (%)
+    debt_equity    DOUBLE,            -- 부채비율(총부채/자기자본, 배)
+    pe             DOUBLE,            -- PER
+    pb             DOUBLE,            -- PBR
+    div_yield      DOUBLE,            -- 배당수익률 (%)
     price          DOUBLE,            -- 현재가 (현지통화)
     change_pct     DOUBLE,            -- 당일 등락률 (%)
     updated        VARCHAR,
@@ -147,6 +156,13 @@ def _connect() -> duckdb.DuckDBPyConnection:
         conn.execute("ALTER TABLE company_profile ADD COLUMN IF NOT EXISTS wics_sector VARCHAR")
     except Exception:
         pass
+    # Backfill the deep foreign-fundamentals columns (report-grade comparison).
+    for col in ("revenue_usd", "op_profit_usd", "net_income_usd", "gross_margin",
+                "roe", "debt_equity", "pe", "pb", "div_yield"):
+        try:
+            conn.execute(f"ALTER TABLE foreign_fin ADD COLUMN IF NOT EXISTS {col} DOUBLE")
+        except Exception:
+            pass
     return conn
 
 
@@ -250,6 +266,22 @@ def fundamentals_history(ticker: str, market: str = "KR") -> pd.DataFrame:
             "SELECT * FROM fundamentals WHERE market = ? AND ticker = ? ORDER BY date",
             [market, ticker],
         ).df()
+
+
+def fundamentals_latest_map() -> dict[str, dict]:
+    """ticker -> latest {per, pbr, roe, div_yield, eps, bps} (글로벌 비교 KR 보강용)."""
+    with connection() as conn:
+        df = conn.execute(
+            """
+            WITH ranked AS (
+                SELECT ticker, per, pbr, roe, div_yield, eps, bps,
+                       ROW_NUMBER() OVER (PARTITION BY ticker ORDER BY date DESC) AS rn
+                FROM fundamentals
+            )
+            SELECT ticker, per, pbr, roe, div_yield, eps, bps FROM ranked WHERE rn = 1
+            """
+        ).df()
+    return {r["ticker"]: r for r in df.to_dict("records")}
 
 
 def upsert_investor_flow(df: pd.DataFrame) -> int:
@@ -380,6 +412,26 @@ def dart_financials(ticker: str) -> pd.DataFrame:
             "FROM dart_financials WHERE ticker = ? ORDER BY sj_div, ord, account_nm, year",
             [ticker],
         ).df()
+
+
+def dart_latest_bs_map() -> dict[str, dict]:
+    """ticker -> 최신연도 {자산총계, 부채총계, 자본총계} (KR 부채비율 계산용, 원)."""
+    with connection() as conn:
+        df = conn.execute(
+            """
+            WITH bs AS (
+                SELECT ticker, account_nm, amount,
+                       ROW_NUMBER() OVER (PARTITION BY ticker, account_nm ORDER BY year DESC) AS rn
+                FROM dart_financials
+                WHERE sj_div = 'BS' AND account_nm IN ('자산총계', '부채총계', '자본총계')
+            )
+            SELECT ticker, account_nm, amount FROM bs WHERE rn = 1
+            """
+        ).df()
+    out: dict[str, dict] = {}
+    for r in df.to_dict("records"):
+        out.setdefault(r["ticker"], {})[r["account_nm"]] = r["amount"]
+    return out
 
 
 def financials_latest() -> pd.DataFrame:

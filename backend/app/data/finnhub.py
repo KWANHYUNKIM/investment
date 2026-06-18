@@ -104,19 +104,38 @@ def fetch(symbol: str, fx: dict[str, float] | None = None) -> dict | None:
     metric = (_get("/stock/metric", {"symbol": symbol, "metric": "all"}) or {}).get("metric", {})
 
     cur = (prof.get("currency") or "USD").upper()
+    rate = fx.get(cur, _FX_FALLBACK.get(cur, 1.0))
     price = _num(quote.get("c"))
     shares = _num(prof.get("shareOutstanding"))  # in millions
     mcap_usd = None
     if price and shares:
-        mcap_usd = shares * 1e6 * price * fx.get(cur, _FX_FALLBACK.get(cur, 1.0))
+        mcap_usd = shares * 1e6 * price * rate
 
-    op = _num(metric.get("operatingMarginTTM"))
-    if op is None:
-        op = _num(metric.get("operatingMarginAnnual"))
-    net = _num(metric.get("netProfitMarginTTM"))
-    if net is None:
-        net = _num(metric.get("netProfitMarginAnnual"))
+    def pick(*keys):
+        for k in keys:
+            v = _num(metric.get(k))
+            if v is not None:
+                return v
+        return None
 
+    op = pick("operatingMarginTTM", "operatingMarginAnnual")
+    net = pick("netProfitMarginTTM", "netProfitMarginAnnual", "netMarginTTM")
+    gross = pick("grossMarginTTM", "grossMarginAnnual")
+    roe = pick("roeTTM", "roeRfy", "roeAnnual")
+    de = pick("totalDebt/totalEquityQuarterly", "totalDebt/totalEquityAnnual",
+              "longTermDebt/equityQuarterly")
+    pe = pick("peTTM", "peBasicExclExtraTTM", "peAnnual")
+    pb = pick("pbQuarterly", "pbAnnual", "pb")
+    dy = pick("dividendYieldIndicatedAnnual", "currentDividendYieldTTM")
+    rps = pick("revenuePerShareTTM", "revenuePerShareAnnual")
+
+    revenue_usd = None
+    if rps and shares:
+        revenue_usd = rps * shares * 1e6 * rate  # 매출 = 주당매출 × 주식수 → USD
+    op_profit_usd = revenue_usd * op / 100 if (revenue_usd is not None and op is not None) else None
+    net_income_usd = revenue_usd * net / 100 if (revenue_usd is not None and net is not None) else None
+
+    r2 = lambda v: round(v, 2) if v is not None else None
     return {
         "symbol": symbol,
         "name": prof.get("name"),
@@ -125,8 +144,12 @@ def fetch(symbol: str, fx: dict[str, float] | None = None) -> dict | None:
         "currency": cur,
         "industry": prof.get("finnhubIndustry"),
         "market_cap_usd": mcap_usd,
-        "op_margin": round(op, 2) if op is not None else None,
-        "net_margin": round(net, 2) if net is not None else None,
+        "revenue_usd": revenue_usd,
+        "op_profit_usd": op_profit_usd,
+        "net_income_usd": net_income_usd,
+        "op_margin": r2(op), "net_margin": r2(net), "gross_margin": r2(gross),
+        "roe": r2(roe), "debt_equity": r2(de), "pe": r2(pe), "pb": r2(pb),
+        "div_yield": r2(dy),
         "price": price,
         "change_pct": _num(quote.get("dp")),
         "updated": time.strftime("%Y-%m-%d %H:%M"),
