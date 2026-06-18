@@ -78,6 +78,20 @@ CREATE TABLE IF NOT EXISTS investor_flow (
     foreign_ratio DOUBLE,
     PRIMARY KEY (market, ticker, date)
 );
+
+CREATE TABLE IF NOT EXISTS company_profile (
+    market         VARCHAR NOT NULL,
+    ticker         VARCHAR NOT NULL,
+    name           VARCHAR,
+    industry       VARCHAR,        -- KSIC industry (the grouping "공통분모")
+    products       VARCHAR,        -- 주요 제품/사업
+    region         VARCHAR,
+    representative VARCHAR,
+    homepage       VARCHAR,
+    listing_date   VARCHAR,
+    market_cap     DOUBLE,
+    PRIMARY KEY (market, ticker)
+);
 """
 
 
@@ -204,6 +218,63 @@ def investor_flow_history(ticker: str, market: str = "KR", days: int = 60) -> pd
             "FROM investor_flow WHERE market = ? AND ticker = ? ORDER BY date DESC LIMIT ?",
             [market, ticker, days],
         ).df()
+
+
+def latest_investor_flow_map(market: str = "KR") -> dict[str, dict]:
+    """One entry per ticker with its two most recent investor-flow rows.
+
+    Feeds the daily archive's *bulk* layer: every ticker that has accumulated
+    flow gets a signal-based "왜 샀나/팔았나" without a per-ticker live fetch.
+    Returns ``{ticker: {individual, foreigner, organ, foreign_ratio,
+    foreign_ratio_prev}}``.
+    """
+    with connection() as conn:
+        df = conn.execute(
+            """
+            WITH r AS (
+                SELECT ticker, date, individual, foreigner, organ, foreign_ratio,
+                       ROW_NUMBER() OVER (PARTITION BY ticker ORDER BY date DESC) rn
+                FROM investor_flow WHERE market = ?
+            )
+            SELECT l.ticker, l.individual, l.foreigner, l.organ, l.foreign_ratio,
+                   p.foreign_ratio AS foreign_ratio_prev
+            FROM (SELECT * FROM r WHERE rn = 1) l
+            LEFT JOIN (SELECT ticker, foreign_ratio FROM r WHERE rn = 2) p
+              ON p.ticker = l.ticker
+            """,
+            [market],
+        ).df()
+    out: dict[str, dict] = {}
+    for rec in df.to_dict("records"):
+        out[rec["ticker"]] = rec
+    return out
+
+
+def upsert_company_profile(df: pd.DataFrame) -> int:
+    """Replace the company industry/products profile (from KRX-DESC + marcap)."""
+    return _upsert("company_profile", df, ["market", "ticker"])
+
+
+def company_profiles() -> pd.DataFrame:
+    """All stored company profiles (industry / products / marcap)."""
+    with connection() as conn:
+        return conn.execute("SELECT * FROM company_profile").df()
+
+
+def company_profile_count() -> int:
+    with connection() as conn:
+        v = conn.execute("SELECT COUNT(*) FROM company_profile").fetchone()
+    return int(v[0]) if v else 0
+
+
+def max_price_date(market: str | None = None) -> str | None:
+    """Latest date present in the price series (cheap scheduler check)."""
+    where, params = "", []
+    if market:
+        where, params = "WHERE market = ?", [market]
+    with connection() as conn:
+        v = conn.execute(f"SELECT MAX(date) FROM prices {where}", params).fetchone()
+    return str(v[0])[:10] if v and v[0] is not None else None
 
 
 # --------------------------------------------------------------------------- #

@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api import backtest, data, portfolio, screening
 from app.core.config import get_settings
-from app.data import fundamentals_crawler, price_scheduler, store
+from app.data import fundamentals_crawler, industry_scheduler, price_scheduler, report_scheduler, store
 
 settings = get_settings()
 
@@ -38,6 +38,12 @@ def _startup() -> None:
     # Background price scheduler: periodically accumulate today's OHLCV bar for
     # the whole KR board into DuckDB (same process → same writer connection).
     price_scheduler.start()
+    # Background report scheduler: persist the full daily report as JSON once per
+    # trading day so the 데일리 리포트 history accumulates instead of evaporating.
+    report_scheduler.start()
+    # Background industry scheduler: refresh KRX-DESC industry profiles and snapshot
+    # the per-industry competition/research feed so it accumulates over time.
+    industry_scheduler.start()
 
 
 @app.get("/api/health", tags=["meta"])

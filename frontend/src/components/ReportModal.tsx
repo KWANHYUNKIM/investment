@@ -38,46 +38,51 @@ export function ReportModal({ stock, onClose }: { stock: PickedStock; onClose: (
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-900/40 p-4 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4 backdrop-blur-sm"
       onClick={onClose}
     >
       <div
-        className="my-6 w-full max-w-2xl overflow-hidden rounded-2xl bg-white text-[#1f1f1f] shadow-2xl ring-1 ring-slate-900/10"
+        className="my-6 w-full max-w-2xl overflow-hidden rounded-xl border border-[#d0d0d0] bg-white text-[#1f1f1f] shadow"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* tone accent strip */}
-        <div className="h-1" style={{ background: accent }} />
-
-        {/* header */}
-        <div className="flex items-start justify-between gap-3 border-b border-slate-100 px-6 pb-4 pt-4">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-[#3a7d2c]">
-              <span>장마감 리포트</span>
-              {p.date && <span className="font-normal normal-case tracking-normal text-slate-400">· {p.date}</span>}
-            </div>
-            <div className="mt-1 flex items-center gap-2">
-              <h2 className="truncate text-xl font-bold text-slate-900">{rep?.name ?? stock.name}</h2>
-              <span className="shrink-0 rounded-md bg-slate-100 px-1.5 py-0.5 font-mono text-xs text-slate-500">
-                {stock.ticker}
-              </span>
-            </div>
-          </div>
+        {/* Excel green title bar */}
+        <div className="flex items-center justify-between bg-[#217346] px-4 py-2 text-sm text-white">
+          <span className="truncate font-semibold">{rep?.name ?? stock.name} — 장마감 리포트.xlsx</span>
           <button
             onClick={onClose}
             aria-label="닫기"
-            className="-mr-1 shrink-0 rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+            className="shrink-0 px-1 text-white/80 transition hover:text-white"
           >
             ✕
           </button>
         </div>
 
+        {/* tone accent strip */}
+        <div className="h-1" style={{ background: accent }} />
+
+        {/* header */}
+        <div className="flex items-start justify-between gap-3 border-b border-[#e6e6e6] px-6 pb-4 pt-4">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-[#217346]">
+              <span>장마감 리포트</span>
+              {p.date && <span className="font-normal normal-case tracking-normal text-[#888]">· {p.date}</span>}
+            </div>
+            <div className="mt-1 flex items-center gap-2">
+              <h2 className="truncate text-xl font-bold text-[#1f1f1f]">{rep?.name ?? stock.name}</h2>
+              <span className="shrink-0 rounded-md bg-[#f3f2f1] px-1.5 py-0.5 font-mono text-xs text-[#555]">
+                {stock.ticker}
+              </span>
+            </div>
+          </div>
+        </div>
+
         {loading ? (
-          <div className="flex flex-col items-center gap-3 py-20 text-sm text-slate-400">
-            <span className="h-6 w-6 animate-spin rounded-full border-2 border-slate-200 border-t-[#3a7d2c]" />
+          <div className="flex flex-col items-center gap-3 py-20 text-sm text-[#888]">
+            <span className="h-6 w-6 animate-spin rounded-full border-2 border-[#d0d0d0] border-t-[#217346]" />
             리포트 생성 중…
           </div>
         ) : !rep ? (
-          <div className="py-20 text-center text-sm text-rose-500">리포트를 불러오지 못했습니다.</div>
+          <div className="py-20 text-center text-sm text-rose-600">리포트를 불러오지 못했습니다.</div>
         ) : (
           <div className="space-y-6 px-6 py-5">
             {/* price hero */}
@@ -90,10 +95,10 @@ export function ReportModal({ stock, onClose }: { stock: PickedStock; onClose: (
                 }}
               >
                 <div>
-                  <div className="text-[11px] font-medium text-slate-500">종가</div>
-                  <div className="mt-0.5 text-3xl font-bold leading-none tabular-nums text-slate-900">
+                  <div className="text-[11px] font-medium text-[#888]">종가</div>
+                  <div className="mt-0.5 text-3xl font-bold leading-none tabular-nums text-[#1f1f1f]">
                     {won(p.close)}
-                    <span className="ml-1 text-base font-normal text-slate-400">원</span>
+                    <span className="ml-1 text-base font-normal text-[#888]">원</span>
                   </div>
                 </div>
                 <div className={`text-right text-lg font-bold tabular-nums ${toneClass(p.change_pct)}`}>
@@ -109,7 +114,7 @@ export function ReportModal({ stock, onClose }: { stock: PickedStock; onClose: (
             )}
 
             {/* summary */}
-            <div className="rounded-xl border-l-[3px] border-[#3a7d2c] bg-[#f6faf4] py-3 pl-4 pr-4 text-[15px] leading-relaxed text-slate-700">
+            <div className="rounded-xl border-l-[3px] border-[#217346] bg-[#f6faf4] py-3 pl-4 pr-4 text-[15px] leading-relaxed text-[#333]">
               {rep.summary || "데이터가 부족하여 요약을 생성하지 못했습니다."}
             </div>
 
@@ -134,8 +139,8 @@ export function ReportModal({ stock, onClose }: { stock: PickedStock; onClose: (
                 <FlowBar label="기관" v={f.organ} max={flowMax(f)} />
               </div>
               {f.foreign_ratio != null && (
-                <div className="mt-2.5 border-t border-slate-100 pt-2 text-right text-xs text-slate-500">
-                  외국인 보유율 <b className="text-slate-700">{f.foreign_ratio}%</b>
+                <div className="mt-2.5 border-t border-[#e6e6e6] pt-2 text-right text-xs text-[#888]">
+                  외국인 보유율 <b className="text-[#333]">{f.foreign_ratio}%</b>
                 </div>
               )}
             </Section>
@@ -147,10 +152,10 @@ export function ReportModal({ stock, onClose }: { stock: PickedStock; onClose: (
                   {holders.map((h, i) => (
                     <span
                       key={i}
-                      className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs text-slate-600"
+                      className="inline-flex items-center gap-1 rounded-full border border-[#e0e0e0] bg-[#fafafa] px-2.5 py-1 text-xs text-[#555]"
                     >
                       {h.name}
-                      {h.ratio != null && <b className="text-[#3a7d2c]">{h.ratio}%</b>}
+                      {h.ratio != null && <b className="text-[#217346]">{h.ratio}%</b>}
                     </span>
                   ))}
                 </div>
@@ -167,12 +172,12 @@ export function ReportModal({ stock, onClose }: { stock: PickedStock; onClose: (
                         href={a.link}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="-mx-2 flex items-start gap-2 rounded-lg px-2 py-1.5 text-sm text-slate-700 transition hover:bg-slate-50 hover:text-[#1155cc]"
+                        className="-mx-2 flex items-start gap-2 rounded-lg px-2 py-1.5 text-sm text-[#333] transition hover:bg-[#fff7e6] hover:text-[#1155cc]"
                       >
-                        <span className="mt-0.5 text-[#3a7d2c]">›</span>
+                        <span className="mt-0.5 text-[#217346]">›</span>
                         <span className="flex-1">
                           {a.title}
-                          <span className="ml-1.5 text-xs text-slate-400">{a.source}</span>
+                          <span className="ml-1.5 text-xs text-[#888]">{a.source}</span>
                         </span>
                       </a>
                     </li>
@@ -181,7 +186,7 @@ export function ReportModal({ stock, onClose }: { stock: PickedStock; onClose: (
               </Section>
             )}
 
-            <p className="border-t border-slate-100 pt-3 text-[11px] leading-relaxed text-slate-400">{rep.note}</p>
+            <p className="border-t border-[#e6e6e6] pt-3 text-[11px] leading-relaxed text-[#888]">{rep.note}</p>
           </div>
         )}
       </div>
@@ -208,8 +213,8 @@ function Section({
   return (
     <div>
       <div className="mb-2.5 flex flex-wrap items-center gap-2">
-        <h3 className="text-sm font-bold text-slate-800">{title}</h3>
-        {meta && <span className="text-xs font-normal text-slate-400">{meta}</span>}
+        <h3 className="text-sm font-bold text-[#333]">{title}</h3>
+        {meta && <span className="text-xs font-normal text-[#888]">{meta}</span>}
         {badges && <span className="ml-auto flex gap-1.5">{badges}</span>}
       </div>
       {children}
@@ -236,14 +241,14 @@ function FlowBar({ label, v, max }: { label: string; v: number | null | undefine
   const width = has ? `${Math.max(4, (Math.abs(v as number) / max) * 100)}%` : "0%";
   return (
     <div className="flex items-center gap-3">
-      <span className="w-12 shrink-0 text-xs font-medium text-slate-500">{label}</span>
-      <div className="relative h-6 flex-1 overflow-hidden rounded-md bg-slate-100">
+      <span className="w-12 shrink-0 text-xs font-medium text-[#555]">{label}</span>
+      <div className="relative h-6 flex-1 overflow-hidden rounded-md bg-[#f0f0f0]">
         <div className="absolute inset-y-0 left-0 rounded-md transition-all" style={{ width, background: color, opacity: 0.85 }} />
       </div>
       <span className={`w-20 shrink-0 text-right text-sm font-bold tabular-nums ${toneClass(v ?? null)}`}>
         {manShares(v ?? null)}
       </span>
-      <span className="w-9 shrink-0 text-[10px] text-slate-400">{!has ? "" : sells ? "순매도" : "순매수"}</span>
+      <span className="w-9 shrink-0 text-[10px] text-[#888]">{!has ? "" : sells ? "순매도" : "순매수"}</span>
     </div>
   );
 }

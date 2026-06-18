@@ -90,7 +90,7 @@ export function Backtest({ coverage }: { coverage: Coverage[] }) {
       <Card title="백테스트 설정">
         <div className="space-y-4">
           <div>
-            <span className="mb-1.5 block text-xs font-medium text-slate-400">종목 선택 (≥2)</span>
+            <span className="mb-1.5 block text-xs font-semibold text-[#555]">종목 선택 (≥2)</span>
             <TickerPicker market={market} selected={tickers} onChange={setTickers} />
           </div>
           <Field label="가중 방식">
@@ -154,18 +154,18 @@ export function Backtest({ coverage }: { coverage: Coverage[] }) {
               <div className="h-72 w-full">
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={thin} margin={{ top: 8, right: 16, bottom: 0, left: -8 }}>
-                    <CartesianGrid stroke="#1e293b" vertical={false} />
-                    <XAxis dataKey="date" tick={{ fill: "#64748b", fontSize: 11 }} minTickGap={48} />
-                    <YAxis tick={{ fill: "#64748b", fontSize: 11 }} domain={["auto", "auto"]} />
+                    <CartesianGrid stroke="#e0e0e0" vertical={false} />
+                    <XAxis dataKey="date" tick={{ fill: "#666", fontSize: 11 }} minTickGap={48} />
+                    <YAxis tick={{ fill: "#666", fontSize: 11 }} domain={["auto", "auto"]} />
                     <Tooltip
-                      contentStyle={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 8, fontSize: 12 }}
-                      labelStyle={{ color: "#94a3b8" }}
+                      contentStyle={{ background: "#fff", border: "1px solid #d0d0d0", borderRadius: 6, fontSize: 12 }}
+                      labelStyle={{ color: "#666" }}
                       formatter={(v) => num(Number(v), 3)}
                     />
-                    <Legend formatter={(v) => <span className="text-xs text-slate-400">{v === "strategy" ? "전략" : "벤치마크"}</span>} />
-                    <Line type="monotone" dataKey="strategy" stroke="#38bdf8" dot={false} strokeWidth={2} />
+                    <Legend formatter={(v) => <span className="text-xs text-[#555]">{v === "strategy" ? "전략" : "벤치마크"}</span>} />
+                    <Line type="monotone" dataKey="strategy" stroke="#217346" dot={false} strokeWidth={2} />
                     {res.benchmark && (
-                      <Line type="monotone" dataKey="benchmark" stroke="#a78bfa" dot={false} strokeWidth={1.5} strokeDasharray="4 3" />
+                      <Line type="monotone" dataKey="benchmark" stroke="#b06f2e" dot={false} strokeWidth={1.5} strokeDasharray="4 3" />
                     )}
                   </LineChart>
                 </ResponsiveContainer>
@@ -182,12 +182,12 @@ export function Backtest({ coverage }: { coverage: Coverage[] }) {
                         <stop offset="100%" stopColor="#f43f5e" stopOpacity={0.5} />
                       </linearGradient>
                     </defs>
-                    <CartesianGrid stroke="#1e293b" vertical={false} />
-                    <XAxis dataKey="date" tick={{ fill: "#64748b", fontSize: 11 }} minTickGap={48} />
-                    <YAxis tick={{ fill: "#64748b", fontSize: 11 }} tickFormatter={(v) => pct(v, 0)} />
+                    <CartesianGrid stroke="#e0e0e0" vertical={false} />
+                    <XAxis dataKey="date" tick={{ fill: "#666", fontSize: 11 }} minTickGap={48} />
+                    <YAxis tick={{ fill: "#666", fontSize: 11 }} tickFormatter={(v) => pct(v, 0)} />
                     <Tooltip
-                      contentStyle={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 8, fontSize: 12 }}
-                      labelStyle={{ color: "#94a3b8" }}
+                      contentStyle={{ background: "#fff", border: "1px solid #d0d0d0", borderRadius: 6, fontSize: 12 }}
+                      labelStyle={{ color: "#666" }}
                       formatter={(v) => pct(Number(v))}
                     />
                     <Area type="monotone" dataKey="drawdown" stroke="#f43f5e" fill="url(#dd)" strokeWidth={1.5} />
@@ -247,13 +247,13 @@ export function WeightBars({
     <div className="space-y-2">
       {entries.map(([t, w]) => (
         <div key={t} className="flex items-center gap-3">
-          <span className="w-32 shrink-0 truncate text-xs text-slate-300" title={nameOf(t)}>
+          <span className="w-32 shrink-0 truncate text-xs text-[#444]" title={nameOf(t)}>
             {nameOf(t)}
           </span>
-          <div className="h-3 flex-1 overflow-hidden rounded bg-slate-800">
-            <div className="h-full rounded bg-sky-500" style={{ width: `${(w / maxW) * 100}%` }} />
+          <div className="h-3 flex-1 overflow-hidden rounded-sm border border-[#e0e0e0] bg-[#f0f0f0]">
+            <div className="h-full bg-[#217346]" style={{ width: `${(w / maxW) * 100}%` }} />
           </div>
-          <span className="w-14 shrink-0 text-right text-xs tabular-nums text-slate-400">{pct(w)}</span>
+          <span className="w-14 shrink-0 text-right text-xs tabular-nums text-[#666]">{pct(w)}</span>
         </div>
       ))}
     </div>

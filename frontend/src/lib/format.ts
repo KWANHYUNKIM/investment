@@ -56,8 +56,8 @@ export function tone(v: number | null | undefined): string {
 }
 
 export function toneClass(v: number | null | undefined): string {
-  if (v === null || v === undefined || Number.isNaN(v) || v === 0) return "text-slate-400";
-  return v > 0 ? "text-[#ff5252]" : "text-[#4dabf7]";
+  if (v === null || v === undefined || Number.isNaN(v) || v === 0) return "text-[#888]";
+  return v > 0 ? "text-[#c92a2a]" : "text-[#1971c2]";
 }
 
 export function arrow(v: number | null | undefined): string {

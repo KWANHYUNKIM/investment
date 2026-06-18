@@ -9,6 +9,7 @@ is the single source.
 """
 from __future__ import annotations
 
+import re
 import threading
 import time
 from email.utils import parsedate_to_datetime
@@ -16,6 +17,27 @@ from urllib.parse import quote
 from xml.etree import ElementTree as ET
 
 import requests
+
+# Google News bundles each story's <description> as an HTML list of related
+# coverage (<a>headline</a> from multiple outlets). Pulling those out gives the
+# "대표 내용" — what's being reported across sources, not just one headline.
+_A_RE = re.compile(r"<a[^>]*>(.*?)</a>", re.S)
+_TAG_RE = re.compile(r"<[^>]+>")
+
+
+def _cluster(description: str | None, headline: str) -> list[str]:
+    if not description:
+        return []
+    out: list[str] = []
+    seen = {headline.strip()}
+    for raw in _A_RE.findall(description):
+        t = _TAG_RE.sub("", raw).strip()
+        if t and t not in seen:
+            seen.add(t)
+            out.append(t)
+        if len(out) >= 6:
+            break
+    return out
 
 _UA = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
 _lock = threading.Lock()
@@ -77,7 +99,8 @@ def _parse(xml: str, limit: int) -> list[dict]:
                 ts = parsedate_to_datetime(pub).timestamp()
             except (TypeError, ValueError):
                 ts = None
-        out.append({"title": title, "link": link, "source": source.strip(), "ts": ts})
+        cluster = _cluster(it.findtext("description"), title)
+        out.append({"title": title, "link": link, "source": source.strip(), "ts": ts, "cluster": cluster})
         if len(out) >= limit:
             break
     out.sort(key=lambda x: x["ts"] or 0, reverse=True)
@@ -111,8 +134,12 @@ def news_for(name: str, limit: int = 15) -> dict:
     except Exception:
         pass
     try:
-        en = EN_NAMES.get(name, name)
-        glob = _fetch(en, "en-US", "US", "US:en", limit)
+        # Mapped majors use their real English name; unmapped names are anchored
+        # with "Korea" so a Korean company name in an English feed doesn't match
+        # unrelated foreign stories (e.g. 핌스→"Imran Khan/PIMS").
+        en = EN_NAMES.get(name)
+        query = en if en else f"{name} Korea"
+        glob = _fetch(query, "en-US", "US", "US:en", limit)
     except Exception:
         pass
 

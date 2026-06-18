@@ -154,6 +154,18 @@ export interface InsightNews {
   title: string | null;
   link: string | null;
   source: string | null;
+  region?: string | null;
+  cluster?: string[]; // related-coverage sub-headlines (대표 내용)
+}
+export interface BrokerHouse {
+  name: string;
+  volume: number | null;
+  foreign: boolean;
+}
+export interface BrokerFlow {
+  buy: BrokerHouse[];
+  sell: BrokerHouse[];
+  foreign: { buy: number | null; sell: number | null; net: number | null } | null;
 }
 export interface StockInsight {
   ticker: string;
@@ -167,6 +179,8 @@ export interface StockInsight {
   foreign_ratio_delta: number | null;
   investors: InvestorDriver[];
   news: InsightNews[];
+  news_global?: InsightNews[];
+  brokers?: BrokerFlow;
 }
 export interface MarketReport {
   date: string | null;
@@ -179,6 +193,213 @@ export interface MarketReport {
   organ_sellers: FlowSeller[];
   news: NewsItem[];
   summary: string;
+}
+
+// --- Daily archive (persisted day-by-day report) ----------------------------
+export interface MacroDriver {
+  theme: string;
+  direction: string; // 긍정 / 부정 / 중립
+  count: number;
+  regions?: Record<string, number>;
+  headlines: InsightNews[];
+  digest?: string[]; // 대표 내용 — cross-source content bullets
+}
+export interface RegionNews {
+  region: string;
+  count: number;
+  news: NewsItem[];
+}
+export interface MacroLayer {
+  drivers: MacroDriver[];
+  news: NewsItem[];
+  global_news?: NewsItem[];
+  by_region?: RegionNews[];
+  pool_size?: number;
+  summary: string;
+}
+export interface RateMeeting {
+  key: string;
+  name: string;
+  flag: string;
+  next_date: string | null;
+  next_label: string | null;
+  d_day: number | null;
+  prev_date: string | null;
+  remaining_2026: number;
+}
+export interface RateLayer {
+  schedule: RateMeeting[];
+  outlook: InsightNews[];
+  digest: string[];
+  summary: string;
+}
+export interface ForeignView {
+  lean: string; // 긍정 / 부정 / 중립
+  pos: number;
+  neg: number;
+  pool_size: number;
+  summary: string;
+  headlines: InsightNews[];
+  digest: string[];
+}
+export interface CrossAsset {
+  key: string;
+  label: string;
+  group: string;
+  kind: string; // index / crypto / commodity / safe / yield / fx
+  unit: string; // pt / usd / krw / pct
+  value: number | null;
+  change_pct: number | null;
+  date: string | null;
+}
+export interface CrossAssetGroup {
+  group: string;
+  assets: CrossAsset[];
+}
+export interface MoneyFlow {
+  verdict: string; // 위험선호 / 위험회피 / 혼조
+  tone: string; // 긍정 / 부정 / 중립
+  score: number;
+  desc: string;
+  metrics: { equities: number | null; crypto: number | null; gold: number | null; usdkrw: number | null };
+  summary: string;
+}
+export interface CrossAssetLayer {
+  groups: CrossAssetGroup[];
+  flow: MoneyFlow;
+  count: number;
+  ts?: number;
+  as_of?: string;
+}
+export interface AssetSession {
+  date: string | null;
+  open: number | null;
+  high: number | null;
+  low: number | null;
+  close: number | null;
+  change: number | null;
+  change_pct: number | null;
+  volume: number | null;
+  high_52w: number | null;
+  low_52w: number | null;
+  prev_close: number | null;
+}
+export interface AssetHistoryRow {
+  date: string;
+  open: number | null;
+  high: number | null;
+  low: number | null;
+  close: number | null;
+  change_pct: number | null;
+  volume: number | null;
+}
+export interface AssetConstituent {
+  symbol: string;
+  name: string | null;
+  sector: string | null;
+}
+export interface AssetDetail {
+  key: string;
+  label: string;
+  symbol: string;
+  group: string;
+  unit: string;
+  session: AssetSession;
+  history: AssetHistoryRow[];
+  constituents: AssetConstituent[];
+  total_constituents: number;
+}
+export interface ConstituentQuote {
+  symbol: string;
+  close: number | null;
+  change: number | null;
+  change_pct: number | null;
+  ret_1w: number | null;
+  ret_1m: number | null;
+  ret_3m: number | null;
+  ret_12m: number | null;
+}
+export interface ArchiveStock extends StockInsight {
+  why?: { direction: string; themes: string[] };
+  depth?: "deep" | "bulk";
+}
+export interface DailyArchive {
+  date: string | null;
+  generated_at?: string;
+  scope: { total: number; deep: number; deep_n: number };
+  market: {
+    breadth: { up: number; down: number; flat: number; total: number };
+    summary: string;
+    macro: MacroLayer;
+    rates?: RateLayer | null;
+    foreign_view?: ForeignView | null;
+    cross_asset?: CrossAssetLayer | null;
+  };
+  movers: { gainers: MoverRow[]; losers: MoverRow[]; most_traded: MoverRow[] };
+  stocks: ArchiveStock[];
+}
+export interface ArchiveDatesResponse {
+  dates: string[];
+  scheduler: Record<string, unknown>;
+}
+
+// --- Industry / competition map -------------------------------------------
+export interface IndustryMember {
+  ticker: string;
+  name: string | null;
+  products: string | null;
+  region?: string | null;
+  representative?: string | null;
+  homepage?: string | null;
+  market_cap: number | null;
+  change_pct: number | null;
+}
+export interface IndustryGroup {
+  industry: string;
+  count: number;
+  market_cap: number;
+  avg_change_pct: number | null;
+  leader: string | null;
+  members: IndustryMember[];
+}
+export interface IndustryIndexItem {
+  industry: string;
+  count: number;
+  market_cap: number;
+  avg_change_pct: number | null;
+  leader: string | null;
+}
+export interface ThemeItem {
+  company: string;
+  ticker: string | null;
+  title: string;
+  link: string | null;
+  source: string | null;
+  themes: string[];
+}
+export interface ThemeBucket {
+  key: string;
+  label: string;
+  count: number;
+  items: ThemeItem[];
+}
+export interface IndustryResearch {
+  industry: string;
+  leader: string | null;
+  count: number;
+  market_cap: number;
+  analyzed: string[];
+  competitors: { ticker: string; name: string | null; market_cap: number | null; products: string | null }[];
+  themes: ThemeBucket[];
+  summary: string;
+}
+export interface IndustriesIndexResponse {
+  industries: IndustryIndexItem[];
+  scheduler?: Record<string, unknown>;
+}
+export interface IndustryDetailResponse {
+  group: IndustryGroup;
+  research: IndustryResearch | null;
 }
 
 export interface ReportResponse {
@@ -366,6 +587,16 @@ export const api = {
   report: (ticker: string, name?: string) =>
     request<ReportResponse>(`/api/data/report?ticker=${ticker}${name ? `&name=${encodeURIComponent(name)}` : ""}`),
   marketReport: () => request<MarketReport>(`/api/data/market-report`),
+  crossAsset: () => request<CrossAssetLayer>(`/api/data/cross-asset`),
+  assetDetail: (key: string) => request<AssetDetail>(`/api/data/asset-detail?key=${encodeURIComponent(key)}`),
+  assetQuotes: (symbols: string[]) =>
+    request<{ quotes: ConstituentQuote[] }>(`/api/data/asset-quotes?symbols=${encodeURIComponent(symbols.join(","))}`),
+  industries: () => request<IndustriesIndexResponse>(`/api/data/industries`),
+  industry: (name: string) =>
+    request<IndustryDetailResponse>(`/api/data/industry?name=${encodeURIComponent(name)}`),
+  dailyArchiveDates: () => request<ArchiveDatesResponse>(`/api/data/daily-archive/dates`),
+  dailyArchive: (date?: string) =>
+    request<DailyArchive>(`/api/data/daily-archive${date ? `?date=${encodeURIComponent(date)}` : ""}`),
   holders: (ticker: string) => request<HoldersResponse>(`/api/data/holders?ticker=${ticker}`),
   fundamentals: (ticker: string) => request<FundamentalsResponse>(`/api/data/fundamentals?ticker=${ticker}`),
   ohlc: (params: { ticker: string; start?: string; end?: string }) => {

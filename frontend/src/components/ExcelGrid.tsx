@@ -37,7 +37,7 @@ const COLS: Col[] = [
 
 const GROUPS: { key: GroupKey; label: string; bg: string; fg: string }[] = [
   { key: "id", label: "종목정보", bg: "#a9d08e", fg: "#244d1a" },
-  { key: "price", label: "실시간", bg: "#d9d9d9", fg: "#333" },
+  { key: "price", label: "시세", bg: "#d9d9d9", fg: "#333" },
   { key: "ret", label: "기간 수익률", bg: "#f4b084", fg: "#7a3a0c" },
   { key: "risk", label: "리스크", bg: "#9dc3e6", fg: "#1a3a5e" },
   { key: "trade", label: "거래", bg: "#d9d9d9", fg: "#333" },
@@ -120,7 +120,6 @@ export function ExcelGrid({ onPickStock }: { onPickStock: (row: GridRow) => void
   // --- live snapshot polling ---
   const [live, setLive] = useState<Map<string, Live>>(new Map());
   const [flash, setFlash] = useState<Map<string, "up" | "down">>(new Map());
-  const [updated, setUpdated] = useState("");
   const [auto, setAuto] = useState(true);
   const [polling, setPolling] = useState(false);
   const prevPx = useRef<Map<string, number>>(new Map());
@@ -148,7 +147,6 @@ export function ExcelGrid({ onPickStock }: { onPickStock: (row: GridRow) => void
         if (qt.price != null) prevPx.current.set(qt.ticker, qt.price);
       }
       setLive(m);
-      setUpdated(snap.as_of);
       if (fl.size) {
         setFlash(fl);
         setTimeout(() => setFlash(new Map()), 1300);
@@ -204,13 +202,7 @@ export function ExcelGrid({ onPickStock }: { onPickStock: (row: GridRow) => void
 
   return (
     <div className="flex h-full flex-col bg-white text-[#1f1f1f]">
-      {/* title bar */}
-      <div className="flex shrink-0 items-center justify-between bg-[#217346] px-4 py-2 text-sm text-white">
-        <span className="font-semibold">퀀트증권 — 전종목 실시간.xlsx</span>
-        <span className="text-xs opacity-80">{rows.length.toLocaleString("ko-KR")} 종목</span>
-      </div>
-
-      {/* toolbar / search + live controls */}
+      {/* toolbar / search + data controls */}
       <div className="flex shrink-0 flex-wrap items-center gap-3 border-b border-[#d0d0d0] bg-[#f3f2f1] px-3 py-2">
         <div className="flex items-center gap-2 rounded border border-[#bdbdbd] bg-white px-3 py-1.5">
           <span className="text-[#888]">🔍</span>
@@ -225,22 +217,16 @@ export function ExcelGrid({ onPickStock }: { onPickStock: (row: GridRow) => void
           />
         </div>
 
-        {/* live indicator */}
-        <div className="flex items-center gap-2 rounded border border-[#cdcdcd] bg-white px-2.5 py-1">
-          <span className={`inline-block h-2 w-2 rounded-full ${live.size ? "animate-pulse bg-[#e03131]" : "bg-slate-300"}`} />
-          <span className="text-xs font-semibold text-[#c92a2a]">LIVE</span>
-          <span className="text-xs text-[#666]">{updated ? `갱신 ${updated.slice(11)}` : "대기 중"}</span>
-        </div>
         <button
           onClick={refresh}
           disabled={polling}
           className="rounded border border-[#cdcdcd] bg-white px-2.5 py-1 text-xs text-[#217346] hover:bg-[#eef6f0] disabled:opacity-50"
         >
-          {polling ? "갱신 중…" : "↻ 새로고침"}
+          {polling ? "계산 중…" : "↻ 새로고침"}
         </button>
         <label className="flex items-center gap-1.5 text-xs text-[#555]">
           <input type="checkbox" checked={auto} onChange={(e) => setAuto(e.target.checked)} />
-          자동(15초)
+          자동
         </label>
 
         <span className="ml-auto text-xs text-[#666]">
@@ -414,9 +400,7 @@ export function ExcelGrid({ onPickStock }: { onPickStock: (row: GridRow) => void
             </button>
           );
         })}
-        <span className="ml-auto self-center pr-2 text-[11px] text-[#999]">
-          실시간(FDR 스냅샷·지연 가능) · 펀더멘털은 데이터 소스 제약으로 미수록
-        </span>
+        <span className="ml-auto self-center pr-2 text-[11px] text-[#999]">준비 완료</span>
       </div>
     </div>
   );

@@ -6,7 +6,24 @@ import time
 
 from fastapi import APIRouter, HTTPException, Query
 
-from app.data import dart, feed, fundamentals_crawler, investor, market_report, news, price_scheduler, report, store
+from app.data import (
+    asset_detail,
+    crossasset,
+    daily_archive,
+    dart,
+    feed,
+    fundamentals_crawler,
+    industry,
+    industry_research,
+    industry_scheduler,
+    investor,
+    market_report,
+    news,
+    price_scheduler,
+    report,
+    report_scheduler,
+    store,
+)
 
 router = APIRouter(prefix="/api/data", tags=["data"])
 
@@ -121,6 +138,12 @@ def price_scheduler_status():
     return price_scheduler.status()
 
 
+@router.get("/report-scheduler-status")
+def report_scheduler_status():
+    """Background daily-report snapshotter progress (one JSON per trading day)."""
+    return report_scheduler.status()
+
+
 @router.get("/investor-flow")
 def investor_flow_endpoint(
     ticker: str = Query(..., description="single ticker"),
@@ -194,10 +217,112 @@ def holders_endpoint(ticker: str = Query(..., description="single ticker")):
     return {"ticker": ticker, **dart.major_holders(ticker)}
 
 
+@router.get("/cross-asset")
+def cross_asset_endpoint():
+    """Live cross-asset money-flow snapshot (미국·글로벌 증시 · 금 · 비트코인 · 환율).
+
+    Grouped asset quotes + a risk-on/risk-off read. Cached ~60s so frontend
+    polling refreshes without hammering the upstream (FinanceDataReader).
+    """
+    return crossasset.cross_asset()
+
+
+@router.get("/asset-detail")
+def asset_detail_endpoint(key: str = Query(..., description="cross-asset key, e.g. sp500/nasdaq/kospi/gold/btc")):
+    """장 마감 상세: 해당 지수/자산의 OHLC 세션 + 최근 시세 + 52주 고저 (+ 구성종목)."""
+    data = asset_detail.asset_detail(key)
+    if data is None:
+        raise HTTPException(404, f"'{key}' 자산 상세를 불러올 수 없습니다.")
+    return data
+
+
+@router.get("/asset-quotes")
+def asset_quotes_endpoint(symbols: str = Query(..., description="comma-separated constituent symbols (max 60)")):
+    """Batch quotes (현재가·등락·기간수익률) for index constituents — fills the grid lazily."""
+    syms = [s.strip() for s in symbols.split(",") if s.strip()]
+    return {"quotes": asset_detail.constituent_quotes(syms)}
+
+
 @router.get("/market-report")
 def market_report_endpoint():
     """Market-wide daily report: movers, most-traded, investor sellers, news."""
     return market_report.market_report()
+
+
+@router.get("/daily-archive/dates")
+def daily_archive_dates():
+    """Archived daily-report dates (newest first) + snapshotter status."""
+    return {"dates": daily_archive.list_dates(), "scheduler": report_scheduler.status()}
+
+
+@router.get("/daily-archive")
+def daily_archive_endpoint(
+    date: str | None = Query(default=None, description="YYYY-MM-DD; omit for the latest"),
+):
+    """A persisted daily report (full market + per-stock + macro).
+
+    Falls back to building today's report on the fly if it isn't saved yet, so a
+    fresh install still returns something before the first scheduled snapshot.
+    """
+    if date is None:
+        dates = daily_archive.list_dates()
+        if dates:
+            return daily_archive.load(dates[0])
+        return daily_archive.build()
+    data = daily_archive.load(date)
+    if data is None:
+        raise HTTPException(404, f"{date} 데일리 리포트가 저장되어 있지 않습니다.")
+    return data
+
+
+@router.post("/daily-archive/snapshot")
+def daily_archive_snapshot(force: bool = Query(default=False)):
+    """Build and persist today's report now (manual trigger). `force` rebuilds."""
+    return daily_archive.snapshot(force=force)
+
+
+# --------------------------------------------------------------------------- #
+# Industry / competition map
+# --------------------------------------------------------------------------- #
+@router.get("/industries")
+def industries_endpoint(full: bool = Query(default=False)):
+    """KOSPI/KOSDAQ companies grouped by KSIC industry (largest cap first).
+
+    `full=false` (default) returns the lightweight index (no members) for the
+    left-hand list; `full=true` returns every group with its member companies.
+    """
+    if full:
+        return {"industries": industry.industries()}
+    return {
+        "industries": industry.industry_names(),
+        "scheduler": industry_scheduler.status(),
+    }
+
+
+@router.get("/industry")
+def industry_endpoint(name: str = Query(..., description="industry (업종) name")):
+    """One industry: member companies (경쟁군) + research feed (기술/M&A/계약/실적/전략)."""
+    grp = industry.get_industry(name)
+    if grp is None:
+        raise HTTPException(404, f"'{name}' 업종을 찾을 수 없습니다.")
+    research = industry_research.research_industry(name)
+    return {"group": grp, "research": research}
+
+
+@router.get("/industry-scheduler-status")
+def industry_scheduler_status():
+    """Background industry map scheduler progress."""
+    return industry_scheduler.status()
+
+
+@router.post("/industry/refresh")
+def industry_refresh(snapshot: bool = Query(default=False)):
+    """Refresh industry profiles now; optionally also build today's snapshot."""
+    n = industry.refresh_profiles()
+    out: dict = {"profiles": n}
+    if snapshot:
+        out["snapshot"] = industry_research.snapshot(force=True)
+    return out
 
 
 @router.get("/report")

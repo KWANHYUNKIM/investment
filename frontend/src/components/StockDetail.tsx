@@ -120,20 +120,31 @@ export function StockDetail({
   }, [view]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 p-4 backdrop-blur-sm">
-      <div className="my-6 w-full max-w-5xl rounded-2xl border border-slate-800 bg-slate-900 shadow-2xl">
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4 backdrop-blur-sm">
+      <div className="my-6 w-full max-w-5xl overflow-hidden rounded-xl border border-[#d0d0d0] bg-white text-[#1f1f1f] shadow">
+        {/* header — Excel green title bar */}
+        <div className="flex items-center justify-between bg-[#217346] px-4 py-2 text-sm text-white">
+          <span className="truncate font-semibold">{name ?? ticker} — 차트.xlsx</span>
+          <button
+            onClick={onClose}
+            className="shrink-0 px-1 text-white/80 transition hover:text-white"
+            aria-label="닫기"
+          >
+            ✕
+          </button>
+        </div>
         {/* header */}
-        <div className="flex items-start justify-between border-b border-slate-800 p-5">
+        <div className="flex items-start justify-between border-b border-[#e0e0e0] p-5">
           <div>
             <div className="flex items-center gap-2">
-              <h2 className="text-xl font-bold text-white">{name ?? ticker}</h2>
-              <span className="rounded bg-slate-800 px-2 py-0.5 text-xs text-slate-400">{ticker}</span>
-              {sector && <span className="rounded bg-slate-800 px-2 py-0.5 text-xs text-slate-400">{sector}</span>}
+              <h2 className="text-xl font-bold text-[#1f1f1f]">{name ?? ticker}</h2>
+              <span className="rounded bg-[#f3f2f1] px-2 py-0.5 text-xs text-[#555]">{ticker}</span>
+              {sector && <span className="rounded bg-[#f3f2f1] px-2 py-0.5 text-xs text-[#555]">{sector}</span>}
             </div>
             {last && (
               <div className="mt-2 flex items-baseline gap-3">
-                <span className="text-3xl font-bold tabular-nums text-white">{won(last.close)}</span>
-                <span className="text-sm text-slate-500">원</span>
+                <span className="text-3xl font-bold tabular-nums text-[#1f1f1f]">{won(last.close)}</span>
+                <span className="text-sm text-[#888]">원</span>
                 <span className={`text-sm font-semibold tabular-nums ${toneClass(change)}`}>
                   {arrow(change)} {change != null ? won(Math.abs(change)) : "—"} (
                   {changePct != null ? `${changePct > 0 ? "+" : ""}${changePct.toFixed(2)}%` : "—"})
@@ -141,13 +152,6 @@ export function StockDetail({
               </div>
             )}
           </div>
-          <button
-            onClick={onClose}
-            className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-800 hover:text-white"
-            aria-label="닫기"
-          >
-            ✕
-          </button>
         </div>
 
         {/* period tabs */}
@@ -157,7 +161,7 @@ export function StockDetail({
               key={p.k}
               onClick={() => setPeriod(i)}
               className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${
-                period === i ? "bg-slate-700 text-white" : "text-slate-400 hover:bg-slate-800"
+                period === i ? "bg-[#217346] text-white" : "text-[#555] hover:bg-[#eef6f0]"
               }`}
             >
               {p.k}
@@ -174,7 +178,7 @@ export function StockDetail({
         {/* charts */}
         <div className="p-5">
           {loading ? (
-            <div className="flex h-72 items-center justify-center text-slate-500">
+            <div className="flex h-72 items-center justify-center text-[#888]">
               <Spinner />
             </div>
           ) : view.length === 0 ? (
@@ -184,20 +188,20 @@ export function StockDetail({
               {last && (
                 <div className="mb-3 grid grid-cols-4 gap-2 text-xs">
                   <Info label="시가" value={won(last.open)} />
-                  <Info label="고가" value={won(last.high)} cls="text-[#ff5252]" />
-                  <Info label="저가" value={won(last.low)} cls="text-[#4dabf7]" />
+                  <Info label="고가" value={won(last.high)} cls="text-[#c92a2a]" />
+                  <Info label="저가" value={won(last.low)} cls="text-[#1971c2]" />
                   <Info label="거래량" value={last.volume.toLocaleString("ko-KR")} />
                 </div>
               )}
               <div className="h-96 w-full">
                 <ResponsiveContainer width="100%" height="100%">
                   <ComposedChart data={view} margin={{ top: 6, right: 8, bottom: 0, left: 8 }}>
-                    <CartesianGrid stroke="#1e293b" vertical={false} />
-                    <XAxis dataKey="date" tick={{ fill: "#64748b", fontSize: 10 }} minTickGap={56} />
+                    <CartesianGrid stroke="#e0e0e0" vertical={false} />
+                    <XAxis dataKey="date" tick={{ fill: "#666", fontSize: 10 }} minTickGap={56} />
                     <YAxis
                       orientation="right"
                       domain={yDomain}
-                      tick={{ fill: "#64748b", fontSize: 10 }}
+                      tick={{ fill: "#666", fontSize: 10 }}
                       tickFormatter={(v) => won(v)}
                       width={56}
                     />
@@ -210,13 +214,13 @@ export function StockDetail({
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={view} margin={{ top: 0, right: 8, bottom: 0, left: 8 }}>
                     <XAxis dataKey="date" hide />
-                    <YAxis orientation="right" tick={{ fill: "#64748b", fontSize: 9 }} width={56} tickFormatter={(v) => (v >= 1e6 ? `${(v / 1e6).toFixed(0)}M` : v >= 1e3 ? `${(v / 1e3).toFixed(0)}K` : `${v}`)} />
+                    <YAxis orientation="right" tick={{ fill: "#666", fontSize: 9 }} width={56} tickFormatter={(v) => (v >= 1e6 ? `${(v / 1e6).toFixed(0)}M` : v >= 1e3 ? `${(v / 1e3).toFixed(0)}K` : `${v}`)} />
                     <Tooltip
-                      contentStyle={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 8, fontSize: 11 }}
-                      labelStyle={{ color: "#94a3b8" }}
+                      contentStyle={{ background: "#ffffff", border: "1px solid #d0d0d0", borderRadius: 4, fontSize: 11, color: "#1f1f1f" }}
+                      labelStyle={{ color: "#666" }}
                       formatter={(v) => [Number(v).toLocaleString("ko-KR"), "거래량"]}
                     />
-                    <Bar dataKey="volume" fill="#475569" isAnimationActive={false} />
+                    <Bar dataKey="volume" fill="#9aa0a6" isAnimationActive={false} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -228,10 +232,10 @@ export function StockDetail({
   );
 }
 
-function Info({ label, value, cls = "text-slate-200" }: { label: string; value: string; cls?: string }) {
+function Info({ label, value, cls = "text-[#1f1f1f]" }: { label: string; value: string; cls?: string }) {
   return (
-    <div className="rounded-lg border border-slate-800 bg-slate-950/60 px-3 py-2">
-      <div className="text-[10px] text-slate-500">{label}</div>
+    <div className="rounded-lg border border-[#e0e0e0] bg-[#fafafa] px-3 py-2">
+      <div className="text-[10px] text-[#888]">{label}</div>
       <div className={`mt-0.5 font-semibold tabular-nums ${cls}`}>{value}</div>
     </div>
   );
@@ -242,13 +246,13 @@ function CandleTip({ active, payload }: { active?: boolean; payload?: { payload:
   const r = payload[0].payload;
   const up = r.close >= r.open;
   return (
-    <div className="rounded-lg border border-slate-700 bg-slate-950 p-2.5 text-xs">
-      <div className="mb-1 text-slate-400">{r.date}</div>
+    <div className="rounded-md border border-[#d0d0d0] bg-white p-2.5 text-xs shadow-sm">
+      <div className="mb-1 text-[#666]">{r.date}</div>
       <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 tabular-nums">
-        <span className="text-slate-500">시 {won(r.open)}</span>
-        <span className="text-slate-500">고 {won(r.high)}</span>
-        <span className="text-slate-500">저 {won(r.low)}</span>
-        <span className={up ? "text-[#ff5252]" : "text-[#4dabf7]"}>종 {won(r.close)}</span>
+        <span className="text-[#555]">시 {won(r.open)}</span>
+        <span className="text-[#555]">고 {won(r.high)}</span>
+        <span className="text-[#555]">저 {won(r.low)}</span>
+        <span className={up ? "text-[#c92a2a]" : "text-[#1971c2]"}>종 {won(r.close)}</span>
       </div>
     </div>
   );

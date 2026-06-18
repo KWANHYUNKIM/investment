@@ -57,7 +57,7 @@ export function Portfolio({ coverage }: { coverage: Coverage[] }) {
       <Card title="포트폴리오 설정">
         <div className="space-y-4">
           <div>
-            <span className="mb-1.5 block text-xs font-medium text-slate-400">종목 선택 (≥2)</span>
+            <span className="mb-1.5 block text-xs font-semibold text-[#555]">종목 선택 (≥2)</span>
             <TickerPicker market={market} selected={tickers} onChange={setTickers} />
           </div>
           <Field label="최적화 방식">
@@ -91,11 +91,11 @@ export function Portfolio({ coverage }: { coverage: Coverage[] }) {
                     <PieChart>
                       <Pie data={pieData} dataKey="value" nameKey="name" innerRadius={55} outerRadius={95} paddingAngle={2}>
                         {pieData.map((d, i) => (
-                          <Cell key={d.ticker} fill={colorFor(d.ticker, i)} stroke="#0f172a" />
+                          <Cell key={d.ticker} fill={colorFor(d.ticker, i)} stroke="#ffffff" />
                         ))}
                       </Pie>
                       <Tooltip
-                        contentStyle={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 8, fontSize: 12 }}
+                        contentStyle={{ background: "#fff", border: "1px solid #d0d0d0", borderRadius: 6, fontSize: 12 }}
                         formatter={(v, _n, p) => [pct(Number(v)), (p.payload as { name: string }).name]}
                       />
                     </PieChart>

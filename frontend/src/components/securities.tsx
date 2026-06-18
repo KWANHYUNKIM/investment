@@ -71,9 +71,9 @@ export function TickerPicker({
     return base.slice(0, 40);
   }, [list, query]);
 
-  if (loading) return <p className="text-xs text-slate-500">종목 목록 불러오는 중…</p>;
+  if (loading) return <p className="text-xs text-[#888]">종목 목록 불러오는 중…</p>;
   if (list.length === 0)
-    return <p className="text-xs text-slate-500">저장된 종목이 없습니다. 먼저 데이터를 적재하세요.</p>;
+    return <p className="text-xs text-[#888]">저장된 종목이 없습니다. 먼저 데이터를 적재하세요.</p>;
 
   return (
     <div>
@@ -85,10 +85,10 @@ export function TickerPicker({
               key={t}
               type="button"
               onClick={() => toggle(t)}
-              className="inline-flex items-center gap-1 rounded-full bg-sky-500/20 px-2 py-0.5 text-xs text-sky-200 ring-1 ring-sky-600 hover:bg-sky-500/30"
+              className="inline-flex items-center gap-1 rounded-full border border-[#cdcdcd] bg-[#eef6f0] px-2 py-0.5 text-xs text-[#217346] hover:bg-[#e0efe5]"
             >
               {byTicker.get(t)?.name ?? t}
-              <span className="text-sky-400">✕</span>
+              <span className="text-[#217346]">✕</span>
             </button>
           ))}
         </div>
@@ -99,19 +99,19 @@ export function TickerPicker({
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="종목 검색 (이름/코드)"
-          className="flex-1 rounded-lg border border-slate-700 bg-slate-950 px-3 py-1.5 text-xs text-slate-100 outline-none focus:border-sky-500"
+          className="flex-1 rounded-lg border border-[#bdbdbd] bg-white px-3 py-1.5 text-xs text-[#1f1f1f] outline-none focus:border-[#217346]"
         />
-        <span className="shrink-0 text-[11px] text-slate-500">
+        <span className="shrink-0 text-[11px] text-[#888]">
           {selected.length}개{max ? `/${max}` : ""}
         </span>
         {selected.length > 0 && (
-          <button type="button" onClick={() => onChange([])} className="shrink-0 text-[11px] text-slate-500 hover:text-slate-300">
+          <button type="button" onClick={() => onChange([])} className="shrink-0 text-[11px] text-[#888] hover:text-[#555]">
             해제
           </button>
         )}
       </div>
 
-      <div className="grid max-h-48 grid-cols-2 gap-1 overflow-y-auto rounded-lg border border-slate-800 bg-slate-950/60 p-2 sm:grid-cols-3">
+      <div className="grid max-h-48 grid-cols-2 gap-1 overflow-y-auto rounded-lg border border-[#d0d0d0] bg-[#fafafa] p-2 sm:grid-cols-3">
         {results.map((s) => {
           const on = sel.has(s.ticker);
           return (
@@ -120,16 +120,16 @@ export function TickerPicker({
               type="button"
               onClick={() => toggle(s.ticker)}
               className={`truncate rounded px-2 py-1.5 text-left text-xs transition ${
-                on ? "bg-sky-500/20 text-sky-200 ring-1 ring-sky-600" : "text-slate-300 hover:bg-slate-800"
+                on ? "border border-[#cdcdcd] bg-[#eef6f0] text-[#217346]" : "text-[#555] hover:bg-[#fff7e6]"
               }`}
               title={label(s)}
             >
               {s.name ?? s.ticker}
-              <span className="ml-1 text-[10px] text-slate-500">{s.ticker}</span>
+              <span className="ml-1 text-[10px] text-[#888]">{s.ticker}</span>
             </button>
           );
         })}
-        {results.length === 0 && <p className="col-span-full py-3 text-center text-xs text-slate-500">검색 결과 없음</p>}
+        {results.length === 0 && <p className="col-span-full py-3 text-center text-xs text-[#888]">검색 결과 없음</p>}
       </div>
     </div>
   );

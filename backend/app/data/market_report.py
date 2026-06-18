@@ -14,7 +14,7 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from app.data import insight, investor, news, store
+from app.data import brokers, insight, investor, news, store
 
 _lock = threading.Lock()
 _cache: dict = {"ts": 0.0, "data": None}
@@ -50,11 +50,19 @@ def _stock_insight(row: dict) -> dict | None:
     fr_delta = (fr - fr_prev) if (fr is not None and fr_prev is not None) else None
 
     arts: list[dict] = []
+    arts_global: list[dict] = []
     try:
         nw = news.news_for(name or ticker, limit=6)
         arts = (nw.get("domestic") or [])[:3]
+        arts_global = (nw.get("global") or [])[:3]  # 해외(영문) 뉴스도 함께 보관
     except Exception:
         pass
+
+    # 거래원(어느 증권사 창구가 매수/매도 상위였는지 + 외국계 추정 순매수)
+    try:
+        brk = brokers.brokers(ticker)
+    except Exception:
+        brk = {"sell": [], "buy": [], "foreign": None}
 
     sig = {
         "individual": f.get("individual"),
@@ -84,6 +92,8 @@ def _stock_insight(row: dict) -> dict | None:
         "foreign_ratio_delta": round(fr_delta, 2) if fr_delta is not None else None,
         "investors": insight.build(sig, titles),
         "news": [{"title": a.get("title"), "link": a.get("link"), "source": a.get("source")} for a in arts],
+        "news_global": [{"title": a.get("title"), "link": a.get("link"), "source": a.get("source")} for a in arts_global],
+        "brokers": brk,
     }
 
 
