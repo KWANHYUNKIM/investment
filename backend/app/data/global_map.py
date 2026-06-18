@@ -94,7 +94,9 @@ def _unify_foreign(sym: str, label: str, country: str, fin: dict | None) -> dict
         "net_income_usd": _num(f.get("net_income_usd")),
         "op_margin": _num(f.get("op_margin")), "net_margin": _num(f.get("net_margin")),
         "gross_margin": _num(f.get("gross_margin")),
-        "roe": _num(f.get("roe")), "debt_equity": _num(f.get("debt_equity")),
+        "roe": _num(f.get("roe")),
+        # Finnhub totalDebt/totalEquity는 배수 → 한국 부채비율(%)과 단위 맞추려 ×100.
+        "debt_equity": (lambda x: round(x * 100, 1) if x is not None else None)(_num(f.get("debt_equity"))),
         "pe": _num(f.get("pe")), "pb": _num(f.get("pb")),
         "div_yield": _num(f.get("div_yield")),
         "fy": None,
