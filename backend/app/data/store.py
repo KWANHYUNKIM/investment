@@ -93,6 +93,31 @@ CREATE TABLE IF NOT EXISTS company_profile (
     market_cap     DOUBLE,
     PRIMARY KEY (market, ticker)
 );
+
+CREATE TABLE IF NOT EXISTS financials (
+    market      VARCHAR NOT NULL,
+    ticker      VARCHAR NOT NULL,
+    period      VARCHAR NOT NULL,   -- 사업연도 'YYYY/MM'
+    sales       DOUBLE,             -- 매출액 (억원)
+    op_profit   DOUBLE,             -- 영업이익 (억원)
+    net_income  DOUBLE,             -- 당기순이익 (억원)
+    op_margin   DOUBLE,             -- 영업이익률 (%)
+    PRIMARY KEY (market, ticker, period)
+);
+
+-- DART 전자공시 전체 재무제표(전 계정·연도별). 회계 원장 그대로 — 재무상태표(BS)/
+-- 손익계산서(IS·CIS)/현금흐름표(CF)의 모든 계정을 long-format으로 적재. 금액은 원(KRW).
+CREATE TABLE IF NOT EXISTS dart_financials (
+    ticker      VARCHAR NOT NULL,
+    sj_div      VARCHAR NOT NULL,   -- BS/IS/CIS/CF/SCE
+    year        INTEGER NOT NULL,   -- 사업연도(YYYY)
+    account_nm  VARCHAR NOT NULL,   -- 계정명 (자산총계·부채총계·매출액·영업이익 …)
+    account_id  VARCHAR,            -- DART 표준계정ID (없으면 '-')
+    ord         INTEGER,            -- 보고서 내 표시 순서
+    fs_div      VARCHAR,            -- CFS(연결)/OFS(별도)
+    amount      DOUBLE,             -- 금액 (원)
+    PRIMARY KEY (ticker, sj_div, year, account_nm)
+);
 """
 
 
@@ -271,6 +296,77 @@ def company_profile_count() -> int:
     with connection() as conn:
         v = conn.execute("SELECT COUNT(*) FROM company_profile").fetchone()
     return int(v[0]) if v else 0
+
+
+def upsert_financials(df: pd.DataFrame) -> int:
+    """Upsert 기업실적분석 rows (one per ticker × 사업연도)."""
+    return _upsert("financials", df, ["market", "ticker", "period"])
+
+
+def financials_count() -> int:
+    with connection() as conn:
+        v = conn.execute("SELECT COUNT(DISTINCT ticker) FROM financials").fetchone()
+    return int(v[0]) if v else 0
+
+
+def financials_series(ticker: str) -> pd.DataFrame:
+    """All stored 사업연도 rows for one ticker, oldest→newest."""
+    with connection() as conn:
+        return conn.execute(
+            "SELECT period, sales, op_profit, net_income, op_margin "
+            "FROM financials WHERE ticker = ? ORDER BY period",
+            [ticker],
+        ).df()
+
+
+def upsert_dart_financials(df: pd.DataFrame) -> int:
+    """Upsert DART 전 계정 재무제표 rows (long-format)."""
+    return _upsert("dart_financials", df, ["ticker", "sj_div", "year", "account_nm"])
+
+
+def dart_financials_count() -> int:
+    with connection() as conn:
+        v = conn.execute("SELECT COUNT(DISTINCT ticker) FROM dart_financials").fetchone()
+    return int(v[0]) if v else 0
+
+
+def dart_financials_tickers() -> set[str]:
+    """Tickers that already have DART statements stored (scheduler skip-set)."""
+    with connection() as conn:
+        rows = conn.execute("SELECT DISTINCT ticker FROM dart_financials").fetchall()
+    return {r[0] for r in rows}
+
+
+def dart_financials(ticker: str) -> pd.DataFrame:
+    """All stored DART accounts for one ticker (statement, year, account, amount)."""
+    with connection() as conn:
+        return conn.execute(
+            "SELECT sj_div, year, account_nm, account_id, ord, fs_div, amount "
+            "FROM dart_financials WHERE ticker = ? ORDER BY sj_div, ord, account_nm, year",
+            [ticker],
+        ).df()
+
+
+def financials_latest() -> pd.DataFrame:
+    """Per ticker: most recent 사업연도 figures + YoY 영업이익 증감률 (prior year)."""
+    with connection() as conn:
+        return conn.execute(
+            """
+            WITH ranked AS (
+                SELECT ticker, period, sales, op_profit, net_income, op_margin,
+                       ROW_NUMBER() OVER (PARTITION BY ticker ORDER BY period DESC) AS rn
+                FROM financials
+            ),
+            cur AS (SELECT * FROM ranked WHERE rn = 1),
+            prev AS (SELECT ticker, op_profit AS prev_op FROM ranked WHERE rn = 2)
+            SELECT cur.ticker, cur.period, cur.sales, cur.op_profit,
+                   cur.net_income, cur.op_margin,
+                   CASE WHEN prev.prev_op IS NOT NULL AND prev.prev_op <> 0
+                        THEN round((cur.op_profit - prev.prev_op) / abs(prev.prev_op) * 100, 1)
+                        END AS op_yoy
+            FROM cur LEFT JOIN prev USING (ticker)
+            """
+        ).df()
 
 
 def max_price_date(market: str | None = None) -> str | None:

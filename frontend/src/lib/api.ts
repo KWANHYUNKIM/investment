@@ -353,12 +353,21 @@ export interface IndustryMember {
   homepage?: string | null;
   market_cap: number | null;
   change_pct: number | null;
+  fy?: string | null; // 최근 사업연도 (YYYY/MM)
+  sales?: number | null; // 매출액 (억)
+  op_profit?: number | null; // 영업이익 (억)
+  net_income?: number | null; // 당기순이익 (억)
+  op_margin?: number | null; // 영업이익률 (%)
+  op_yoy?: number | null; // 영업이익 전년대비 (%)
 }
 export interface IndustryGroup {
   industry: string;
   count: number;
   market_cap: number;
   avg_change_pct: number | null;
+  op_profit?: number | null; // 업종 합산 영업이익 (억)
+  op_margin?: number | null; // 업종 영업이익률 (%)
+  op_count?: number; // 실적 집계된 기업 수
   leader: string | null;
   members: IndustryMember[];
 }
@@ -367,6 +376,9 @@ export interface IndustryIndexItem {
   count: number;
   market_cap: number;
   avg_change_pct: number | null;
+  op_profit?: number | null;
+  op_margin?: number | null;
+  op_count?: number;
   leader: string | null;
 }
 export interface ThemeItem {
@@ -400,6 +412,35 @@ export interface IndustriesIndexResponse {
 export interface IndustryDetailResponse {
   group: IndustryGroup;
   research: IndustryResearch | null;
+}
+
+export interface FinancialRow {
+  period: string; // 사업연도 YYYY/MM
+  sales: number | null; // 매출액 (억)
+  op_profit: number | null; // 영업이익 (억)
+  net_income: number | null; // 당기순이익 (억)
+  op_margin: number | null; // 영업이익률 (%)
+}
+export interface FinancialsResponse {
+  ticker: string;
+  rows: FinancialRow[];
+}
+
+export interface DartAccount {
+  account_nm: string;
+  ord: number;
+  by_year: Record<string, number | null>; // 연도(YYYY) → 금액(원)
+}
+export interface DartStatement {
+  sj_div: string; // BS/IS/CIS/CF/SCE
+  label: string; // 재무상태표 등
+  accounts: DartAccount[];
+}
+export interface DartFinancials {
+  ticker: string;
+  years: string[]; // 최신→과거
+  statements: DartStatement[];
+  available: boolean;
 }
 
 export interface ReportResponse {
@@ -599,6 +640,8 @@ export const api = {
     request<DailyArchive>(`/api/data/daily-archive${date ? `?date=${encodeURIComponent(date)}` : ""}`),
   holders: (ticker: string) => request<HoldersResponse>(`/api/data/holders?ticker=${ticker}`),
   fundamentals: (ticker: string) => request<FundamentalsResponse>(`/api/data/fundamentals?ticker=${ticker}`),
+  financials: (ticker: string) => request<FinancialsResponse>(`/api/data/financials?ticker=${ticker}`),
+  dartFinancials: (ticker: string) => request<DartFinancials>(`/api/data/dart-financials?ticker=${ticker}`),
   ohlc: (params: { ticker: string; start?: string; end?: string }) => {
     const q = new URLSearchParams({ ticker: params.ticker });
     if (params.start) q.set("start", params.start);

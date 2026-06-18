@@ -12,15 +12,18 @@ import threading
 import time
 
 from app.core.config import get_settings
-from app.data import industry, industry_research, store
+from app.data import dart, dart_financials, financials, industry, industry_research, store
 
 _state = {
     "running": False,
     "ticks": 0,
     "profiles": 0,
+    "financials": 0,
+    "dart_financials": 0,
     "snapshots": 0,
     "last_run": None,
     "last_profile_refresh": None,
+    "last_financials_refresh": None,
     "last_snapshot_date": None,
     "last_error": None,
 }
@@ -46,6 +49,31 @@ def _tick() -> None:
         if n:
             _state["profiles"] = n
             _state["last_profile_refresh"] = date
+
+    # 1b) financials (기업실적분석): full sweep once per trading day. Refresh tickers
+    #     missing financials first, so a fresh DB fills in fast; otherwise re-sweep
+    #     everything daily to catch new 분기/연간 실적.
+    fin_need = store.financials_count() == 0 or _state["last_financials_refresh"] != date
+    if fin_need:
+        prof = store.company_profiles()
+        tickers = [str(t) for t in prof["ticker"].tolist()]
+        n = financials.refresh_many(tickers)
+        if n:
+            _state["financials"] = store.financials_count()
+            _state["last_financials_refresh"] = date
+            industry.invalidate()  # 영업이익 합계가 반영되도록 그룹 캐시 무효화
+
+    # 1c) DART 전체 재무제표: 빠진 종목을 매 틱 조금씩 채운다(틱당 상한). 일일 한도·
+    #     daemon 부하를 고려해 한 번에 다 긁지 않고 점진 적재.
+    if dart.enabled():
+        prof = store.company_profiles()
+        tickers = [str(t) for t in prof["ticker"].tolist()]
+        try:
+            stored = dart_financials.refresh_many(tickers, skip_existing=True, max_new=400)
+            if stored:
+                _state["dart_financials"] = store.dart_financials_count()
+        except Exception:
+            pass
 
     # 2) research snapshot once per (trading) day.
     res = industry_research.snapshot()

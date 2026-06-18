@@ -30,6 +30,20 @@ function marcap(v: number | null | undefined): string {
   return v.toLocaleString("ko-KR");
 }
 
+// op_profit / sales 등은 億원 단위 — 1만억 이상이면 兆로.
+function eok(v: number | null | undefined): string {
+  if (v == null) return "—";
+  const neg = v < 0;
+  const a = Math.abs(v);
+  const s = a >= 10000 ? `${(a / 10000).toLocaleString("ko-KR", { maximumFractionDigits: 1 })}조` : `${Math.round(a).toLocaleString("ko-KR")}억`;
+  return neg ? `-${s}` : s;
+}
+
+function pnlStyle(v: number | null | undefined): React.CSSProperties {
+  if (v == null) return { color: "#bbb" };
+  return { color: v > 0 ? RED : v < 0 ? BLUE : "#666" };
+}
+
 function retStyle(v: number | null | undefined): React.CSSProperties {
   if (v == null) return { color: "#bbb" };
   const a = Math.min(Math.abs(v) / 40, 1) * 0.62;
@@ -123,7 +137,8 @@ export function IndustryMap() {
                         {g.industry}
                       </span>
                       <span className="block truncate text-[11px] text-[#999]">
-                        {g.leader} · {marcap(g.market_cap)}
+                        {g.leader} · 영업익 <b className="text-[#555]">{eok(g.op_profit)}</b>
+                        {g.op_margin != null ? ` (${g.op_margin}%)` : ""}
                       </span>
                     </span>
                     <span className="px-2 text-right text-xs tabular-nums text-[#555]">{g.count}</span>
@@ -169,6 +184,14 @@ function Detail({ detail, loading }: { detail: IndustryDetailResponse; loading: 
           <h2 className="text-lg font-bold text-[#1f1f1f]">{g.industry}</h2>
           <span className="text-sm text-[#666]">
             경쟁군 <b className="text-[#217346]">{g.count}</b>개사 · 대표 {g.leader} · 합산시총 {marcap(g.market_cap)}
+            {g.op_profit != null && (
+              <>
+                {" · 합산 영업이익 "}
+                <b style={pnlStyle(g.op_profit)}>{eok(g.op_profit)}</b>
+                {g.op_margin != null ? ` (영업이익률 ${g.op_margin}%` : ""}
+                {g.op_count != null ? `${g.op_margin != null ? ", " : " ("}실적 ${g.op_count}개사)` : g.op_margin != null ? ")" : ""}
+              </>
+            )}
           </span>
           {loading && <span className="text-xs text-[#aaa]">뉴스 갱신 중…</span>}
         </div>
@@ -176,7 +199,7 @@ function Detail({ detail, loading }: { detail: IndustryDetailResponse; loading: 
       </div>
 
       {/* member companies (competition group) */}
-      <Block label="경쟁 기업 (시총순) · 주요 제품/사업" color="#a9d08e" fg="#244d1a">
+      <Block label="경쟁 기업 (시총순) · 영업이익 · 주요 제품/사업" color="#a9d08e" fg="#244d1a">
         <div className="overflow-x-auto">
           <table className="w-full border-collapse text-[13px]">
             <thead>
@@ -185,7 +208,10 @@ function Detail({ detail, loading }: { detail: IndustryDetailResponse; loading: 
                 <Th w={150}>종목명</Th>
                 <Th w={64} center>코드</Th>
                 <Th w={92} right>시총</Th>
-                <Th w={72} center>등락%</Th>
+                <Th w={64} center>등락%</Th>
+                <Th w={96} right>영업이익</Th>
+                <Th w={64} center>이익률</Th>
+                <Th w={70} center>전년比</Th>
                 <Th>주요 제품/사업</Th>
               </tr>
             </thead>
@@ -231,6 +257,19 @@ function MemberRow({ m, n }: { m: IndustryMember; n: number }) {
       <td className="border border-[#e6e6e6] px-2 py-1.5 text-right tabular-nums text-[#1f1f1f]">{marcap(m.market_cap)}</td>
       <td className="border border-[#e6e6e6] px-2 py-1.5 text-center font-bold tabular-nums" style={retStyle(m.change_pct)}>
         {m.change_pct != null ? `${m.change_pct > 0 ? "+" : ""}${m.change_pct}%` : "—"}
+      </td>
+      <td
+        className="border border-[#e6e6e6] px-2 py-1.5 text-right font-semibold tabular-nums"
+        style={pnlStyle(m.op_profit)}
+        title={m.fy ? `${m.fy} 기준` : undefined}
+      >
+        {eok(m.op_profit)}
+      </td>
+      <td className="border border-[#e6e6e6] px-2 py-1.5 text-center tabular-nums text-[#555]">
+        {m.op_margin != null ? `${m.op_margin}%` : "—"}
+      </td>
+      <td className="border border-[#e6e6e6] px-2 py-1.5 text-center tabular-nums" style={pnlStyle(m.op_yoy)}>
+        {m.op_yoy != null ? `${m.op_yoy > 0 ? "+" : ""}${m.op_yoy}%` : "—"}
       </td>
       <td className="border border-[#e6e6e6] px-2 py-1.5 text-xs text-[#555]">{m.products ?? "—"}</td>
     </tr>

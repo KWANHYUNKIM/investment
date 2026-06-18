@@ -17,6 +17,7 @@ import FinanceDataReader as fdr
 
 from app.data import store
 from app.data import naver_sector
+from app.data import financials
 
 _lock = threading.Lock()
 _cache: dict = {"ts": 0.0, "data": None}
@@ -85,6 +86,12 @@ def refresh_profiles() -> int:
     return n
 
 
+def invalidate() -> None:
+    """Drop the grouped-view cache so the next read rebuilds (e.g. after 실적 적재)."""
+    with _lock:
+        _cache["data"] = None
+
+
 def _moves() -> dict[str, dict]:
     """ticker -> {change_pct, close} from the price-derived grid (cached)."""
     out: dict[str, dict] = {}
@@ -112,10 +119,12 @@ def industries(min_members: int = 2) -> list[dict]:
 
     prof = store.company_profiles()
     moves = _moves()
+    fin = financials.latest_op_map()  # ticker -> 최근 사업연도 영업이익 등
     groups: dict[str, list[dict]] = {}
     for rec in prof.to_dict("records"):
         ind = rec.get("wics_sector") or rec.get("industry") or "기타"
         mv = moves.get(rec["ticker"], {})
+        f = fin.get(rec["ticker"], {})
         groups.setdefault(ind, []).append(
             {
                 "ticker": rec["ticker"],
@@ -126,6 +135,12 @@ def industries(min_members: int = 2) -> list[dict]:
                 "homepage": rec.get("homepage"),
                 "market_cap": _num(rec.get("market_cap")),
                 "change_pct": mv.get("change_pct"),
+                "fy": f.get("period"),
+                "sales": _num(f.get("sales")),
+                "op_profit": _num(f.get("op_profit")),
+                "net_income": _num(f.get("net_income")),
+                "op_margin": _num(f.get("op_margin")),
+                "op_yoy": _num(f.get("op_yoy")),
             }
         )
 
@@ -136,12 +151,20 @@ def industries(min_members: int = 2) -> list[dict]:
         members.sort(key=lambda m: (m["market_cap"] or 0), reverse=True)
         caps = [m["market_cap"] for m in members if m["market_cap"]]
         chgs = [m["change_pct"] for m in members if m["change_pct"] is not None]
+        ops = [m["op_profit"] for m in members if m["op_profit"] is not None]
+        sales = [m["sales"] for m in members if m["sales"] is not None]
+        op_sum = sum(ops) if ops else None
+        sales_sum = sum(sales) if sales else None
         out.append(
             {
                 "industry": ind,
                 "count": len(members),
                 "market_cap": sum(caps) if caps else 0.0,
                 "avg_change_pct": round(sum(chgs) / len(chgs), 2) if chgs else None,
+                "op_profit": op_sum,                       # 업종 합산 영업이익(억)
+                "op_count": len(ops),                      # 실적 집계된 기업 수
+                "op_margin": round(op_sum / sales_sum * 100, 1)
+                if op_sum is not None and sales_sum else None,
                 "leader": members[0]["name"],
                 "members": members,
             }
@@ -157,7 +180,8 @@ def industries(min_members: int = 2) -> list[dict]:
 def industry_names() -> list[dict]:
     """Lightweight index: [{industry, count, market_cap, leader}] (no members)."""
     return [
-        {k: g[k] for k in ("industry", "count", "market_cap", "avg_change_pct", "leader")}
+        {k: g[k] for k in ("industry", "count", "market_cap", "avg_change_pct",
+                            "op_profit", "op_margin", "op_count", "leader")}
         for g in industries()
     ]
 
