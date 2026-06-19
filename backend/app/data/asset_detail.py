@@ -97,15 +97,18 @@ def _ret(c, n: int) -> float | None:
     return round((float(c.iloc[-1]) / base - 1.0) * 100.0, 2) if base else None
 
 
-def _quote_one(symbol: str) -> dict:
+def _quote_one(symbol: str, as_of: str | None = None) -> dict:
+    ckey = f"{symbol}|{as_of or ''}"
     with _quote_lock:
-        hit = _quote_cache.get(symbol)
+        hit = _quote_cache.get(ckey)
         if hit and (time.time() - hit[0] < QUOTE_TTL):
             return hit[1]
     out = {"symbol": symbol, "close": None, "change": None, "change_pct": None,
            "ret_1w": None, "ret_1m": None, "ret_3m": None, "ret_12m": None}
     try:
         df = fdr.DataReader(symbol).dropna(subset=["Close"])
+        if as_of:  # 과거 날짜: 그날까지로 잘라 그 시점 종가·수익률로 고정
+            df = df.loc[:as_of]
         if not df.empty:
             c = df["Close"]
             last = float(c.iloc[-1])
@@ -122,31 +125,41 @@ def _quote_one(symbol: str) -> dict:
     except Exception:
         pass
     with _quote_lock:
-        _quote_cache[symbol] = (time.time(), out)
+        _quote_cache[ckey] = (time.time(), out)
     return out
 
 
-def constituent_quotes(symbols: list[str]) -> list[dict]:
-    """Batch quote (close/change/returns) for up to ~60 constituent symbols."""
+def constituent_quotes(symbols: list[str], as_of: str | None = None) -> list[dict]:
+    """Batch quote (close/change/returns) for up to ~60 constituent symbols.
+
+    ``as_of`` (YYYY-MM-DD) freezes every quote to that day's close (과거 날짜용).
+    """
     symbols = [s for s in symbols if s][:60]
     if not symbols:
         return []
     with ThreadPoolExecutor(max_workers=10) as ex:
-        return list(ex.map(_quote_one, symbols))
+        return list(ex.map(lambda s: _quote_one(s, as_of), symbols))
 
 
-def asset_detail(key: str) -> dict | None:
-    """장 마감 OHLC + 최근 시세 + 52주 고저 (+ 구성종목). cached ~5분."""
+def asset_detail(key: str, as_of: str | None = None) -> dict | None:
+    """장 마감 OHLC + 최근 시세 + 52주 고저 (+ 구성종목). cached ~5분.
+
+    ``as_of`` (YYYY-MM-DD)가 주어지면 그 날짜까지로 시세를 잘라 **그날 장 마감**
+    시점의 세션/최근시세/52주 고저로 고정한다(과거 날짜 조회용).
+    """
     meta = _META.get(key)
     if not meta:
         return None
+    ckey = f"{key}|{as_of or ''}"
     with _lock:
-        hit = _cache.get(key)
+        hit = _cache.get(ckey)
         if hit and (time.time() - hit[0] < TTL):
             return hit[1]
 
     try:
         df = fdr.DataReader(meta["symbol"]).dropna(subset=["Close"])
+        if as_of:
+            df = df.loc[:as_of]
     except Exception:
         df = None
 
@@ -195,5 +208,5 @@ def asset_detail(key: str) -> dict | None:
         "total_constituents": total_constituents,
     }
     with _lock:
-        _cache[key] = (time.time(), data)
+        _cache[ckey] = (time.time(), data)
     return data

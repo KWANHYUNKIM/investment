@@ -125,6 +125,14 @@ CREATE TABLE IF NOT EXISTS foreign_fin (
     pe             DOUBLE,            -- PER
     pb             DOUBLE,            -- PBR
     div_yield      DOUBLE,            -- 배당수익률 (%)
+    roic           DOUBLE,            -- 투하자본이익률 ROIC (%)
+    roa            DOUBLE,            -- 총자산이익률 ROA (%)
+    asset_turnover DOUBLE,            -- 자산회전율 (배)
+    ev_ebitda      DOUBLE,            -- EV/EBITDA (배)
+    rev_growth     DOUBLE,            -- 매출성장률 YoY (%)
+    eps_growth     DOUBLE,            -- EPS성장률 YoY (%)
+    rev_cagr5y     DOUBLE,            -- 5년 매출 CAGR (%)
+    interest_cov   DOUBLE,            -- 이자보상배율 (배)
     price          DOUBLE,            -- 현재가 (현지통화)
     change_pct     DOUBLE,            -- 당일 등락률 (%)
     updated        VARCHAR,
@@ -158,7 +166,9 @@ def _connect() -> duckdb.DuckDBPyConnection:
         pass
     # Backfill the deep foreign-fundamentals columns (report-grade comparison).
     for col in ("revenue_usd", "op_profit_usd", "net_income_usd", "gross_margin",
-                "roe", "debt_equity", "pe", "pb", "div_yield"):
+                "roe", "debt_equity", "pe", "pb", "div_yield",
+                "roic", "roa", "asset_turnover", "ev_ebitda", "rev_growth",
+                "eps_growth", "rev_cagr5y", "interest_cov"):
         try:
             conn.execute(f"ALTER TABLE foreign_fin ADD COLUMN IF NOT EXISTS {col} DOUBLE")
         except Exception:

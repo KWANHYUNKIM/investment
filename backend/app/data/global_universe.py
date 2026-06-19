@@ -5,8 +5,13 @@
 (2) **해외 대표 경쟁사**(심볼·국가)를 갖는다. 해외 종목의 시총·영업이익률 등 펀더멘털은
 Finnhub에서 받아 붙인다(``finnhub`` 모듈).
 
-심볼 접미사(야후/핀허브 공통): 미국=무접미, 도쿄=.T, XETRA(독)=.DE, 파리=.PA,
-암스테르담=.AS, 스위스=.SW, 런던=.L, 홍콩=.HK, 상해=.SS, 선전=.SZ, 대만=.TW.
+해외 심볼 정책: Finnhub 무료티어는 **미국 거래소만** 지원(.T/.DE/.HK/.SZ/.TW/.SW/.PA 등
+원거래소 심볼은 전부 NONE 반환). 그래서 비미국 대형주는 **미국 ADR 티커**로 받는다
+(예: 도요타=TM, 소니=SONY, 텐센트=TCEHY, 도쿄일렉트론=TOELY, 파나소닉=PCRFF). ADR은
+비율 지표(ROIC·마진·성장률 등)가 통화·ADR배율과 무관해 정확하고, 시총·매출은
+``metric.marketCapitalization``(보고통화)와 P/S로 환산한다(finnhub.fetch 참조).
+ADR이 없는 종목(CATL 300750.SZ, BOE/AUO/JDI, Baosteel)은 원심볼을 두되 정량값은
+비고, 정성 프로파일(global_intel)만 표시된다.
 """
 from __future__ import annotations
 
@@ -22,8 +27,7 @@ CLUSTERS: list[dict] = [
             ("QCOM", "Qualcomm", "US"), ("TXN", "Texas Instruments", "US"),
             ("ASML", "ASML", "NL"), ("AMAT", "Applied Materials", "US"),
             ("LRCX", "Lam Research", "US"), ("KLAC", "KLA", "US"),
-            ("8035.T", "도쿄일렉트론", "JP"), ("2330.TW", "TSMC(대만)", "TW"),
-            ("000725.SZ", "BOE", "CN"),
+            ("TOELY", "도쿄일렉트론", "JP"),
         ],
     },
     {
@@ -31,9 +35,8 @@ CLUSTERS: list[dict] = [
         "desc": "전기차/ESS용 배터리 셀·소재",
         "kr_wics": ["전기제품"],
         "foreign": [
-            ("300750.SZ", "CATL", "CN"), ("1211.HK", "BYD", "CN"),
-            ("6752.T", "Panasonic", "JP"), ("051910.KS", "LG화학(참고)", "KR"),
-            ("ALB", "Albemarle", "US"),
+            ("300750.SZ", "CATL", "CN"), ("BYDDY", "BYD", "CN"),
+            ("PCRFF", "Panasonic", "JP"), ("ALB", "Albemarle", "US"),
         ],
     },
     {
@@ -41,10 +44,10 @@ CLUSTERS: list[dict] = [
         "desc": "내연/전기 완성차 제조",
         "kr_wics": ["자동차"],
         "foreign": [
-            ("TSLA", "Tesla", "US"), ("7203.T", "Toyota", "JP"), ("7267.T", "Honda", "JP"),
-            ("VOW3.DE", "Volkswagen", "DE"), ("MBG.DE", "Mercedes-Benz", "DE"),
-            ("BMW.DE", "BMW", "DE"), ("STLA", "Stellantis", "US"), ("GM", "GM", "US"),
-            ("F", "Ford", "US"), ("1211.HK", "BYD", "CN"), ("7201.T", "Nissan", "JP"),
+            ("TSLA", "Tesla", "US"), ("TM", "Toyota", "JP"), ("HMC", "Honda", "JP"),
+            ("VWAGY", "Volkswagen", "DE"), ("MBGYY", "Mercedes-Benz", "DE"),
+            ("BMWYY", "BMW", "DE"), ("STLA", "Stellantis", "US"), ("GM", "GM", "US"),
+            ("F", "Ford", "US"), ("BYDDY", "BYD", "CN"), ("NSANY", "Nissan", "JP"),
         ],
     },
     {
@@ -52,8 +55,8 @@ CLUSTERS: list[dict] = [
         "desc": "구동·전장·섀시 등 자동차 부품",
         "kr_wics": ["자동차부품"],
         "foreign": [
-            ("6902.T", "Denso", "JP"), ("MGA", "Magna", "US"), ("CON.DE", "Continental", "DE"),
-            ("APTV", "Aptiv", "US"), ("ML.PA", "Michelin", "FR"), ("BWA", "BorgWarner", "US"),
+            ("DNZOY", "Denso", "JP"), ("MGA", "Magna", "US"), ("CTTAY", "Continental", "DE"),
+            ("APTV", "Aptiv", "US"), ("MGDDY", "Michelin", "FR"), ("BWA", "BorgWarner", "US"),
         ],
     },
     {
@@ -64,7 +67,7 @@ CLUSTERS: list[dict] = [
             ("AAPL", "Apple", "US"), ("MSFT", "Microsoft", "US"), ("GOOGL", "Alphabet", "US"),
             ("AMZN", "Amazon", "US"), ("META", "Meta", "US"), ("ORCL", "Oracle", "US"),
             ("CRM", "Salesforce", "US"), ("SAP", "SAP", "DE"), ("ADBE", "Adobe", "US"),
-            ("0700.HK", "Tencent", "CN"), ("BABA", "Alibaba", "CN"), ("9988.HK", "Alibaba(HK)", "CN"),
+            ("TCEHY", "Tencent", "CN"), ("BABA", "Alibaba", "CN"),
         ],
     },
     {
@@ -73,9 +76,9 @@ CLUSTERS: list[dict] = [
         "kr_wics": ["제약", "생물공학"],
         "foreign": [
             ("LLY", "Eli Lilly", "US"), ("NVO", "Novo Nordisk", "DK"), ("JNJ", "Johnson & Johnson", "US"),
-            ("ROG.SW", "Roche", "CH"), ("NVS", "Novartis", "CH"), ("PFE", "Pfizer", "US"),
+            ("RHHBY", "Roche", "CH"), ("NVS", "Novartis", "CH"), ("PFE", "Pfizer", "US"),
             ("MRK", "Merck", "US"), ("AZN", "AstraZeneca", "UK"), ("ABBV", "AbbVie", "US"),
-            ("4568.T", "Daiichi Sankyo", "JP"), ("SAN.PA", "Sanofi", "FR"),
+            ("DSNKY", "Daiichi Sankyo", "JP"), ("SNY", "Sanofi", "FR"),
         ],
     },
     {
@@ -91,7 +94,7 @@ CLUSTERS: list[dict] = [
         "desc": "철강·비철금속",
         "kr_wics": ["철강"],
         "foreign": [
-            ("5401.T", "Nippon Steel", "JP"), ("MT", "ArcelorMittal", "LU"),
+            ("NPSCY", "Nippon Steel", "JP"), ("MT", "ArcelorMittal", "LU"),
             ("NUE", "Nucor", "US"), ("X", "US Steel", "US"), ("600019.SS", "Baosteel", "CN"),
         ],
     },
@@ -100,8 +103,8 @@ CLUSTERS: list[dict] = [
         "desc": "기초/정밀 화학",
         "kr_wics": ["화학"],
         "foreign": [
-            ("BAS.DE", "BASF", "DE"), ("DOW", "Dow", "US"), ("LIN", "Linde", "US"),
-            ("4188.T", "Mitsubishi Chemical", "JP"), ("DD", "DuPont", "US"),
+            ("BASFY", "BASF", "DE"), ("DOW", "Dow", "US"), ("LIN", "Linde", "US"),
+            ("MTLHY", "Mitsubishi Chemical", "JP"), ("DD", "DuPont", "US"),
         ],
     },
     {
@@ -109,7 +112,7 @@ CLUSTERS: list[dict] = [
         "desc": "선박·해양플랜트·중공업",
         "kr_wics": ["조선"],
         "foreign": [
-            ("7011.T", "Mitsubishi Heavy", "JP"), ("7012.T", "Kawasaki Heavy", "JP"),
+            ("MHVYF", "Mitsubishi Heavy", "JP"), ("KWHIY", "Kawasaki Heavy", "JP"),
         ],
     },
     {
@@ -118,7 +121,7 @@ CLUSTERS: list[dict] = [
         "kr_wics": ["우주항공과국방"],
         "foreign": [
             ("LMT", "Lockheed Martin", "US"), ("RTX", "RTX", "US"), ("NOC", "Northrop Grumman", "US"),
-            ("BA", "Boeing", "US"), ("AIR.PA", "Airbus", "FR"), ("GD", "General Dynamics", "US"),
+            ("BA", "Boeing", "US"), ("EADSY", "Airbus", "FR"), ("GD", "General Dynamics", "US"),
         ],
     },
     {
@@ -127,7 +130,7 @@ CLUSTERS: list[dict] = [
         "kr_wics": ["은행", "증권", "카드", "기타금융"],
         "foreign": [
             ("JPM", "JPMorgan", "US"), ("BAC", "Bank of America", "US"), ("WFC", "Wells Fargo", "US"),
-            ("8306.T", "Mitsubishi UFJ", "JP"), ("HSBC", "HSBC", "UK"), ("8316.T", "Sumitomo Mitsui", "JP"),
+            ("MUFG", "Mitsubishi UFJ", "JP"), ("HSBC", "HSBC", "UK"), ("SMFG", "Sumitomo Mitsui", "JP"),
         ],
     },
     {
@@ -135,8 +138,8 @@ CLUSTERS: list[dict] = [
         "desc": "콘텐츠·게임·스트리밍",
         "kr_wics": [],
         "foreign": [
-            ("7974.T", "Nintendo", "JP"), ("6758.T", "Sony", "JP"), ("NFLX", "Netflix", "US"),
-            ("DIS", "Disney", "US"), ("9999.HK", "NetEase", "CN"),
+            ("NTDOY", "Nintendo", "JP"), ("SONY", "Sony", "JP"), ("NFLX", "Netflix", "US"),
+            ("DIS", "Disney", "US"), ("NTES", "NetEase", "CN"),
         ],
     },
     {
@@ -144,8 +147,8 @@ CLUSTERS: list[dict] = [
         "desc": "화장품·생활소비재·럭셔리",
         "kr_wics": ["화장품", "가정용품과개인용품"],
         "foreign": [
-            ("OR.PA", "L'Oreal", "FR"), ("EL", "Estee Lauder", "US"), ("4911.T", "Shiseido", "JP"),
-            ("MC.PA", "LVMH", "FR"), ("PG", "P&G", "US"), ("NESN.SW", "Nestle", "CH"),
+            ("LRLCY", "L'Oreal", "FR"), ("EL", "Estee Lauder", "US"), ("SSDOY", "Shiseido", "JP"),
+            ("LVMUY", "LVMH", "FR"), ("PG", "P&G", "US"), ("NSRGY", "Nestle", "CH"),
         ],
     },
     {
@@ -154,7 +157,7 @@ CLUSTERS: list[dict] = [
         "kr_wics": [],
         "foreign": [
             ("AMZN", "Amazon", "US"), ("BABA", "Alibaba", "CN"), ("CPNG", "Coupang", "US"),
-            ("PDD", "PDD(Temu)", "CN"), ("MELI", "MercadoLibre", "AR"), ("3690.HK", "Meituan", "CN"),
+            ("PDD", "PDD(Temu)", "CN"), ("MELI", "MercadoLibre", "AR"), ("MPNGY", "Meituan", "CN"),
         ],
     },
 ]

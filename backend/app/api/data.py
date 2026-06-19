@@ -344,19 +344,28 @@ def cross_asset_endpoint():
 
 
 @router.get("/asset-detail")
-def asset_detail_endpoint(key: str = Query(..., description="cross-asset key, e.g. sp500/nasdaq/kospi/gold/btc")):
-    """장 마감 상세: 해당 지수/자산의 OHLC 세션 + 최근 시세 + 52주 고저 (+ 구성종목)."""
-    data = asset_detail.asset_detail(key)
+def asset_detail_endpoint(
+    key: str = Query(..., description="cross-asset key, e.g. sp500/nasdaq/kospi/gold/btc"),
+    date: str | None = Query(default=None, description="YYYY-MM-DD; 과거 날짜면 그날 장 마감으로 고정"),
+):
+    """장 마감 상세: 해당 지수/자산의 OHLC 세션 + 최근 시세 + 52주 고저 (+ 구성종목).
+
+    ``date``를 주면 그 날짜까지로 시세를 잘라 그날 마감 시점으로 고정한다.
+    """
+    data = asset_detail.asset_detail(key, as_of=date)
     if data is None:
         raise HTTPException(404, f"'{key}' 자산 상세를 불러올 수 없습니다.")
     return data
 
 
 @router.get("/asset-quotes")
-def asset_quotes_endpoint(symbols: str = Query(..., description="comma-separated constituent symbols (max 60)")):
+def asset_quotes_endpoint(
+    symbols: str = Query(..., description="comma-separated constituent symbols (max 60)"),
+    date: str | None = Query(default=None, description="YYYY-MM-DD; 과거 날짜면 그날 종가로 고정"),
+):
     """Batch quotes (현재가·등락·기간수익률) for index constituents — fills the grid lazily."""
     syms = [s.strip() for s in symbols.split(",") if s.strip()]
-    return {"quotes": asset_detail.constituent_quotes(syms)}
+    return {"quotes": asset_detail.constituent_quotes(syms, as_of=date)}
 
 
 @router.get("/market-report")

@@ -30,7 +30,15 @@ function fmtVol(v: number | null | undefined): string {
   return v.toLocaleString("en-US");
 }
 
-export function AssetDetailModal({ assetKey, onClose }: { assetKey: string; onClose: () => void }) {
+export function AssetDetailModal({
+  assetKey,
+  onClose,
+  asOf,
+}: {
+  assetKey: string;
+  onClose: () => void;
+  asOf?: string; // 과거 날짜면 그날 장 마감으로 고정
+}) {
   const [d, setD] = useState<AssetDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
@@ -39,11 +47,11 @@ export function AssetDetailModal({ assetKey, onClose }: { assetKey: string; onCl
     setLoading(true);
     setErr("");
     api
-      .assetDetail(assetKey)
+      .assetDetail(assetKey, asOf)
       .then(setD)
       .catch((e) => setErr(e?.message ?? "불러오지 못했습니다."))
       .finally(() => setLoading(false));
-  }, [assetKey]);
+  }, [assetKey, asOf]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
@@ -74,6 +82,11 @@ export function AssetDetailModal({ assetKey, onClose }: { assetKey: string; onCl
           📊 {d?.label ?? assetKey} — 장마감.xlsx
           {d?.symbol && <span className="ml-1 font-mono text-xs text-white/70">{d.symbol}</span>}
         </span>
+        {asOf && (
+          <span className="ml-auto shrink-0 rounded bg-white/20 px-2 py-0.5 text-[11px] font-bold">
+            📦 {asOf} 마감 기준 (과거)
+          </span>
+        )}
       </div>
       <div className="h-1 shrink-0" style={{ background: accent }} />
 
@@ -142,11 +155,11 @@ export function AssetDetailModal({ assetKey, onClose }: { assetKey: string; onCl
 
             {/* constituents — 전종목분석 스타일 그리드 */}
             {d.total_constituents > 0 && (
-              <ConstituentGrid detail={d} />
+              <ConstituentGrid detail={d} asOf={asOf} />
             )}
 
             <p className="border-t border-[#e6e6e6] pt-3 text-[11px] leading-relaxed text-[#888]">
-              시세 FinanceDataReader · 종가/지연 시세 기준. 구성종목의 현재가·수익률은 50개씩 불러옵니다(개별 조회 비용 때문).
+              시세 FinanceDataReader · {asOf ? `${asOf} 장 마감 기준으로 고정(과거 날짜).` : "종가/지연 시세 기준."} 구성종목의 현재가·수익률은 50개씩 불러옵니다(개별 조회 비용 때문).
             </p>
           </div>
         )}
@@ -192,7 +205,7 @@ function colLetter(i: number): string {
   return s;
 }
 
-function ConstituentGrid({ detail }: { detail: AssetDetail }) {
+function ConstituentGrid({ detail, asOf }: { detail: AssetDetail; asOf?: string }) {
   const curr = detail.key === "shanghai" ? "¥" : "$"; // sp500/nasdaq = USD, 상해 = CNY
   const [q, setQ] = useState("");
   const [limit, setLimit] = useState(50);
@@ -229,7 +242,7 @@ function ConstituentGrid({ detail }: { detail: AssetDetail }) {
     batch.forEach((s) => loading.current.add(s));
     setBusy(true);
     api
-      .assetQuotes(batch)
+      .assetQuotes(batch, asOf)
       .then((res) => {
         setQuotes((prev) => {
           const m = new Map(prev);

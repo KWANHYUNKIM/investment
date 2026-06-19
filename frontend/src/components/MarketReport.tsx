@@ -76,6 +76,9 @@ export function MarketReport() {
   const macro = data.market.macro;
   const deepStocks = data.stocks.filter((s) => s.depth === "deep");
   const dateOptions = dates.length ? dates : data.date ? [data.date] : [];
+  // 최신(오늘) 날짜만 실시간; 과거 날짜는 그날 마감값(아카이브)으로 고정.
+  const latestDate = dates[0];
+  const isLatest = !selected || (latestDate ? selected === latestDate : selected === data.date);
 
   return (
     <Sheet
@@ -136,8 +139,8 @@ export function MarketReport() {
           </div>
         </Block>
 
-        {/* ── 크로스에셋 자금 흐름 (미국·글로벌 증시 · 금 · 비트코인) · 실시간 ─ */}
-        <CrossAssetBlock ca={data.market.cross_asset ?? null} />
+        {/* ── 크로스에셋 자금 흐름 (미국·글로벌 증시 · 금 · 비트코인) · 최신일만 실시간 ─ */}
+        <CrossAssetBlock ca={data.market.cross_asset ?? null} live={isLatest} reportDate={data.date} />
 
         {/* ── global finance macro layer (전 세계 돈 관련 빅데이터) ─ */}
         {macro && macro.drivers.length > 0 && (
@@ -364,12 +367,27 @@ const EMPTY_CA: CrossAssetLayer = {
   count: 0,
   flow: { verdict: "불러오는 중…", tone: "중립", score: 0, desc: "실시간 시세를 불러오는 중입니다.", metrics: { equities: null, crypto: null, gold: null, usdkrw: null }, summary: "" },
 };
-function CrossAssetBlock({ ca: initial }: { ca: CrossAssetLayer | null }) {
+function CrossAssetBlock({
+  ca: initial,
+  live: allowLive,
+  reportDate,
+}: {
+  ca: CrossAssetLayer | null;
+  live: boolean;
+  reportDate?: string | null;
+}) {
   const [ca, setCa] = useState<CrossAssetLayer>(initial ?? EMPTY_CA);
   const [live, setLive] = useState(false);
   const [picked, setPicked] = useState<string | null>(null); // asset key for the drill-in modal
 
   useEffect(() => {
+    // 과거 날짜: 그날 마감값(아카이브)으로 고정 — 실시간 폴링하지 않는다.
+    if (!allowLive) {
+      setCa(initial ?? EMPTY_CA);
+      setLive(false);
+      return;
+    }
+    // 최신(오늘) 날짜만 실시간 갱신.
     let alive = true;
     const load = () =>
       api
@@ -387,7 +405,18 @@ function CrossAssetBlock({ ca: initial }: { ca: CrossAssetLayer | null }) {
       alive = false;
       clearInterval(id);
     };
-  }, []);
+  }, [allowLive, initial]);
+
+  // 과거 날짜인데 그 일자의 크로스에셋 스냅샷이 저장돼 있지 않은 경우.
+  if (!allowLive && !initial) {
+    return (
+      <Block label="💵 크로스에셋 자금 흐름 · 미국/글로벌 증시 · 금 · 비트코인" color="#ffe08a" fg="#7a5b00">
+        <div className="px-3 py-4 text-sm text-[#999]">
+          {reportDate} 일자에는 크로스에셋 데이터가 저장되어 있지 않습니다. (해당 기능 도입 이전 날짜)
+        </div>
+      </Block>
+    );
+  }
 
   const flow = ca.flow;
   const tone = flow.tone === "긍정" ? RED : flow.tone === "부정" ? BLUE : "#666";
@@ -398,11 +427,17 @@ function CrossAssetBlock({ ca: initial }: { ca: CrossAssetLayer | null }) {
         <span className="rounded-full px-3 py-1 text-sm font-bold text-white" style={{ background: tone }}>
           {flow.verdict}
         </span>
-        <span className="flex items-center gap-1 text-[11px] font-bold" style={{ color: live ? "#2f9e44" : "#aaa" }}>
-          <span className={`inline-block h-1.5 w-1.5 rounded-full ${live ? "animate-pulse" : ""}`} style={{ background: live ? "#2f9e44" : "#bbb" }} />
-          {live ? "LIVE" : "…"}
-          {ca.as_of && <span className="font-normal text-[#999]">{ca.as_of.slice(11)}</span>}
-        </span>
+        {allowLive ? (
+          <span className="flex items-center gap-1 text-[11px] font-bold" style={{ color: live ? "#2f9e44" : "#aaa" }}>
+            <span className={`inline-block h-1.5 w-1.5 rounded-full ${live ? "animate-pulse" : ""}`} style={{ background: live ? "#2f9e44" : "#bbb" }} />
+            {live ? "LIVE" : "…"}
+            {ca.as_of && <span className="font-normal text-[#999]">{ca.as_of.slice(11)}</span>}
+          </span>
+        ) : (
+          <span className="flex items-center gap-1 rounded bg-[#f0ead6] px-1.5 py-0.5 text-[11px] font-bold text-[#7a5b00]">
+            📦 {reportDate} 마감값 (아카이브)
+          </span>
+        )}
         <span className="text-[15px] text-[#444]">{flow.desc}</span>
         <span className="ml-auto text-[13px] text-[#999]">
           글로벌 증시 {fmtSigned(flow.metrics.equities)} · 암호화폐 {fmtSigned(flow.metrics.crypto)} · 금 {fmtSigned(flow.metrics.gold)} · 원/달러 {fmtSigned(flow.metrics.usdkrw)}
@@ -439,9 +474,15 @@ function CrossAssetBlock({ ca: initial }: { ca: CrossAssetLayer | null }) {
         ))}
       </div>
       <p className="px-3 py-1.5 text-[12px] text-[#999]">
-        종목을 클릭하면 그 장이 어떻게 끝났는지(장 마감 OHLC·최근 시세·구성종목) 엑셀로 열립니다. 금리(국채 10년)·원/달러 상승은 위험회피(현금·안전자산 선호), 증시·비트코인 상승은 위험선호 신호로 읽습니다. 시세 FinanceDataReader · 30초마다 실시간 갱신(해외장은 지연 시세).
+        종목을 클릭하면 그 장이 어떻게 끝났는지(장 마감 OHLC·최근 시세·구성종목) 엑셀로 열립니다. 금리(국채 10년)·원/달러 상승은 위험회피(현금·안전자산 선호), 증시·비트코인 상승은 위험선호 신호로 읽습니다. 시세 FinanceDataReader{allowLive ? " · 30초마다 실시간 갱신(해외장은 지연 시세)." : ` · ${reportDate} 장 마감 기준 저장값(과거 날짜는 실시간 갱신하지 않습니다).`}
       </p>
-      {picked && <AssetDetailModal assetKey={picked} onClose={() => setPicked(null)} />}
+      {picked && (
+        <AssetDetailModal
+          assetKey={picked}
+          onClose={() => setPicked(null)}
+          asOf={allowLive ? undefined : reportDate ?? undefined}
+        />
+      )}
     </Block>
   );
 }

@@ -443,6 +443,13 @@ export interface DartFinancials {
   available: boolean;
 }
 
+// 기업 프로파일 — 기술/사업모델/해자/투자 (정성 큐레이션)
+export interface GlobalProfile {
+  tech?: string; // 핵심 기술/제품
+  biz?: string; // 영업이익을 어떻게 내는지
+  moat?: string; // 경쟁 우위/해자
+  invest?: string; // R&D·CAPEX 투자와 그 회수
+}
 export interface GlobalMember {
   market: "KR" | "GL";
   code: string;
@@ -460,9 +467,25 @@ export interface GlobalMember {
   pe?: number | null; // PER
   pb?: number | null; // PBR
   div_yield?: number | null; // 배당수익률 %
+  // 투자효율 (이익/투자 대비)
+  roic?: number | null; // 투하자본이익률 %
+  roa?: number | null; // 총자산이익률 %
+  asset_turnover?: number | null; // 자산회전율 (배)
+  ev_ebitda?: number | null; // EV/EBITDA (배)
+  rev_growth?: number | null; // 매출성장률 YoY %
+  eps_growth?: number | null; // EPS성장률 YoY %
+  rev_cagr5y?: number | null; // 5년 매출 CAGR %
+  interest_cov?: number | null; // 이자보상배율 (배)
+  op_yoy?: number | null; // 영업이익 YoY % (한국)
   fy?: string | null; // 기준 사업연도
   change_pct: number | null;
   note: string | null; // 주요제품 / 업종
+  profile?: GlobalProfile | null;
+}
+export interface GlobalBattleground {
+  arena: string; // 세부 전장 이름
+  desc: string; // 경쟁 구도 설명
+  players: string[]; // 주요 선수
 }
 export interface GlobalCluster {
   key: string;
@@ -475,6 +498,9 @@ export interface GlobalCluster {
   market_cap_usd: number;
   avg_op_margin: number | null;
   leader: string | null;
+  tech?: boolean; // 기술주 클러스터
+  battleground_count?: number; // index용
+  battlegrounds?: GlobalBattleground[]; // detail용
   members?: GlobalMember[];
 }
 export interface GlobalClustersResponse {
@@ -669,9 +695,14 @@ export const api = {
     request<ReportResponse>(`/api/data/report?ticker=${ticker}${name ? `&name=${encodeURIComponent(name)}` : ""}`),
   marketReport: () => request<MarketReport>(`/api/data/market-report`),
   crossAsset: () => request<CrossAssetLayer>(`/api/data/cross-asset`),
-  assetDetail: (key: string) => request<AssetDetail>(`/api/data/asset-detail?key=${encodeURIComponent(key)}`),
-  assetQuotes: (symbols: string[]) =>
-    request<{ quotes: ConstituentQuote[] }>(`/api/data/asset-quotes?symbols=${encodeURIComponent(symbols.join(","))}`),
+  assetDetail: (key: string, date?: string) =>
+    request<AssetDetail>(
+      `/api/data/asset-detail?key=${encodeURIComponent(key)}${date ? `&date=${encodeURIComponent(date)}` : ""}`,
+    ),
+  assetQuotes: (symbols: string[], date?: string) =>
+    request<{ quotes: ConstituentQuote[] }>(
+      `/api/data/asset-quotes?symbols=${encodeURIComponent(symbols.join(","))}${date ? `&date=${encodeURIComponent(date)}` : ""}`,
+    ),
   industries: () => request<IndustriesIndexResponse>(`/api/data/industries`),
   industry: (name: string) =>
     request<IndustryDetailResponse>(`/api/data/industry?name=${encodeURIComponent(name)}`),

@@ -107,9 +107,6 @@ def fetch(symbol: str, fx: dict[str, float] | None = None) -> dict | None:
     rate = fx.get(cur, _FX_FALLBACK.get(cur, 1.0))
     price = _num(quote.get("c"))
     shares = _num(prof.get("shareOutstanding"))  # in millions
-    mcap_usd = None
-    if price and shares:
-        mcap_usd = shares * 1e6 * price * rate
 
     def pick(*keys):
         for k in keys:
@@ -117,6 +114,13 @@ def fetch(symbol: str, fx: dict[str, float] | None = None) -> dict | None:
             if v is not None:
                 return v
         return None
+
+    # 시가총액: metric.marketCapitalization(백만, profile.currency 기준)을 우선 — ADR도
+    # 정확. shareOutstanding×price는 OTC ADR에서 주식수가 ADR 기준이라 틀어지므로 폴백.
+    mcap_native_m = pick("marketCapitalization")
+    mcap_usd = mcap_native_m * 1e6 * rate if mcap_native_m else None
+    if mcap_usd is None and price and shares:
+        mcap_usd = shares * 1e6 * price * rate
 
     op = pick("operatingMarginTTM", "operatingMarginAnnual")
     net = pick("netProfitMarginTTM", "netProfitMarginAnnual", "netMarginTTM")
@@ -128,10 +132,23 @@ def fetch(symbol: str, fx: dict[str, float] | None = None) -> dict | None:
     pb = pick("pbQuarterly", "pbAnnual", "pb")
     dy = pick("dividendYieldIndicatedAnnual", "currentDividendYieldTTM")
     rps = pick("revenuePerShareTTM", "revenuePerShareAnnual")
+    ps = pick("psTTM", "psAnnual")  # P/S — 매출 역산용(통화 무관)
+    # 투자효율(이익/투자 대비) 지표 — '얼마 넣어 얼마 버는가'.
+    roic = pick("roiTTM", "roiAnnual", "roi5Y")          # 투하자본이익률
+    roa = pick("roaTTM", "roaRfy", "roaAnnual")           # 총자산이익률
+    asset_to = pick("assetTurnoverTTM", "assetTurnoverAnnual")  # 자산회전율(배)
+    ev_ebitda = pick("evEbitdaTTM", "currentEv/ebitdaTTM", "evEbitdaAnnual")
+    rev_g = pick("revenueGrowthTTMYoy", "revenueGrowthQuarterlyYoy")  # 매출성장 YoY%
+    eps_g = pick("epsGrowthTTMYoy", "epsGrowthQuarterlyYoy")          # EPS성장 YoY%
+    rev_cagr5 = pick("revenueGrowth5Y")                  # 5년 매출 CAGR%
+    int_cov = pick("netInterestCoverageTTM", "netInterestCoverageAnnual")  # 이자보상배율
 
+    # 매출(USD): 시총 ÷ P/S 가 통화·ADR배율과 무관해 가장 견고. P/S가 없으면 주당매출×주식수.
     revenue_usd = None
-    if rps and shares:
-        revenue_usd = rps * shares * 1e6 * rate  # 매출 = 주당매출 × 주식수 → USD
+    if mcap_usd is not None and ps and ps > 0:
+        revenue_usd = mcap_usd / ps
+    elif rps and shares:
+        revenue_usd = rps * shares * 1e6 * rate
     op_profit_usd = revenue_usd * op / 100 if (revenue_usd is not None and op is not None) else None
     net_income_usd = revenue_usd * net / 100 if (revenue_usd is not None and net is not None) else None
 
@@ -150,6 +167,9 @@ def fetch(symbol: str, fx: dict[str, float] | None = None) -> dict | None:
         "op_margin": r2(op), "net_margin": r2(net), "gross_margin": r2(gross),
         "roe": r2(roe), "debt_equity": r2(de), "pe": r2(pe), "pb": r2(pb),
         "div_yield": r2(dy),
+        "roic": r2(roic), "roa": r2(roa), "asset_turnover": r2(asset_to),
+        "ev_ebitda": r2(ev_ebitda), "rev_growth": r2(rev_g), "eps_growth": r2(eps_g),
+        "rev_cagr5y": r2(rev_cagr5), "interest_cov": r2(int_cov),
         "price": price,
         "change_pct": _num(quote.get("dp")),
         "updated": time.strftime("%Y-%m-%d %H:%M"),
