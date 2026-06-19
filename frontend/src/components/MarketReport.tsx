@@ -7,6 +7,7 @@ import {
   MoverRow,
   ArchiveStock,
   InvestorDriver,
+  InvestorDay,
   MacroDriver,
   BrokerHouse,
   RateLayer,
@@ -138,6 +139,9 @@ export function MarketReport() {
             </div>
           </div>
         </Block>
+
+        {/* ── 투자자별 매매 동향 (일단위) — 누가 매입/매도했나 ─ */}
+        <InvestorTrendBlock trend={data.market.investor_trend ?? []} />
 
         {/* ── 크로스에셋 자금 흐름 (미국·글로벌 증시 · 금 · 비트코인) · 최신일만 실시간 ─ */}
         <CrossAssetBlock ca={data.market.cross_asset ?? null} live={isLatest} reportDate={data.date} />
@@ -292,6 +296,64 @@ function BreadthStat({ label, value, color }: { label: string; value: number; co
         {value.toLocaleString("ko-KR")}
       </div>
     </div>
+  );
+}
+
+/* 투자자별 매매 동향 (일단위) — 시장 전체 순매수 금액(억원). 빨강=순매수, 파랑=순매도. */
+function eok(v: number | null | undefined): string {
+  if (v == null) return "—";
+  const s = Math.abs(v) >= 10000 ? `${(Math.abs(v) / 10000).toFixed(2)}조` : `${Math.abs(v).toLocaleString("ko-KR")}억`;
+  return `${v > 0 ? "+" : v < 0 ? "−" : ""}${s}`;
+}
+function flowStyle(v: number | null | undefined): React.CSSProperties {
+  if (v == null) return { color: "#bbb" };
+  return { color: v > 0 ? RED : v < 0 ? BLUE : "#666", fontWeight: 700 };
+}
+function InvestorTrendBlock({ trend }: { trend: InvestorDay[] }) {
+  if (!trend || trend.length === 0) return null;
+  // 가장 최근(=리포트 당일)을 주도 세력 배지로 강조.
+  const top = trend[0];
+  const led = (["foreign", "individual", "organ"] as const)
+    .map((k) => ({ k, v: top[k] ?? 0, label: k === "foreign" ? "외국인" : k === "individual" ? "개인" : "기관" }))
+    .filter((x) => x.v > 0)
+    .sort((a, b) => b.v - a.v)[0];
+  return (
+    <Block label="🧭 투자자별 매매 동향 (일단위 · 순매수 금액)" color="#b4a7d6" fg="#3d2c66">
+      {led && (
+        <div className="border-b border-[#eee] bg-[#f6f3fb] px-3 py-1.5 text-[13px] text-[#3d2c66]">
+          {top.date} <b>{led.label}</b>이(가) 순매수 주도 — 외국인 <span style={flowStyle(top.foreign)}>{eok(top.foreign)}</span> ·
+          기관 <span style={flowStyle(top.organ)}>{eok(top.organ)}</span> ·
+          개인 <span style={flowStyle(top.individual)}>{eok(top.individual)}</span>
+        </div>
+      )}
+      <div className="overflow-x-auto">
+        <table className="w-full border-collapse text-[13px]">
+          <thead>
+            <tr className="bg-[#ece7f6] text-xs text-[#3d2c66]">
+              <Th w="22%">일자</Th>
+              <Th w="22%" right>외국인</Th>
+              <Th w="22%" right>개인</Th>
+              <Th w="22%" right>기관</Th>
+              <Th w="12%" center>집계종목</Th>
+            </tr>
+          </thead>
+          <tbody>
+            {trend.map((d) => (
+              <tr key={d.date} className="hover:bg-[#faf8ff]">
+                <td className="border border-[#eee] px-2 py-1.5 font-medium text-[#1f1f1f]">{d.date}</td>
+                <td className="border border-[#eee] px-2 py-1.5 text-right tabular-nums" style={flowStyle(d.foreign)}>{eok(d.foreign)}</td>
+                <td className="border border-[#eee] px-2 py-1.5 text-right tabular-nums" style={flowStyle(d.individual)}>{eok(d.individual)}</td>
+                <td className="border border-[#eee] px-2 py-1.5 text-right tabular-nums" style={flowStyle(d.organ)}>{eok(d.organ)}</td>
+                <td className="border border-[#eee] px-2 py-1.5 text-center tabular-nums text-[#888]">{d.stocks.toLocaleString("ko-KR")}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="px-3 py-1.5 text-[11px] leading-relaxed text-[#999]">
+        종목별 누적 수급(네이버)을 그날 종가와 곱해 시장 전체 <b>순매수 금액</b>으로 집계(개인/외국인/기관). 빨강=순매수(매입) · 파랑=순매도. 수급 누적이 진행될수록 집계 종목 수가 늘어납니다. (KRX 기관 세부주체는 비공개 구간)
+      </p>
+    </Block>
   );
 }
 

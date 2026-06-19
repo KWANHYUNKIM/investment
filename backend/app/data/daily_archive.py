@@ -170,6 +170,12 @@ def build(date_override: str | None = None) -> dict:
     # Most significant first (deep names, then by absolute move).
     stocks.sort(key=lambda s: (s.get("depth") != "deep", -abs(s.get("change_pct") or 0)))
 
+    # 시장 전체 투자자별 매매 동향(일단위) — 누가 매입/매도했나.
+    try:
+        investor_trend = store.market_investor_daily(as_of=date, days=10)
+    except Exception:
+        investor_trend = []
+
     macro_data = macro.market_macro()
     try:
         rates_data = rates.rate_calendar()
@@ -221,6 +227,19 @@ def build(date_override: str | None = None) -> dict:
             f"거래·등락 상위 {len(deep_by_ticker)}종목 기준 "
             f"외국인 {_word(fb, fs)}, 기관 {_word(ob, os_)}, 개인 {_word(ib, is_)}였습니다."
         )
+    # 시장 전체 투자자별 순매수 금액(당일) 한 줄 요약 — 누가 주도했나.
+    if investor_trend:
+        td = investor_trend[0]
+
+        def _amt(v: float | None) -> str:
+            if v is None:
+                return "—"
+            return f"+{v:,.0f}억" if v >= 0 else f"{v:,.0f}억"
+
+        parts.append(
+            f"투자자별 순매수(금액): 외국인 {_amt(td.get('foreign'))} · "
+            f"기관 {_amt(td.get('organ'))} · 개인 {_amt(td.get('individual'))}."
+        )
     if macro_data.get("summary"):
         parts.append(macro_data["summary"])
     if rates_data and rates_data.get("summary"):
@@ -237,6 +256,7 @@ def build(date_override: str | None = None) -> dict:
         "market": {
             "breadth": {"up": up, "down": down, "flat": flat, "total": len(valid)},
             "summary": " ".join(p for p in parts if p),
+            "investor_trend": investor_trend,
             "macro": macro_data,
             "rates": rates_data,
             "foreign_view": fview_data,

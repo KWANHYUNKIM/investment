@@ -310,6 +310,57 @@ def investor_flow_history(ticker: str, market: str = "KR", days: int = 60) -> pd
         ).df()
 
 
+def market_investor_daily(as_of: str | None = None, days: int = 10) -> list[dict]:
+    """시장 전체 투자자별 매매 동향(일단위) — 누가 매입/매도했나.
+
+    종목별 누적 ``investor_flow``(순매수 수량)을 그날 종가(``prices``)와 곱해 시장
+    전체 순매수 **금액**으로 집계한다(개인/외국인/기관). 수량 단순합은 고·저가주가
+    섞여 의미가 약하므로 금액(원→억원)으로 환산. ``as_of``가 있으면 그 날짜까지만.
+    반환: 날짜 내림차순, 각 행 {date, foreign, individual, organ}(억원) + qty + 종목수.
+    """
+    where = "WHERE p.close IS NOT NULL"
+    params: list = []
+    if as_of:
+        where += " AND f.date <= CAST(? AS DATE)"
+        params.append(as_of)
+    params.append(int(days))
+    with connection() as conn:
+        df = conn.execute(
+            f"""
+            SELECT CAST(f.date AS VARCHAR) AS date,
+                   SUM(f.foreigner  * p.close) / 1e8 AS foreign_amt,
+                   SUM(f.individual * p.close) / 1e8 AS individual_amt,
+                   SUM(f.organ      * p.close) / 1e8 AS organ_amt,
+                   SUM(f.foreigner)  AS foreign_qty,
+                   SUM(f.individual) AS individual_qty,
+                   SUM(f.organ)      AS organ_qty,
+                   COUNT(*)          AS stocks
+            FROM investor_flow f
+            JOIN prices p
+              ON p.market = f.market AND p.ticker = f.ticker AND p.date = f.date
+            {where}
+            GROUP BY f.date
+            ORDER BY f.date DESC
+            LIMIT ?
+            """,
+            params,
+        ).df()
+    out: list[dict] = []
+    for r in df.to_dict("records"):
+        rnd = lambda v: round(float(v), 1) if v is not None and v == v else None
+        out.append({
+            "date": r["date"],
+            "foreign": rnd(r["foreign_amt"]),
+            "individual": rnd(r["individual_amt"]),
+            "organ": rnd(r["organ_amt"]),
+            "foreign_qty": int(r["foreign_qty"]) if r["foreign_qty"] == r["foreign_qty"] else None,
+            "individual_qty": int(r["individual_qty"]) if r["individual_qty"] == r["individual_qty"] else None,
+            "organ_qty": int(r["organ_qty"]) if r["organ_qty"] == r["organ_qty"] else None,
+            "stocks": int(r["stocks"]),
+        })
+    return out
+
+
 def latest_investor_flow_map(market: str = "KR") -> dict[str, dict]:
     """One entry per ticker with its two most recent investor-flow rows.
 

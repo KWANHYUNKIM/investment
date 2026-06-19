@@ -323,6 +323,17 @@ export interface ArchiveStock extends StockInsight {
   why?: { direction: string; themes: string[] };
   depth?: "deep" | "bulk";
 }
+// 시장 전체 투자자별 매매 동향(일단위) — 순매수 금액(억원) + 수량
+export interface InvestorDay {
+  date: string;
+  foreign: number | null; // 외국인 순매수 (억원)
+  individual: number | null; // 개인 순매수 (억원)
+  organ: number | null; // 기관 순매수 (억원)
+  foreign_qty: number | null;
+  individual_qty: number | null;
+  organ_qty: number | null;
+  stocks: number; // 집계 종목 수
+}
 export interface DailyArchive {
   date: string | null;
   generated_at?: string;
@@ -330,6 +341,7 @@ export interface DailyArchive {
   market: {
     breadth: { up: number; down: number; flat: number; total: number };
     summary: string;
+    investor_trend?: InvestorDay[];
     macro: MacroLayer;
     rates?: RateLayer | null;
     foreign_view?: ForeignView | null;
