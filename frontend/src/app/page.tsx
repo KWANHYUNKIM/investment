@@ -4,13 +4,15 @@ import { useEffect, useState } from "react";
 import { api, Coverage } from "@/lib/api";
 import { MarketView } from "@/components/MarketView";
 import { MarketReport } from "@/components/MarketReport";
+import { LivePulse } from "@/components/LivePulse";
 import { IndustryMap } from "@/components/IndustryMap";
 import { Portfolio } from "@/components/Portfolio";
 
-type Tab = "market" | "report" | "industry" | "portfolio";
+type Tab = "market" | "live" | "report" | "industry" | "portfolio";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "market", label: "전종목 분석" },
+  { id: "live", label: "실시간 시황" },
   { id: "report", label: "데일리 리포트" },
   { id: "industry", label: "산업 지도" },
   { id: "portfolio", label: "포트폴리오" },
@@ -77,6 +79,7 @@ export default function Home() {
         ) : (
           <div className="h-full overflow-y-auto bg-[#fafafa]">
             <div className="w-full px-5 py-5">
+              {tab === "live" && <LivePulse />}
               {tab === "report" && <MarketReport />}
               {tab === "industry" && <IndustryMap />}
               {tab === "portfolio" && <Portfolio coverage={coverage} />}

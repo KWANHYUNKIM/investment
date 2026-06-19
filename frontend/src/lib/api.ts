@@ -355,6 +355,33 @@ export interface ArchiveDatesResponse {
   scheduler: Record<string, unknown>;
 }
 
+// 실시간 시황 펄스 — 시황·분석 글 취합 → 분위기·드라이버·시간순 흐름
+export interface PulseFlowItem {
+  title: string;
+  link: string;
+  source: string;
+  region: string | null; // 국내 / 해외
+  lean: "긍정" | "부정" | "중립";
+  ts: number | null;
+  ago: string | null; // '방금' / '12분 전' …
+  cluster: string[];
+}
+export interface LivePulse {
+  as_of: string;
+  pulse: {
+    verdict: string; // 강세 분위기 / 약세 분위기 / 혼조
+    tone: "긍정" | "부정" | "중립";
+    score: number; // -100 ~ 100
+    pos: number;
+    neg: number;
+    neutral: number;
+    narrative: string;
+  };
+  drivers: MacroDriver[];
+  flow: PulseFlowItem[];
+  pool_size: number;
+}
+
 // --- Industry / competition map -------------------------------------------
 export interface IndustryMember {
   ticker: string;
@@ -706,6 +733,7 @@ export const api = {
   report: (ticker: string, name?: string) =>
     request<ReportResponse>(`/api/data/report?ticker=${ticker}${name ? `&name=${encodeURIComponent(name)}` : ""}`),
   marketReport: () => request<MarketReport>(`/api/data/market-report`),
+  livePulse: () => request<LivePulse>(`/api/data/live-pulse`),
   crossAsset: () => request<CrossAssetLayer>(`/api/data/cross-asset`),
   assetDetail: (key: string, date?: string) =>
     request<AssetDetail>(

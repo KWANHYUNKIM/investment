@@ -14,6 +14,7 @@ from app.data import (
     dart_financials,
     feed,
     financials,
+    livepulse,
     finnhub,
     fundamentals_crawler,
     global_map,
@@ -372,6 +373,12 @@ def asset_quotes_endpoint(
 def market_report_endpoint():
     """Market-wide daily report: movers, most-traded, investor sellers, news."""
     return market_report.market_report()
+
+
+@router.get("/live-pulse")
+def live_pulse_endpoint():
+    """실시간 시황 펄스 — 시황·전망·분석 글 취합 → 분위기·드라이버·시간순 흐름. 60초 캐시."""
+    return livepulse.pulse()
 
 
 @router.get("/daily-archive/dates")
