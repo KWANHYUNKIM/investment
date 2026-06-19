@@ -280,7 +280,7 @@ function Financials({ fin, loading }: { fin: DartFinancials | null; loading: boo
   return (
     <div className="mt-5 overflow-hidden rounded-lg border border-[#e0e0e0]">
       <div className="flex flex-wrap items-center gap-2 border-b border-[#e0e0e0] bg-[#a9d08e] px-3 py-1.5">
-        <span className="text-sm font-bold text-[#244d1a]">📑 재무제표 (DART 전자공시 · 전 계정)</span>
+        <span className="text-sm font-bold text-[#244d1a]"> 재무제표 (DART 전자공시 · 전 계정)</span>
         {years.length > 0 && <span className="text-xs text-[#2d5016]/80">{years[years.length - 1]}~{years[0]} · {years.length}개년</span>}
       </div>
 

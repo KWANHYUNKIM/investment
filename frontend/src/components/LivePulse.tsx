@@ -10,7 +10,6 @@ const BLUE = "#1971c2";
 function toneColor(t?: string): string {
   return t === "긍정" ? RED : t === "부정" ? BLUE : "#666";
 }
-const REGION_FLAG: Record<string, string> = { 국내: "🇰🇷", 해외: "🌐" };
 
 export function LivePulse() {
   const [d, setD] = useState<LivePulseData | null>(null);
@@ -108,8 +107,8 @@ export function LivePulse() {
         {/* ── what's driving the market ──────────────────────── */}
         {d.drivers.length > 0 && (
           <section className="overflow-hidden rounded border border-[#d0d0d0] bg-white shadow-sm">
-            <div className="border-b border-[#d0d0d0] bg-[#9dc3e6] px-3 py-1.5 text-sm font-bold text-[#1a3a5e]">
-              🚦 시장을 끌고 있는 이슈 (실시간)
+            <div className="border-b border-[#d0d0d0] bg-[#e8efe8] px-3 py-1.5 text-sm font-bold text-[#1f5132]">
+              시장을 끌고 있는 이슈 (실시간)
             </div>
             <div className="grid gap-px bg-[#eee] sm:grid-cols-2 xl:grid-cols-3">
               {d.drivers.slice(0, 9).map((dr) => (
@@ -122,7 +121,7 @@ export function LivePulse() {
         {/* ── live flow feed (시간순) ─────────────────────────── */}
         <section className="overflow-hidden rounded border border-[#d0d0d0] bg-white shadow-sm">
           <div className="flex items-center justify-between border-b border-[#d0d0d0] bg-[#217346] px-3 py-1.5 text-sm font-bold text-white">
-            <span>📰 실시간 흐름 — 시황·분석 (최신순)</span>
+            <span>실시간 흐름 — 시황·분석 (최신순)</span>
             <span className="text-xs font-normal text-white/70">30초마다 자동 갱신</span>
           </div>
           <ul className="divide-y divide-[#f0f0f0]">
@@ -174,7 +173,7 @@ function FlowRow({ it }: { it: PulseFlowItem }) {
           </a>
           <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-[#999]">
             {it.ago && <span className="font-semibold text-[#217346]">{it.ago}</span>}
-            {it.region && <span>{REGION_FLAG[it.region] ?? ""} {it.region}</span>}
+            {it.region && <span>{it.region}</span>}
             {it.source && <span>· {it.source}</span>}
             <span style={{ color: c }}>· {it.lean}</span>
           </div>
@@ -196,7 +195,7 @@ function Sheet({ title, right, children }: { title: string; right: React.ReactNo
     <div className="overflow-hidden rounded-md border border-[#d0d0d0] bg-white shadow-sm">
       <div className="flex items-center justify-between bg-[#217346] px-4 py-2 text-white">
         <span className="flex items-center gap-2 text-sm font-semibold">
-          <span className="text-base">📡</span> {title}
+          {title}
         </span>
         {right}
       </div>

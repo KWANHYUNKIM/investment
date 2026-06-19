@@ -361,6 +361,27 @@ def market_investor_daily(as_of: str | None = None, days: int = 10) -> list[dict
     return out
 
 
+def organ_flow_frame(market: str = "KR") -> pd.DataFrame:
+    """누적 투자자 수급 × 종가 — 기관(organ) 매집/이탈 국면 분석용(원 단위 금액 환산은 호출부).
+
+    ticker·date별 organ/foreigner/individual 순매수 수량 + 그날 종가. 종목별 시계열로
+    묶어 '언제 담고 던졌나'를 유추한다.
+    """
+    with connection() as conn:
+        return conn.execute(
+            """
+            SELECT f.ticker, CAST(f.date AS VARCHAR) AS date,
+                   f.organ, f.foreigner, f.individual, p.close
+            FROM investor_flow f
+            JOIN prices p
+              ON p.market = f.market AND p.ticker = f.ticker AND p.date = f.date
+            WHERE f.market = ? AND p.close IS NOT NULL
+            ORDER BY f.ticker, f.date
+            """,
+            [market],
+        ).df()
+
+
 def latest_investor_flow_map(market: str = "KR") -> dict[str, dict]:
     """One entry per ticker with its two most recent investor-flow rows.
 

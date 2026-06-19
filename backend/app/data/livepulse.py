@@ -21,29 +21,65 @@ _lock = threading.Lock()
 _cache: dict = {"ts": 0.0, "data": None}
 TTL = 60.0  # 60초 — 실시간 폴링용
 
+# 한 쿼리당 최대 기사 수 · 흐름 피드 노출 수. 더 많은 데이터를 위해 크게.
+_PER_QUERY = 20
+_FLOW_MAX = 120
+
 # (query, hl, gl, ceid, region) — 시황/전망/분석/전략/수급에 가중. 국내+해외.
 _QUERIES: tuple[tuple[str, str, str, str, str], ...] = (
-    # 국내 시황·분석·전략
+    # ── 국내 시황·분석·전략·수급 ──
     ("증시 시황 마감 분석", "ko", "KR", "KR:ko", "국내"),
     ("코스피 전망 증시 전략", "ko", "KR", "KR:ko", "국내"),
     ("코스닥 시황 분석", "ko", "KR", "KR:ko", "국내"),
     ("외국인 기관 수급 코스피", "ko", "KR", "KR:ko", "국내"),
+    ("코스피 외국인 순매수 순매도", "ko", "KR", "KR:ko", "국내"),
     ("주식 시장 전망 투자 전략", "ko", "KR", "KR:ko", "국내"),
     ("증시 마감 특징주", "ko", "KR", "KR:ko", "국내"),
+    ("증시 전문가 진단 전망", "ko", "KR", "KR:ko", "국내"),
     ("환율 금리 증시 영향", "ko", "KR", "KR:ko", "국내"),
-    # 해외 시황·분석
+    ("채권 국채 금리 시장 동향", "ko", "KR", "KR:ko", "국내"),
+    ("선물 옵션 파생 증시", "ko", "KR", "KR:ko", "국내"),
+    ("업종 섹터 증시 시황", "ko", "KR", "KR:ko", "국내"),
+    ("테마주 급등 급락 분석", "ko", "KR", "KR:ko", "국내"),
+    ("반도체 2차전지 업종 시황", "ko", "KR", "KR:ko", "국내"),
+    ("기관 연기금 매매 동향", "ko", "KR", "KR:ko", "국내"),
+    ("증권사 리포트 목표주가 전망", "ko", "KR", "KR:ko", "국내"),
+    # ── 해외 시황·분석·전략 ──
     ("stock market today analysis", "en-US", "US", "US:en", "해외"),
     ("market outlook stocks strategy", "en-US", "US", "US:en", "해외"),
     ("wall street today market wrap", "en-US", "US", "US:en", "해외"),
     ("global markets analysis", "en-US", "US", "US:en", "해외"),
     ("Nasdaq S&P 500 today", "en-US", "US", "US:en", "해외"),
+    ("stock market movers today", "en-US", "US", "US:en", "해외"),
+    ("sector performance stocks today", "en-US", "US", "US:en", "해외"),
+    ("bond yields treasury market today", "en-US", "US", "US:en", "해외"),
+    ("asia markets today Nikkei Hang Seng", "en-US", "US", "US:en", "해외"),
+    ("market sentiment risk appetite", "en-US", "US", "US:en", "해외"),
+    ("earnings season stocks reaction", "en-US", "US", "US:en", "해외"),
+    ("Federal Reserve markets reaction", "en-US", "US", "US:en", "해외"),
 )
+
+# 비(非)기사(영상·집계 페이지·빈 출처 등)를 걸러 '무조건 기사'만 남기는 필터.
+_NON_ARTICLE_SRC = ("youtube", "유튜브")
+
+
+def _is_article(a: dict) -> bool:
+    title = (a.get("title") or "").strip()
+    src = (a.get("source") or "").strip()
+    link = (a.get("link") or "").strip()
+    if not title or not src:           # 제목·출처(언론사) 없으면 기사 아님
+        return False
+    if not link.startswith("http"):    # 유효한 기사 링크 필수
+        return False
+    if any(b in src.lower() for b in _NON_ARTICLE_SRC):  # 영상 등 제외
+        return False
+    return True
 
 
 def _fetch_one(q: tuple[str, str, str, str, str]) -> list[dict]:
     query, hl, gl, ceid, region = q
     try:
-        arts = news._fetch(query, hl, gl, ceid, 12)
+        arts = news._fetch(query, hl, gl, ceid, _PER_QUERY)
     except Exception:
         return []
     for a in arts:
@@ -74,14 +110,20 @@ def pulse(force: bool = False) -> dict:
             return _cache["data"]
 
     pool: list[dict] = []
-    seen: set[str] = set()
-    with ThreadPoolExecutor(max_workers=8) as ex:
+    seen: set[str] = set()         # 제목 중복
+    seen_links: set[str] = set()   # 링크 중복(같은 기사 다른 쿼리)
+    with ThreadPoolExecutor(max_workers=12) as ex:
         for arts in ex.map(_fetch_one, _QUERIES):
             for a in arts:
-                t = a.get("title", "")
-                if t and t not in seen:
-                    seen.add(t)
-                    pool.append(a)
+                if not _is_article(a):  # 무조건 기사만
+                    continue
+                t = a.get("title", "").strip()
+                link = a.get("link", "").strip()
+                if t in seen or link in seen_links:
+                    continue
+                seen.add(t)
+                seen_links.add(link)
+                pool.append(a)
     now = time.time()
     pool.sort(key=lambda a: a.get("ts") or 0, reverse=True)
 
@@ -102,7 +144,7 @@ def pulse(force: bool = False) -> dict:
 
     # 시간순 흐름 피드(가장 최근 헤드라인부터).
     flow: list[dict] = []
-    for a in pool[:40]:
+    for a in pool[:_FLOW_MAX]:
         flow.append(
             {
                 "title": a["title"],

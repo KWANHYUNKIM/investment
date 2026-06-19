@@ -14,7 +14,11 @@ from app.data import (
     dart_financials,
     feed,
     financials,
+    futuretheme,
+    growth_scheduler,
+    institutional,
     livepulse,
+    moneyflow,
     finnhub,
     fundamentals_crawler,
     global_map,
@@ -379,6 +383,52 @@ def market_report_endpoint():
 def live_pulse_endpoint():
     """실시간 시황 펄스 — 시황·전망·분석 글 취합 → 분위기·드라이버·시간순 흐름. 60초 캐시."""
     return livepulse.pulse()
+
+
+@router.get("/institutional")
+def institutional_endpoint():
+    """기관 수급 추적 — 기관이 언제 담고 던졌나(매집/이탈 상위) + 왜 팔았을지 추정."""
+    return institutional.track()
+
+
+@router.get("/money-flow")
+def money_flow_endpoint():
+    """글로벌 자금 흐름 — 유동성 레짐(완화/긴축)·한국 외국인 vs 국내 수급·크로스에셋·자산군별 자금 뉴스."""
+    return moneyflow.pulse()
+
+
+@router.get("/future-themes")
+def future_themes_endpoint():
+    """미래 성장테마 요약(좌측 목록) — 메가트렌드별 모멘텀·종목수·하락후보수."""
+    return {"themes": futuretheme.index()}
+
+
+@router.get("/future-theme")
+def future_theme_endpoint(key: str = Query(..., description="theme key")):
+    """한 테마 상세 — 뉴스 동향(무엇이 구축되나) + 매핑 종목(미래가치 후보 강조)."""
+    t = futuretheme.get(key)
+    if not t:
+        raise HTTPException(404, "해당 테마 없음")
+    return t
+
+
+@router.get("/future-themes/status")
+def future_themes_status():
+    """미래 성장테마 백그라운드 스케줄러 상태 + 저장된 스냅샷 날짜."""
+    return growth_scheduler.status()
+
+
+@router.get("/future-themes/dates")
+def future_themes_dates():
+    """누적 저장된 미래 성장테마 스냅샷 날짜(최신순)."""
+    return {"dates": futuretheme.list_dates()}
+
+
+@router.post("/future-themes/refresh")
+def future_themes_refresh():
+    """미래 성장테마를 지금 즉시 재크롤(뉴스+매핑)하고 스냅샷 저장."""
+    futuretheme.themes(force=True)
+    return futuretheme.snapshot(force=True)
 
 
 @router.get("/daily-archive/dates")

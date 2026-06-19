@@ -7,11 +7,11 @@ const RED = "#c92a2a";
 const BLUE = "#1971c2";
 
 const FLAG: Record<string, string> = {
-  KR: "🇰🇷", US: "🇺🇸", JP: "🇯🇵", CN: "🇨🇳", TW: "🇹🇼", HK: "🇭🇰",
-  NL: "🇳🇱", DE: "🇩🇪", FR: "🇫🇷", CH: "🇨🇭", UK: "🇬🇧", GB: "🇬🇧",
-  DK: "🇩🇰", LU: "🇱🇺", SE: "🇸🇪", AR: "🇦🇷", SG: "🇸🇬",
+  KR: "", US: "", JP: "", CN: "", TW: "", HK: "",
+  NL: "", DE: "", FR: "", CH: "", UK: "", GB: "",
+  DK: "", LU: "", SE: "", AR: "", SG: "",
 };
-const flag = (c?: string | null) => (c ? FLAG[c] ?? "🏳️" : "🏳️");
+const flag = (c?: string | null) => (c ? FLAG[c] ?? "" : "");
 
 // USD 금액 → $X.XT / $X.XB / $X.XM
 function usd(v: number | null | undefined): string {
@@ -66,7 +66,7 @@ export function GlobalMap() {
   return (
     <div className="overflow-hidden rounded-md border border-[#d0d0d0] bg-white shadow-sm">
       <div className="flex flex-wrap items-center justify-between gap-2 bg-[#1a3a5e] px-4 py-2 text-white">
-        <span className="flex items-center gap-2 text-sm font-semibold">🌍 글로벌 경쟁지도.xlsx</span>
+        <span className="flex items-center gap-2 text-sm font-semibold"> 글로벌 경쟁지도.xlsx</span>
         <span className="text-xs text-white/80">
           {clusters.length}개 기술/산업 클러스터 · 한국+미국+일본+유럽+중화권 · 시총 USD 환산
         </span>
@@ -74,7 +74,7 @@ export function GlobalMap() {
 
       {!finnhub && (
         <div className="border-b border-[#f0d9a0] bg-[#fff8e6] px-4 py-1.5 text-[12px] text-[#7a5b00]">
-          ⚠️ 해외 펀더멘털(Finnhub) 미연동 — 해외 종목은 목록만 표시됩니다. <b>FINNHUB_API_KEY</b>를 .env에 넣으면 영업이익률·시총까지 채워집니다.
+           해외 펀더멘털(Finnhub) 미연동 — 해외 종목은 목록만 표시됩니다. <b>FINNHUB_API_KEY</b>를 .env에 넣으면 영업이익률·시총까지 채워집니다.
           {foreignLoaded > 0 && <> (현재 {foreignLoaded}종목 적재됨)</>}
         </div>
       )}
@@ -109,8 +109,8 @@ export function GlobalMap() {
                       </span>
                       <span className="block truncate text-[10px] text-[#aaa]">
                         한국 {c.kr_count} · 해외 {c.foreign_count}사
-                        {c.tech ? " · 🔬기술주" : ""}
-                        {(c.battleground_count ?? 0) > 0 ? ` · ⚔️${c.battleground_count}` : ""}
+                        {c.tech ? " · 기술주" : ""}
+                        {(c.battleground_count ?? 0) > 0 ? ` · ${c.battleground_count}` : ""}
                       </span>
                     </span>
                     <span className="text-right text-xs font-bold tabular-nums" style={marginStyle(c.avg_op_margin)}>
@@ -281,7 +281,7 @@ function Battlegrounds({
   return (
     <section className="overflow-hidden rounded border border-[#d0d0d0] bg-white shadow-sm">
       <div className="border-b border-[#d0d0d0] bg-[#2b4a6f] px-3 py-1.5 text-sm font-bold text-white">
-        ⚔️ 경쟁 구도 — 누가 어디서 맞붙나 (세부 전장별)
+         경쟁 구도 — 누가 어디서 맞붙나 (세부 전장별)
       </div>
       <div className="grid gap-px bg-[#e6e6e6] sm:grid-cols-2 xl:grid-cols-3">
         {list.map((b) => (
@@ -334,31 +334,31 @@ function MemberDeep({ m, cols }: { m: GlobalMember; cols: number }) {
           <div className="grid gap-2 md:grid-cols-2">
             {p.tech && (
               <div className="rounded border-l-2 border-[#1a3a5e] bg-white px-3 py-2">
-                <div className="text-[11px] font-bold text-[#1a3a5e]">🔬 핵심 기술 / 제품</div>
+                <div className="text-[11px] font-bold text-[#1a3a5e]"> 핵심 기술 / 제품</div>
                 <p className="mt-0.5 text-[12px] leading-relaxed text-[#444]">{p.tech}</p>
               </div>
             )}
             {p.biz && (
               <div className="rounded border-l-2 border-[#2f9e44] bg-white px-3 py-2">
-                <div className="text-[11px] font-bold text-[#2b8a3e]">💰 영업이익을 어떻게 내나</div>
+                <div className="text-[11px] font-bold text-[#2b8a3e]"> 영업이익을 어떻게 내나</div>
                 <p className="mt-0.5 text-[12px] leading-relaxed text-[#444]">{p.biz}</p>
               </div>
             )}
             {p.moat && (
               <div className="rounded border-l-2 border-[#e8590c] bg-white px-3 py-2">
-                <div className="text-[11px] font-bold text-[#d9480f]">🛡️ 경쟁 우위 / 해자</div>
+                <div className="text-[11px] font-bold text-[#d9480f]"> 경쟁 우위 / 해자</div>
                 <p className="mt-0.5 text-[12px] leading-relaxed text-[#444]">{p.moat}</p>
               </div>
             )}
             {p.invest && (
               <div className="rounded border-l-2 border-[#9c36b5] bg-white px-3 py-2">
-                <div className="text-[11px] font-bold text-[#862e9c]">📈 투자(R&D·CAPEX) 대비 회수</div>
+                <div className="text-[11px] font-bold text-[#862e9c]"> 투자(R&D·CAPEX) 대비 회수</div>
                 <p className="mt-0.5 text-[12px] leading-relaxed text-[#444]">{p.invest}</p>
               </div>
             )}
           </div>
         ) : (
-          <div className="mb-2 text-[12px] text-[#999]">📋 정성 프로파일 미등록 — 아래 정량 지표만 표시합니다. (업종: {m.note ?? "—"})</div>
+          <div className="mb-2 text-[12px] text-[#999]"> 정성 프로파일 미등록 — 아래 정량 지표만 표시합니다. (업종: {m.note ?? "—"})</div>
         )}
         <div className="mt-2">
           <div className="mb-1 text-[11px] font-bold text-[#1a3a5e]">이익 · 투자 효율</div>
@@ -529,7 +529,7 @@ function CompareTable({ picked }: { picked: GlobalMember[] }) {
       {picked.map((m) => (
         <td key={`${m.market}-${m.code}`} className="border border-[#e0e0e0] px-2 py-1.5 text-center text-[13px] tabular-nums">
           {render(m)}
-          {medal && medal(m) ? " 🥇" : ""}
+          {medal && medal(m) ? " " : ""}
         </td>
       ))}
     </tr>
@@ -601,17 +601,17 @@ function CompareTable({ picked }: { picked: GlobalMember[] }) {
             {hasProfile && (
               <>
                 <Section title="기술 · 사업 구조 (정성 분석)" />
-                <ProfileRow label="🔬 핵심 기술/제품" picked={picked} get={(p) => p?.tech} />
-                <ProfileRow label="💰 영업이익 창출 방식" picked={picked} get={(p) => p?.biz} />
-                <ProfileRow label="🛡️ 경쟁 우위/해자" picked={picked} get={(p) => p?.moat} />
-                <ProfileRow label="📈 투자 대비 회수" picked={picked} get={(p) => p?.invest} />
+                <ProfileRow label=" 핵심 기술/제품" picked={picked} get={(p) => p?.tech} />
+                <ProfileRow label=" 영업이익 창출 방식" picked={picked} get={(p) => p?.biz} />
+                <ProfileRow label=" 경쟁 우위/해자" picked={picked} get={(p) => p?.moat} />
+                <ProfileRow label=" 투자 대비 회수" picked={picked} get={(p) => p?.invest} />
               </>
             )}
           </tbody>
         </table>
       </div>
       <p className="text-[11px] leading-relaxed text-[#999]">
-        🥇 = 항목별 최우수(부채비율·PER은 낮을수록). 해외는 Finnhub(TTM), 한국은 DART·FnGuide(최근 사업연도) 기준이라 시점이 다소 다를 수 있습니다.
+         = 항목별 최우수(부채비율·PER은 낮을수록). 해외는 Finnhub(TTM), 한국은 DART·FnGuide(최근 사업연도) 기준이라 시점이 다소 다를 수 있습니다.
         제품·사업부문별 영업이익(발생처 세분)은 공개 무료 데이터로는 정량화가 어려워 '주요 사업/제품' 수준으로 제공합니다.
       </p>
     </div>

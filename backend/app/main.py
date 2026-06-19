@@ -10,7 +10,10 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api import backtest, data, portfolio, screening
 from app.core.config import get_settings
-from app.data import fundamentals_crawler, industry_scheduler, price_scheduler, report_scheduler, store
+from app.data import (
+    fundamentals_crawler, growth_scheduler, industry_scheduler,
+    price_scheduler, report_scheduler, store,
+)
 
 settings = get_settings()
 
@@ -44,6 +47,9 @@ def _startup() -> None:
     # Background industry scheduler: refresh KRX-DESC industry profiles and snapshot
     # the per-industry competition/research feed so it accumulates over time.
     industry_scheduler.start()
+    # Background growth scheduler: keep the news-driven feeds (미래 성장테마·실시간 시황)
+    # continuously crawled/warmed and snapshot the future-theme picture daily.
+    growth_scheduler.start()
 
 
 @app.get("/api/health", tags=["meta"])

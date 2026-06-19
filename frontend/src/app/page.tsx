@@ -5,14 +5,21 @@ import { api, Coverage } from "@/lib/api";
 import { MarketView } from "@/components/MarketView";
 import { MarketReport } from "@/components/MarketReport";
 import { LivePulse } from "@/components/LivePulse";
+import { FutureTheme } from "@/components/FutureTheme";
+import { MoneyFlow } from "@/components/MoneyFlow";
+import { InstitutionalFlow } from "@/components/InstitutionalFlow";
+import { IndexStrip } from "@/components/IndexStrip";
 import { IndustryMap } from "@/components/IndustryMap";
 import { Portfolio } from "@/components/Portfolio";
 
-type Tab = "market" | "live" | "report" | "industry" | "portfolio";
+type Tab = "market" | "live" | "money" | "inst" | "future" | "report" | "industry" | "portfolio";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "market", label: "전종목 분석" },
   { id: "live", label: "실시간 시황" },
+  { id: "money", label: "자금 흐름" },
+  { id: "inst", label: "기관 추적" },
+  { id: "future", label: "미래 성장테마" },
   { id: "report", label: "데일리 리포트" },
   { id: "industry", label: "산업 지도" },
   { id: "portfolio", label: "포트폴리오" },
@@ -66,6 +73,9 @@ export default function Home() {
         </div>
       </div>
 
+      {/* real-time global index strip */}
+      <IndexStrip />
+
       {online === false && (
         <div className="shrink-0 border-b border-rose-300 bg-rose-50 px-6 py-2.5 text-sm text-rose-700">
           백엔드 API에 연결할 수 없습니다. <code className="rounded bg-rose-100 px-1.5 font-mono">uvicorn app.main:app</code> 가 실행 중인지 확인하세요.
@@ -80,6 +90,9 @@ export default function Home() {
           <div className="h-full overflow-y-auto bg-[#fafafa]">
             <div className="w-full px-5 py-5">
               {tab === "live" && <LivePulse />}
+              {tab === "money" && <MoneyFlow />}
+              {tab === "inst" && <InstitutionalFlow />}
+              {tab === "future" && <FutureTheme />}
               {tab === "report" && <MarketReport />}
               {tab === "industry" && <IndustryMap />}
               {tab === "portfolio" && <Portfolio coverage={coverage} />}

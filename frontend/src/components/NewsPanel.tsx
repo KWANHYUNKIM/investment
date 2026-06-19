@@ -53,13 +53,13 @@ export function NewsPanel({
     <aside className="flex min-h-0 flex-1 flex-col bg-white">
       {/* sheet title bar (green) */}
       <div className="flex shrink-0 items-center justify-between bg-[#217346] px-3 py-1.5 text-white">
-        <span className="flex items-center gap-1.5 text-sm font-semibold">📰 종목뉴스.xlsx</span>
+        <span className="flex items-center gap-1.5 text-sm font-semibold"> 종목뉴스.xlsx</span>
         {stock && (
           <button
             onClick={onOpenChart}
             className="shrink-0 rounded border border-white/30 bg-white/15 px-2 py-0.5 text-xs font-semibold text-white hover:bg-white/25"
           >
-            📈 차트
+             차트
           </button>
         )}
       </div>
@@ -80,7 +80,7 @@ export function NewsPanel({
       <div className="min-h-0 flex-1 overflow-y-auto bg-[#fafafa]">
         {!stock ? (
           <div className="flex h-full flex-col items-center justify-center px-6 text-center text-sm text-[#999]">
-            <div className="mb-2 text-3xl">🔎</div>
+            <div className="mb-2 text-3xl"></div>
             왼쪽 표에서 종목을 선택하면
             <br />
             관련 <b className="text-[#666]">국내·해외 뉴스</b>가 여기 표시됩니다.

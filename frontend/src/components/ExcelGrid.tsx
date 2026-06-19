@@ -205,7 +205,7 @@ export function ExcelGrid({ onPickStock }: { onPickStock: (row: GridRow) => void
       {/* toolbar / search + data controls */}
       <div className="flex shrink-0 flex-wrap items-center gap-3 border-b border-[#d0d0d0] bg-[#f3f2f1] px-3 py-2">
         <div className="flex items-center gap-2 rounded border border-[#bdbdbd] bg-white px-3 py-1.5">
-          <span className="text-[#888]">🔍</span>
+          <span className="text-[#888]"></span>
           <input
             value={q}
             onChange={(e) => {

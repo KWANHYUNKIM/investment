@@ -249,13 +249,24 @@ def build(date_override: str | None = None) -> dict:
     if cross_data and cross_data.get("flow", {}).get("summary"):
         parts.append(cross_data["flow"]["summary"])
 
+    generated_at = time.strftime("%Y-%m-%d %H:%M:%S")
+    # 데이터별 '최근 언제 들어왔나'(기준/갱신 시점) — 화면에 모두 표시.
+    data_freshness = {
+        "report_generated": generated_at,          # 이 리포트를 조립(뉴스·매크로 수집)한 시각
+        "price_date": date,                        # 시세(가격) 최신 거래일
+        "investor_date": investor_trend[0]["date"] if investor_trend else None,  # 투자자 수급 최근 확정 거래일
+        "cross_asset_as_of": (cross_data or {}).get("as_of"),  # 크로스에셋 시세 기준 시각
+        "macro_pool": macro_data.get("pool_size"),  # 매크로/뉴스 취합 건수(생성 시각 기준)
+    }
+
     return {
         "date": date,
-        "generated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "generated_at": generated_at,
         "scope": {"total": len(valid), "deep": len(deep_by_ticker), "deep_n": deep_n},
         "market": {
             "breadth": {"up": up, "down": down, "flat": flat, "total": len(valid)},
             "summary": " ".join(p for p in parts if p),
+            "data_freshness": data_freshness,
             "investor_trend": investor_trend,
             "macro": macro_data,
             "rates": rates_data,

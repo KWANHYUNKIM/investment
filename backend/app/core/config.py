@@ -60,6 +60,11 @@ class Settings(BaseSettings):
     industry_top_k: int = 6        # companies analysed per industry (news fetch)
     industry_snapshot_n: int = 30  # industries persisted in each daily snapshot
 
+    # 미래 성장테마 + 실시간 시황: 백그라운드로 주기적으로 뉴스를 다시 크롤링해 캐시를
+    # 데우고, 미래 성장테마는 하루 1개 JSON으로 누적 저장한다. GROWTH_SCHEDULER=false로 끔.
+    growth_scheduler: bool = True
+    growth_scheduler_interval: float = 1800.0  # 30분마다 테마/시황 갱신
+
     @property
     def duckdb_path(self) -> Path:
         return self.data_dir / "market.duckdb"
@@ -68,9 +73,14 @@ class Settings(BaseSettings):
     def reports_dir(self) -> Path:
         return self.data_dir / "daily_reports"
 
+    @property
+    def future_themes_dir(self) -> Path:
+        return self.data_dir / "future_themes"
+
     def ensure_dirs(self) -> None:
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self.reports_dir.mkdir(parents=True, exist_ok=True)
+        self.future_themes_dir.mkdir(parents=True, exist_ok=True)
 
 
 @lru_cache

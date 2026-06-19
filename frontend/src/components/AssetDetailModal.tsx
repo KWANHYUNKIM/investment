@@ -79,12 +79,12 @@ export function AssetDetailModal({
           ← 닫기
         </button>
         <span className="truncate text-sm font-semibold">
-          📊 {d?.label ?? assetKey} — 장마감.xlsx
+           {d?.label ?? assetKey} — 장마감.xlsx
           {d?.symbol && <span className="ml-1 font-mono text-xs text-white/70">{d.symbol}</span>}
         </span>
         {asOf && (
           <span className="ml-auto shrink-0 rounded bg-white/20 px-2 py-0.5 text-[11px] font-bold">
-            📦 {asOf} 마감 기준 (과거)
+             {asOf} 마감 기준 (과거)
           </span>
         )}
       </div>
@@ -280,7 +280,7 @@ function ConstituentGrid({ detail, asOf }: { detail: AssetDetail; asOf?: string 
       {/* toolbar */}
       <div className="flex flex-wrap items-center gap-2 border-b border-[#d0d0d0] bg-[#f3f2f1] px-3 py-1.5">
         <div className="flex items-center gap-1.5 rounded border border-[#bdbdbd] bg-white px-2 py-1">
-          <span className="text-[#888]">🔍</span>
+          <span className="text-[#888]"></span>
           <input
             value={q}
             onChange={(e) => { setQ(e.target.value); setLimit(50); }}

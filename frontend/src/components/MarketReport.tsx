@@ -113,6 +113,9 @@ export function MarketReport() {
         {data.generated_at && <span className="text-[#999]">생성 {data.generated_at}</span>}
       </div>
 
+      {/* 데이터 신선도 — 각 데이터가 언제 들어왔는지 모두 표시 */}
+      <FreshnessBar data={data} />
+
       {/* formula-bar style summary */}
       {data.market.summary && (
         <div className="flex items-start gap-2 border-b border-[#d0d0d0] bg-white px-3 py-2 text-sm">
@@ -141,7 +144,7 @@ export function MarketReport() {
         </Block>
 
         {/* ── 투자자별 매매 동향 (일단위) — 누가 매입/매도했나 ─ */}
-        <InvestorTrendBlock trend={data.market.investor_trend ?? []} />
+        <InvestorTrendBlock trend={data.market.investor_trend ?? []} reportDate={data.date} />
 
         {/* ── 크로스에셋 자금 흐름 (미국·글로벌 증시 · 금 · 비트코인) · 최신일만 실시간 ─ */}
         <CrossAssetBlock ca={data.market.cross_asset ?? null} live={isLatest} reportDate={data.date} />
@@ -149,7 +152,7 @@ export function MarketReport() {
         {/* ── global finance macro layer (전 세계 돈 관련 빅데이터) ─ */}
         {macro && macro.drivers.length > 0 && (
           <Block
-            label={`🌐 글로벌 금융 빅데이터 · 전 세계 매크로${
+            label={`글로벌 금융 빅데이터 · 전 세계 매크로${
               macro.pool_size ? ` (${macro.pool_size.toLocaleString("ko-KR")}건 취합)` : ""
             }`}
             color="#9dc3e6"
@@ -175,12 +178,12 @@ export function MarketReport() {
             {/* 지역별 글로벌 금융 뉴스 (모든 나라) */}
             {macro.by_region && macro.by_region.length > 0 && (
               <div className="border-t border-[#d0d0d0]">
-                <div className="bg-[#f3f2f1] px-3 py-1 text-xs font-bold text-[#555]">📰 지역별 글로벌 금융 뉴스</div>
+                <div className="bg-[#f3f2f1] px-3 py-1 text-xs font-bold text-[#555]">지역별 글로벌 금융 뉴스</div>
                 <div className="grid sm:grid-cols-2 xl:grid-cols-3">
                   {macro.by_region.map((r) => (
                     <div key={r.region} className="border-b border-r border-[#eee]">
                       <div className="flex items-baseline gap-1.5 bg-[#fafafa] px-3 py-1 text-xs font-bold text-[#1a3a5e]">
-                        {REGION_FLAG[r.region] ?? "🏳️"} {r.region}
+                        {r.region}
                         <span className="font-normal text-[#999]">{r.count}건</span>
                       </div>
                       <NewsList items={r.news.slice(0, 5)} dot="#9dc3e6" />
@@ -261,13 +264,43 @@ export function MarketReport() {
   );
 }
 
+/* 데이터 신선도 바 — 각 데이터가 '언제 들어왔는지'(기준/갱신 시점) 한눈에. */
+function FreshnessChip({ label, value, sub }: { label: string; value: string; sub?: string }) {
+  return (
+    <span className="inline-flex items-center gap-1 rounded border border-[#d8d8d8] bg-white px-2 py-0.5">
+      <span className="text-[#888]">{label}</span>
+      <b className="text-[#217346]">{value}</b>
+      {sub && <span className="text-[#aaa]">{sub}</span>}
+    </span>
+  );
+}
+function FreshnessBar({ data }: { data: DailyArchive }) {
+  const f = data.market.data_freshness;
+  const ca = data.market.cross_asset;
+  // data_freshness가 없는(기능 도입 이전) 과거 아카이브도 가진 정보로 최대한 표시.
+  const priceDate = f?.price_date ?? data.date ?? "—";
+  const investorDate = f?.investor_date ?? data.market.investor_trend?.[0]?.date ?? null;
+  const caAsOf = f?.cross_asset_as_of ?? ca?.as_of ?? null;
+  const gen = f?.report_generated ?? data.generated_at ?? null;
+  return (
+    <div className="flex flex-wrap items-center gap-1.5 border-b border-[#d0d0d0] bg-[#eef6f0] px-3 py-1.5 text-[11px] text-[#555]">
+      <span className="font-bold text-[#217346]">최근 데이터</span>
+      <FreshnessChip label="시세(가격)" value={priceDate} sub="장 마감 종가" />
+      <FreshnessChip label="투자자 수급" value={investorDate ?? "—"} sub="마감후 집계·1일 지연" />
+      {caAsOf && <FreshnessChip label="크로스에셋" value={caAsOf.slice(5)} sub="시세 기준" />}
+      <FreshnessChip label="뉴스·매크로" value={gen ? gen.slice(5) : "—"} sub={f?.macro_pool ? `${f.macro_pool.toLocaleString("ko-KR")}건` : "리포트 생성시"} />
+      {gen && <FreshnessChip label="리포트 생성" value={gen.slice(5)} />}
+    </div>
+  );
+}
+
 /* ── worksheet frame ──────────────────────────────────────── */
 function Sheet({ title, right, children }: { title: string; right?: ReactNode; children: ReactNode }) {
   return (
     <div className="overflow-hidden rounded-md border border-[#d0d0d0] bg-white shadow-sm">
       <div className="flex items-center justify-between bg-[#217346] px-4 py-2 text-white">
         <span className="flex items-center gap-2 text-sm font-semibold">
-          <span className="text-base">📊</span> {title}
+          {title}
         </span>
         {right}
       </div>
@@ -280,7 +313,7 @@ function Sheet({ title, right, children }: { title: string; right?: ReactNode; c
 function Block({ label, color, fg, children }: { label: string; color: string; fg: string; children: ReactNode }) {
   return (
     <section className="overflow-hidden rounded border border-[#d0d0d0] bg-white shadow-sm">
-      <div className="border-b border-white px-3 py-1.5 text-sm font-bold" style={{ background: color, color: fg }}>
+      <div className="border-b border-[#d0d0d0] bg-[#e8efe8] px-3 py-1.5 text-sm font-bold text-[#1f5132]">
         {label}
       </div>
       {children}
@@ -309,26 +342,52 @@ function flowStyle(v: number | null | undefined): React.CSSProperties {
   if (v == null) return { color: "#bbb" };
   return { color: v > 0 ? RED : v < 0 ? BLUE : "#666", fontWeight: 700 };
 }
-function InvestorTrendBlock({ trend }: { trend: InvestorDay[] }) {
+// 현재(최근 거래일) 한 주체의 매매현황 타일.
+function InvestorTile({ label, amt, qty }: { label: string; amt: number | null; qty: number | null }) {
+  const buy = (amt ?? 0) > 0;
+  const sell = (amt ?? 0) < 0;
+  const color = buy ? RED : sell ? BLUE : "#888";
+  const action = amt == null ? "데이터 없음" : buy ? "순매수" : sell ? "순매도" : "보합";
+  return (
+    <div className="flex flex-col items-center rounded border px-3 py-3" style={{ borderColor: `${color}33`, background: `${color}0d` }}>
+      <div className="text-sm font-bold text-[#3d2c66]">{label}</div>
+      <div className="mt-1 rounded-full px-2.5 py-0.5 text-xs font-bold text-white" style={{ background: color }}>{action}</div>
+      <div className="mt-1.5 text-xl font-bold tabular-nums" style={{ color }}>{eok(amt)}</div>
+      {qty != null && <div className="text-[11px] tabular-nums text-[#999]">{manShares(qty)}주</div>}
+    </div>
+  );
+}
+function InvestorTrendBlock({ trend, reportDate }: { trend: InvestorDay[]; reportDate?: string | null }) {
   if (!trend || trend.length === 0) return null;
-  // 가장 최근(=리포트 당일)을 주도 세력 배지로 강조.
+  // 가장 최근 확정 거래일 = 현재 매매현황(수급은 마감 후 집계라 보통 1일 지연).
   const top = trend[0];
+  const lag = reportDate && top.date !== reportDate;
   const led = (["foreign", "individual", "organ"] as const)
     .map((k) => ({ k, v: top[k] ?? 0, label: k === "foreign" ? "외국인" : k === "individual" ? "개인" : "기관" }))
     .filter((x) => x.v > 0)
     .sort((a, b) => b.v - a.v)[0];
   return (
-    <Block label="🧭 투자자별 매매 동향 (일단위 · 순매수 금액)" color="#b4a7d6" fg="#3d2c66">
-      {led && (
-        <div className="border-b border-[#eee] bg-[#f6f3fb] px-3 py-1.5 text-[13px] text-[#3d2c66]">
-          {top.date} <b>{led.label}</b>이(가) 순매수 주도 — 외국인 <span style={flowStyle(top.foreign)}>{eok(top.foreign)}</span> ·
-          기관 <span style={flowStyle(top.organ)}>{eok(top.organ)}</span> ·
-          개인 <span style={flowStyle(top.individual)}>{eok(top.individual)}</span>
+    <Block label="투자자별 매매현황 (현재 · 일단위)" color="#b4a7d6" fg="#3d2c66">
+      {/* 현재(최근 거래일) 매매현황 — 누가 매입/매도했나, 크게 */}
+      <div className="border-b border-[#eee] bg-[#f6f3fb] px-3 py-3">
+        <div className="mb-2 flex flex-wrap items-center gap-2 text-[13px] text-[#3d2c66]">
+          <span className="rounded bg-[#3d2c66] px-2 py-0.5 text-xs font-bold text-white">현재 매매현황</span>
+          <b>{top.date}</b> 기준 (집계 {top.stocks.toLocaleString("ko-KR")}종목)
+          {led && <span>· <b>{led.label}</b> 순매수 주도</span>}
+          {lag && <span className="text-[11px] text-[#999]">· 수급은 장 마감 후 집계 → 가장 최근 확정 거래일 기준 ({reportDate} 당일분은 마감 후 반영)</span>}
         </div>
-      )}
+        <div className="grid grid-cols-3 gap-2">
+          <InvestorTile label="외국인" amt={top.foreign} qty={top.foreign_qty} />
+          <InvestorTile label="개인" amt={top.individual} qty={top.individual_qty} />
+          <InvestorTile label="기관" amt={top.organ} qty={top.organ_qty} />
+        </div>
+      </div>
       <div className="overflow-x-auto">
         <table className="w-full border-collapse text-[13px]">
           <thead>
+            <tr className="bg-[#ece7f6] text-[11px] text-[#3d2c66]">
+              <th colSpan={5} className="border border-[#d0d0d0] px-2 py-1 text-left font-bold"> 일별 추이 (순매수 금액, 억원)</th>
+            </tr>
             <tr className="bg-[#ece7f6] text-xs text-[#3d2c66]">
               <Th w="22%">일자</Th>
               <Th w="22%" right>외국인</Th>
@@ -351,7 +410,7 @@ function InvestorTrendBlock({ trend }: { trend: InvestorDay[] }) {
         </table>
       </div>
       <p className="px-3 py-1.5 text-[11px] leading-relaxed text-[#999]">
-        종목별 누적 수급(네이버)을 그날 종가와 곱해 시장 전체 <b>순매수 금액</b>으로 집계(개인/외국인/기관). 빨강=순매수(매입) · 파랑=순매도. 수급 누적이 진행될수록 집계 종목 수가 늘어납니다. (KRX 기관 세부주체는 비공개 구간)
+        종목별 누적 수급(네이버)을 그날 종가와 곱해 시장 전체 <b>순매수 금액</b>으로 집계(개인/외국인/기관). 빨강=순매수(매입) · 파랑=순매도. <b>투자자별 매매(매수·매도)는 장 마감 후 집계되어 보통 1거래일 지연</b>되므로, 당일 가격은 있어도 그날 수급은 다음 날 확정됩니다 — 위 "현재 매매현황"은 가장 최근 확정 거래일 기준입니다. (KRX 기관 세부주체는 비공개 구간)
       </p>
     </Block>
   );
@@ -405,12 +464,12 @@ function ColTh({ children, w, center, right }: { children?: ReactNode; w: number
 
 /* region flags for the global finance feed */
 const REGION_FLAG: Record<string, string> = {
-  한국: "🇰🇷",
-  미국: "🇺🇸",
-  유럽: "🇪🇺",
-  중국: "🇨🇳",
-  일본: "🇯🇵",
-  글로벌: "🌐",
+  한국: "",
+  미국: "",
+  유럽: "",
+  중국: "",
+  일본: "",
+  글로벌: "",
 };
 
 /* format a cross-asset value by its unit */
@@ -472,7 +531,7 @@ function CrossAssetBlock({
   // 과거 날짜인데 그 일자의 크로스에셋 스냅샷이 저장돼 있지 않은 경우.
   if (!allowLive && !initial) {
     return (
-      <Block label="💵 크로스에셋 자금 흐름 · 미국/글로벌 증시 · 금 · 비트코인" color="#ffe08a" fg="#7a5b00">
+      <Block label="크로스에셋 자금 흐름 · 미국/글로벌 증시 · 금 · 비트코인" color="#ffe08a" fg="#7a5b00">
         <div className="px-3 py-4 text-sm text-[#999]">
           {reportDate} 일자에는 크로스에셋 데이터가 저장되어 있지 않습니다. (해당 기능 도입 이전 날짜)
         </div>
@@ -483,7 +542,7 @@ function CrossAssetBlock({
   const flow = ca.flow;
   const tone = flow.tone === "긍정" ? RED : flow.tone === "부정" ? BLUE : "#666";
   return (
-    <Block label="💵 크로스에셋 자금 흐름 · 미국/글로벌 증시 · 금 · 비트코인" color="#ffe08a" fg="#7a5b00">
+    <Block label="크로스에셋 자금 흐름 · 미국/글로벌 증시 · 금 · 비트코인" color="#ffe08a" fg="#7a5b00">
       {/* money-flow verdict banner */}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-[#eee] bg-[#fffaf0] px-3 py-2">
         <span className="rounded-full px-3 py-1 text-sm font-bold text-white" style={{ background: tone }}>
@@ -497,7 +556,7 @@ function CrossAssetBlock({
           </span>
         ) : (
           <span className="flex items-center gap-1 rounded bg-[#f0ead6] px-1.5 py-0.5 text-[11px] font-bold text-[#7a5b00]">
-            📦 {reportDate} 마감값 (아카이브)
+            {reportDate} 마감값 (아카이브)
           </span>
         )}
         <span className="text-[15px] text-[#444]">{flow.desc}</span>
@@ -573,7 +632,7 @@ function DigestList({ lines, color = "#9dc3e6" }: { lines: string[]; color?: str
 function ForeignViewBlock({ fv }: { fv: ForeignViewType }) {
   const tone = fv.lean === "긍정" ? RED : fv.lean === "부정" ? BLUE : "#666";
   return (
-    <Block label="🌐 외국인이 보는 한국 증시 (외신 시각)" color="#f4b084" fg="#7a3a0c">
+    <Block label="외국인이 보는 한국 증시 (외신 시각)" color="#f4b084" fg="#7a3a0c">
       <div className="space-y-2 px-3 py-2.5">
         <div className="flex flex-wrap items-center gap-2">
           <span
@@ -604,7 +663,7 @@ function ForeignViewBlock({ fv }: { fv: ForeignViewType }) {
 /* 금리 발표 일정 + 인상 시기 전망 */
 function RatesBlock({ rates }: { rates: RateLayer }) {
   return (
-    <Block label="📅 금리 발표 일정 · 인상 시기 전망" color="#9dc3e6" fg="#1a3a5e">
+    <Block label="금리 발표 일정 · 인상 시기 전망" color="#9dc3e6" fg="#1a3a5e">
       <div className="space-y-2.5 px-3 py-2.5">
         <div className="grid grid-cols-2 gap-2">
           {rates.schedule.map((m) => {
@@ -666,7 +725,7 @@ function MacroRow({ d }: { d: MacroDriver }) {
         <div className="flex flex-wrap gap-1">
           {regions.slice(0, 5).map(([reg, n]) => (
             <span key={reg} className="rounded bg-[#eaf1f8] px-1.5 py-0.5 text-[11px] text-[#1a3a5e]">
-              {REGION_FLAG[reg] ?? ""} {reg} {n}
+              {reg} {n}
             </span>
           ))}
         </div>
@@ -734,7 +793,7 @@ function HouseTags({ houses }: { houses: BrokerHouse[] }) {
           }`}
           title={h.volume != null ? `${h.volume.toLocaleString("ko-KR")}주` : undefined}
         >
-          {h.foreign && "🌐 "}
+          {h.foreign && " "}
           {h.name}
           {h.volume != null && <span className="ml-1 tabular-nums text-[#999]">{manShares(h.volume)}</span>}
         </span>
@@ -786,7 +845,7 @@ function BrokerSheet({ stocks }: { stocks: ArchiveStock[] }) {
         </table>
       </div>
       <p className="px-3 py-1.5 text-[11px] text-[#999]">
-        🌐 표시는 외국계 창구(모간스탠리·제이피모간·골드만삭스 등). 당일 매매 상위 5개 회원사 기준 추정치이며, 기관 세부주체(연기금·투신 등)는 KRX 비공개 구간으로 제공되지 않습니다.
+         표시는 외국계 창구(모간스탠리·제이피모간·골드만삭스 등). 당일 매매 상위 5개 회원사 기준 추정치이며, 기관 세부주체(연기금·투신 등)는 KRX 비공개 구간으로 제공되지 않습니다.
       </p>
     </Block>
   );

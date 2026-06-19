@@ -29,13 +29,13 @@ export function MarketView() {
               onClick={() => setReport(active)}
               className="flex-1 rounded bg-[#217346] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#1b5e3a]"
             >
-              📋 오늘 리포트
+               오늘 리포트
             </button>
             <button
               onClick={() => setChart(active)}
               className="rounded border border-[#cdcdcd] bg-white px-3 py-1.5 text-xs font-semibold text-[#217346] hover:bg-[#eef6f0]"
             >
-              📈 차트
+               차트
             </button>
           </div>
         )}

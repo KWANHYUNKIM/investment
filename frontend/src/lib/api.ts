@@ -341,6 +341,13 @@ export interface DailyArchive {
   market: {
     breadth: { up: number; down: number; flat: number; total: number };
     summary: string;
+    data_freshness?: {
+      report_generated: string | null;
+      price_date: string | null;
+      investor_date: string | null;
+      cross_asset_as_of: string | null;
+      macro_pool: number | null;
+    };
     investor_trend?: InvestorDay[];
     macro: MacroLayer;
     rates?: RateLayer | null;
@@ -353,6 +360,184 @@ export interface DailyArchive {
 export interface ArchiveDatesResponse {
   dates: string[];
   scheduler: Record<string, unknown>;
+}
+
+// 기관 수급 추적 — 언제 담고 던졌나 + 왜 팔았을지 추정
+export interface InstFlowStock {
+  ticker: string;
+  name: string;
+  sector: string | null;
+  net_amt: number; // 기간 기관 순매수(억)
+  buy_amt: number;
+  sell_amt: number;
+  recent_amt: number;
+  days: number;
+  price_chg: number | null; // 기간 주가 변화(%)
+  foreign_net: number; // 같은 기간 외국인 순매수(억)
+  max_buy: { date: string; amt: number };
+  max_sell: { date: string; amt: number };
+  behavior: string; // 매집 / 저가 매집 추정 / 이탈·분산 / 손절 추정
+  change_pct: number | null;
+  per: number | null;
+  pbr: number | null;
+  ret_1m: number | null;
+  pct_from_high: number | null;
+  why: string[];
+}
+export interface InstitutionalFlow {
+  as_of: string;
+  window_days: number;
+  universe: number;
+  accumulating: InstFlowStock[];
+  distributing: InstFlowStock[];
+}
+
+// 글로벌 자금 흐름 — 유동성 레짐 + 한국 외국인/국내 수급 + 크로스에셋 + 자산군별 자금 뉴스
+export interface MoneyHeadline {
+  title: string;
+  link: string;
+  source: string;
+}
+export interface MoneyCategory {
+  key: string;
+  label: string;
+  icon: string;
+  direction: "우호" | "경계" | "중립";
+  pos: number;
+  neg: number;
+  count: number;
+  headlines: MoneyHeadline[];
+  digest: string[];
+}
+export interface MoneyKrDay {
+  date: string;
+  foreign: number | null;
+  domestic: number | null;
+  individual: number | null;
+  organ: number | null;
+}
+export interface GlobalMoneyFlow {
+  as_of: string;
+  verdict: {
+    liquidity: "완화" | "긴축" | "중립";
+    liquidity_label: string;
+    foreign_kr: "유입" | "이탈" | "중립";
+    risk: string;
+    narrative: string;
+  };
+  liquidity: {
+    regime: string;
+    tone: "완화" | "긴축" | "중립";
+    ease: number;
+    tight: number;
+    count: number;
+    headlines: MoneyHeadline[];
+    digest: string[];
+  };
+  indicators: {
+    key: string;
+    label: string;
+    value: number;
+    unit: string;
+    change: number | null;
+    signal: string;
+    desc: string;
+  }[];
+  regions: {
+    region: string;
+    label: string;
+    flag: string;
+    stance: "완화" | "긴축" | "중립";
+    ease: number;
+    tight: number;
+    count: number;
+    headlines: MoneyHeadline[];
+  }[];
+  rate_schedule: {
+    key: string;
+    flag: string;
+    name: string;
+    next_label: string | null;
+    next_date: string | null;
+    d_day: number | null;
+    remaining_2026: number | null;
+  }[];
+  kr_capital: {
+    series: MoneyKrDay[];
+    latest: MoneyKrDay | null;
+    foreign_direction: "유입" | "이탈" | "중립";
+  };
+  usdkrw: { value: number | null; change_pct: number | null } | null;
+  cross_asset: {
+    verdict: string | null;
+    tone: string | null;
+    desc: string | null;
+    metrics: { equities: number | null; crypto: number | null; gold: number | null; usdkrw: number | null } | null;
+    as_of: string | null;
+  };
+  categories: MoneyCategory[];
+}
+
+// 미래 성장테마 — 메가트렌드 동향 + 매핑 종목(미래가치 후보)
+export interface FutureThemeMember {
+  ticker: string;
+  name: string | null;
+  products: string | null;
+  wics_sector: string | null;
+  market_cap: number | null;
+  close: number | null;
+  change_pct: number | null;
+  ret_1m: number | null;
+  ret_3m: number | null;
+  ret_12m: number | null;
+  pct_from_high: number | null;
+  per: number | null;
+  pbr: number | null;
+  beaten: boolean; // 최근 하락(파란) = 미래가치 후보
+}
+export interface FutureThemeNews {
+  count: number;
+  pos: number;
+  neg: number;
+  lean: "긍정" | "부정" | "중립";
+  headlines: { title: string; link: string; source: string }[];
+  digest: string[];
+}
+export interface FutureThemeIndexItem {
+  key: string;
+  label: string;
+  icon: string;
+  desc: string;
+  momentum_score: number;
+  member_count: number;
+  beaten_count: number;
+  news_count: number;
+  lean: "긍정" | "부정" | "중립";
+}
+export interface FutureTheme {
+  key: string;
+  label: string;
+  icon: string;
+  desc: string;
+  news: FutureThemeNews;
+  momentum_score: number;
+  member_count: number;
+  beaten_count: number;
+  members: FutureThemeMember[];
+}
+export interface FutureThemesResponse {
+  themes: FutureThemeIndexItem[];
+}
+export interface FutureThemesStatus {
+  running: boolean;
+  ticks: number;
+  theme_refreshes: number;
+  snapshots: number;
+  last_run: string | null;
+  last_snapshot_date: string | null;
+  last_error: string | null;
+  interval_sec: number;
+  snapshot_dates: string[];
 }
 
 // 실시간 시황 펄스 — 시황·분석 글 취합 → 분위기·드라이버·시간순 흐름
@@ -734,6 +919,11 @@ export const api = {
     request<ReportResponse>(`/api/data/report?ticker=${ticker}${name ? `&name=${encodeURIComponent(name)}` : ""}`),
   marketReport: () => request<MarketReport>(`/api/data/market-report`),
   livePulse: () => request<LivePulse>(`/api/data/live-pulse`),
+  moneyFlow: () => request<GlobalMoneyFlow>(`/api/data/money-flow`),
+  institutional: () => request<InstitutionalFlow>(`/api/data/institutional`),
+  futureThemes: () => request<FutureThemesResponse>(`/api/data/future-themes`),
+  futureThemesStatus: () => request<FutureThemesStatus>(`/api/data/future-themes/status`),
+  futureTheme: (key: string) => request<FutureTheme>(`/api/data/future-theme?key=${encodeURIComponent(key)}`),
   crossAsset: () => request<CrossAssetLayer>(`/api/data/cross-asset`),
   assetDetail: (key: string, date?: string) =>
     request<AssetDetail>(
