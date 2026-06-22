@@ -149,6 +149,21 @@ def _govbond() -> dict | None:
     }
 
 
+def _msb() -> dict | None:
+    """통화안정증권 발행잔액(191Y001 주요 국공채, 통안증권×잔액, 월) — 한은의 시중자금 흡수."""
+    rows = _search("191Y001", "M", _months_ago(15), _months_ago(0), "0800000", "4")
+    if not rows:
+        return None
+    return {
+        "key": "msb", "label": "통화안정증권 발행잔액",
+        "period": _fmt_period(rows[-1]["period"]),
+        "display": f"{_trillion(rows[-1]['value']):,}조원",
+        "yoy": _yoy(rows, 12), "yoy_label": "전년동월比",
+        "desc": "한은이 시중 돈을 흡수하려 발행한 채권 잔액↑=유동성 흡수(긴축적)",
+        "series": [{"t": _fmt_period(r["period"]), "v": _trillion(r["value"])} for r in rows[-13:]],
+    }
+
+
 def snapshot(force: bool = False) -> dict:
     with _lock:
         if not force and _cache["data"] and (time.time() - _cache["ts"] < TTL):
@@ -159,7 +174,7 @@ def snapshot(force: bool = False) -> dict:
                 "reason": "ECOS_API_KEY 미설정 — backend/.env에 키를 넣으면 활성화됩니다.",
                 "indicators": []}
 
-    builders = [_m2, _household_credit, _govbond, _house_price]
+    builders = [_m2, _household_credit, _govbond, _msb, _house_price]
     indicators = []
     for b in builders:
         try:
