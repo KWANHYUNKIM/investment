@@ -519,6 +519,35 @@ export interface KoreaFlow {
   note: string;
 }
 
+// 부동산 실거래 — 국토부 RTMS (서울 25개구 아파트 매매 월별 거래량·거래대금)
+export interface RealEstateMonth {
+  ym: string;
+  label: string;
+  count: number;
+  amount_eok: number;
+  provisional: boolean; // 신고 진행중(잠정) — 보통 당월
+}
+export interface RealEstateRegion {
+  region: string;
+  count: number;
+  amount_eok: number;
+}
+export interface RealEstateTrades {
+  available: boolean;
+  reason?: string;
+  scope: string;
+  source?: string;
+  latest_ym?: string;
+  latest_label?: string;
+  latest_count?: number;
+  latest_amount_eok?: number;
+  mom_count_pct?: number | null;
+  region_ym?: string;
+  monthly: RealEstateMonth[];
+  by_region: RealEstateRegion[];
+  partial?: boolean;
+}
+
 // 미래 성장테마 — 메가트렌드 동향 + 매핑 종목(미래가치 후보)
 export interface FutureThemeMember {
   ticker: string;
@@ -965,6 +994,7 @@ export const api = {
   livePulse: () => request<LivePulse>(`/api/data/live-pulse`),
   moneyFlow: () => request<GlobalMoneyFlow>(`/api/data/money-flow`),
   koreaFlow: () => request<KoreaFlow>(`/api/data/korea-flow`),
+  realestateTrades: () => request<RealEstateTrades>(`/api/data/realestate-trades`),
   institutional: () => request<InstitutionalFlow>(`/api/data/institutional`),
   futureThemes: () => request<FutureThemesResponse>(`/api/data/future-themes`),
   futureThemesStatus: () => request<FutureThemesStatus>(`/api/data/future-themes/status`),

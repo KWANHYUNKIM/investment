@@ -29,6 +29,7 @@ from app.data import (
     industry_scheduler,
     investor,
     korea_flow,
+    realestate,
     market_report,
     news,
     price_scheduler,
@@ -423,6 +424,12 @@ def money_flow_endpoint():
 def korea_flow_endpoint():
     """한국 경제 흐름 — 부동산/리츠 ETF·국채 ETF 자금 신호 + 부동산·국채 뉴스 동향. 키 불필요."""
     return korea_flow.snapshot()
+
+
+@router.get("/realestate-trades")
+def realestate_trades_endpoint():
+    """부동산 실거래 — 서울 25개구 아파트 매매 월별 거래량·거래대금 + 지역별 분포(국토부 RTMS)."""
+    return realestate.snapshot()
 
 
 @router.get("/future-themes")

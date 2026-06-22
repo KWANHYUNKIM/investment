@@ -26,6 +26,10 @@ class Settings(BaseSettings):
     # 섹터·국가) for the 글로벌 경쟁지도. yfinance가 429로 막혀 그 대체 소스로 쓴다.
     finnhub_api_key: str = ""
 
+    # 공공데이터포털(data.go.kr) 무료 키 — 국토부 아파트 매매 실거래가(RTMS).
+    # 한국 경제 흐름 탭의 '부동산 거래액·거래량'(월별·지역별) 집계에 쓴다.
+    data_go_kr_key: str = ""
+
     # Demo mode: synthesize small intraday ticks on top of the settled snapshot
     # so the live grid visibly moves without a brokerage streaming API.
     mock_ticks: bool = True
