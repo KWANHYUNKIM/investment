@@ -251,19 +251,31 @@ def upsert_fundamentals_if_changed(df: pd.DataFrame) -> int:
     one — so duplicates are skipped and only real changes accumulate over time."""
     if df.empty:
         return 0
-    keep = []
+    # Fetch the latest stored snapshot for EVERY (market, ticker) in a single
+    # window-function query, then compare in Python. The previous version issued
+    # one SELECT per row (~2,800/cycle) while holding the global DuckDB lock,
+    # starving every read endpoint whenever the crawler ran.
     with connection() as conn:
-        for _, row in df.iterrows():
-            latest = conn.execute(
-                "SELECT * FROM fundamentals WHERE market = ? AND ticker = ? ORDER BY date DESC LIMIT 1",
-                [row["market"], row["ticker"]],
-            ).df()
-            if latest.empty:
-                keep.append(row)
-                continue
-            prev = latest.iloc[0]
-            if any(_changed(row.get(f), prev.get(f)) for f in _FUND_FIELDS if f in df.columns):
-                keep.append(row)
+        latest_df = conn.execute(
+            """
+            WITH ranked AS (
+                SELECT *, ROW_NUMBER() OVER (
+                           PARTITION BY market, ticker ORDER BY date DESC) AS _rn
+                FROM fundamentals
+            )
+            SELECT * FROM ranked WHERE _rn = 1
+            """
+        ).df()
+    latest_map = {(r["market"], r["ticker"]): r for r in latest_df.to_dict("records")}
+    fields = [f for f in _FUND_FIELDS if f in df.columns]
+    keep = []
+    for _, row in df.iterrows():
+        prev = latest_map.get((row["market"], row["ticker"]))
+        if prev is None:
+            keep.append(row)
+            continue
+        if any(_changed(row.get(f), prev.get(f)) for f in fields):
+            keep.append(row)
     if not keep:
         return 0
     return upsert_fundamentals(pd.DataFrame(keep))
@@ -714,8 +726,22 @@ def screen_table_prices() -> list[dict]:
         return _screen_cache[1]
 
     with connection() as conn:
+        # Every factor here looks back at most 252 trading days (the 12-month
+        # return uses close[-253]; volatility / 52w-high use the last 252). So we
+        # only need each ticker's most recent ~260 rows — pulling the full 4M-row
+        # history just to slice its tail wastes ~6× the rows. The window-function
+        # top-N is result-identical because the compute never indexes older rows.
         df = conn.execute(
-            "SELECT ticker, date, close, volume FROM prices ORDER BY ticker, date"
+            """
+            WITH r AS (
+                SELECT ticker, date, close, volume,
+                       ROW_NUMBER() OVER (PARTITION BY ticker ORDER BY date DESC) AS rn
+                FROM prices
+            )
+            SELECT ticker, date, close, volume
+            FROM r WHERE rn <= 260
+            ORDER BY ticker, date
+            """
         ).df()
         secs = conn.execute("SELECT ticker, name, sector FROM securities").df()
 
@@ -725,14 +751,17 @@ def screen_table_prices() -> list[dict]:
     fund = latest_fundamentals(market="KR")
     fmap = {row["ticker"]: row for _, row in fund.iterrows()} if not fund.empty else {}
 
+    # Normalise dates once (vectorised) instead of calling pd.to_datetime per
+    # ticker inside the loop (~2,770× → 1×).
+    df["date"] = pd.to_datetime(df["date"])
     last_date = pd.Timestamp(df["date"].max())
-    ytd_cut = pd.Timestamp(year=last_date.year, month=1, day=1)
+    ytd_cut = np.datetime64(pd.Timestamp(year=last_date.year, month=1, day=1))
 
     out: list[dict] = []
     for tk, sub in df.groupby("ticker", sort=False):
         c = sub["close"].to_numpy(dtype="float64")
         v = sub["volume"].to_numpy(dtype="float64")
-        d = pd.to_datetime(sub["date"].to_numpy())
+        d = sub["date"].to_numpy()  # already datetime64 after the column-wide cast
         n = len(c)
         if n < 2 or c[-1] <= 0:
             continue

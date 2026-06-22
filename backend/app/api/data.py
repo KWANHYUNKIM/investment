@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import math
+import threading
 import time
 
 from fastapi import APIRouter, HTTPException, Query
@@ -80,9 +81,22 @@ def prices(
     }
 
 
+# /quotes recomputes a full-board price scan; the underlying EOD/settled data
+# only moves on the price scheduler's cadence, so a short TTL cache absorbs
+# frontend polling without serving stale numbers.
+_quotes_lock = threading.Lock()
+_quotes_cache: dict[str | None, tuple[float, list]] = {}
+_QUOTES_TTL = 30.0
+
+
 @router.get("/quotes")
 def quotes(market: str | None = Query(default=None)):
     """Latest price + day/month change for every ticker — the market list."""
+    with _quotes_lock:
+        hit = _quotes_cache.get(market)
+        if hit and (time.time() - hit[0] < _QUOTES_TTL):
+            return hit[1]
+
     df = store.latest_quotes(market=market)
     out = []
     for r in df.itertuples(index=False):
@@ -105,6 +119,8 @@ def quotes(market: str | None = Query(default=None)):
                 "change_1m_pct": round(change_1m, 2) if change_1m is not None else None,
             }
         )
+    with _quotes_lock:
+        _quotes_cache[market] = (time.time(), out)
     return out
 
 

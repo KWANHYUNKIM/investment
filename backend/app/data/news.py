@@ -12,6 +12,7 @@ from __future__ import annotations
 import re
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from email.utils import parsedate_to_datetime
 from urllib.parse import quote
 from xml.etree import ElementTree as ET
@@ -127,21 +128,24 @@ def news_for(name: str, limit: int = 15) -> dict:
         if hit and (time.time() - hit[0] < TTL):
             return {"domestic": hit[1][0], "global": hit[1][1], "cached": True}  # type: ignore
 
-    domestic: list[dict] = []
-    glob: list[dict] = []
-    try:
-        domestic = _fetch(name, "ko", "KR", "KR:ko", limit)
-    except Exception:
-        pass
-    try:
-        # Mapped majors use their real English name; unmapped names are anchored
-        # with "Korea" so a Korean company name in an English feed doesn't match
-        # unrelated foreign stories (e.g. 핌스→"Imran Khan/PIMS").
-        en = EN_NAMES.get(name)
-        query = en if en else f"{name} Korea"
-        glob = _fetch(query, "en-US", "US", "US:en", limit)
-    except Exception:
-        pass
+    def _safe(*a) -> list[dict]:
+        try:
+            return _fetch(*a)
+        except Exception:
+            return []
+
+    # Mapped majors use their real English name; unmapped names are anchored
+    # with "Korea" so a Korean company name in an English feed doesn't match
+    # unrelated foreign stories (e.g. 핌스→"Imran Khan/PIMS").
+    en = EN_NAMES.get(name)
+    glob_query = en if en else f"{name} Korea"
+    # Domestic + global are independent network calls — run them concurrently so
+    # a slow feed doesn't serialize behind the other (was ~2×12s worst case).
+    with ThreadPoolExecutor(max_workers=2) as ex:
+        f_dom = ex.submit(_safe, name, "ko", "KR", "KR:ko", limit)
+        f_glob = ex.submit(_safe, glob_query, "en-US", "US", "US:en", limit)
+        domestic = f_dom.result()
+        glob = f_glob.result()
 
     with _lock:
         _cache[key] = (time.time(), [domestic, glob])  # type: ignore

@@ -13,6 +13,7 @@ from __future__ import annotations
 import datetime
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 
 from app.data import news
 
@@ -89,19 +90,24 @@ def rate_calendar() -> dict:
             }
         )
 
-    # 금리 '시기' 전망 뉴스 취합 → 대표 내용 digest.
+    # 금리 '시기' 전망 뉴스 취합 → 대표 내용 digest. 쿼리들은 서로 독립적인
+    # 네트워크 호출이라 병렬로 가져온다(순차 4×12s → 최대 1×12s).
+    def _safe(args) -> list[dict]:
+        q, hl, gl, ceid = args
+        try:
+            return news._fetch(q, hl, gl, ceid, 8)
+        except Exception:
+            return []
+
     pool: list[dict] = []
     seen: set[str] = set()
-    for q, hl, gl, ceid in _OUTLOOK_QUERIES:
-        try:
-            arts = news._fetch(q, hl, gl, ceid, 8)
-        except Exception:
-            continue
-        for a in arts:
-            t = a.get("title", "")
-            if t and t not in seen:
-                seen.add(t)
-                pool.append(a)
+    with ThreadPoolExecutor(max_workers=len(_OUTLOOK_QUERIES)) as ex:
+        for arts in ex.map(_safe, _OUTLOOK_QUERIES):
+            for a in arts:
+                t = a.get("title", "")
+                if t and t not in seen:
+                    seen.add(t)
+                    pool.append(a)
     pool.sort(key=lambda a: a.get("ts") or 0, reverse=True)
 
     outlook = [
