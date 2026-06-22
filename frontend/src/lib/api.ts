@@ -479,6 +479,46 @@ export interface GlobalMoneyFlow {
   categories: MoneyCategory[];
 }
 
+// 한국 경제 흐름 — 부동산/리츠·국채 ETF 자금 신호 + 부동산·국채 뉴스 동향
+export interface KoreaFlowItem {
+  key: string;
+  label: string;
+  code: string;
+  group: "real_estate" | "bond";
+  close: number | null;
+  change_pct: number | null;
+  ret_1w: number | null;
+  ret_1m: number | null;
+  ret_3m: number | null;
+  pct_from_high: number | null;
+  date: string;
+}
+export interface KoreaFlowNews {
+  key: string;
+  label: string;
+  icon: string;
+  lean: "긍정" | "부정" | "중립";
+  pos: number;
+  neg: number;
+  count: number;
+  headlines: { title: string; link: string; source: string }[];
+  digest: string[];
+}
+export interface KoreaFlow {
+  as_of: string | null;
+  verdict: {
+    real_estate_dir: "유입" | "이탈" | "중립";
+    bond_dir: "유입" | "이탈" | "중립";
+    real_estate_1m: number | null;
+    bond_1m: number | null;
+    narrative: string;
+  };
+  real_estate: KoreaFlowItem[];
+  bonds: KoreaFlowItem[];
+  news: KoreaFlowNews[];
+  note: string;
+}
+
 // 미래 성장테마 — 메가트렌드 동향 + 매핑 종목(미래가치 후보)
 export interface FutureThemeMember {
   ticker: string;
@@ -924,6 +964,7 @@ export const api = {
   marketReport: () => request<MarketReport>(`/api/data/market-report`),
   livePulse: () => request<LivePulse>(`/api/data/live-pulse`),
   moneyFlow: () => request<GlobalMoneyFlow>(`/api/data/money-flow`),
+  koreaFlow: () => request<KoreaFlow>(`/api/data/korea-flow`),
   institutional: () => request<InstitutionalFlow>(`/api/data/institutional`),
   futureThemes: () => request<FutureThemesResponse>(`/api/data/future-themes`),
   futureThemesStatus: () => request<FutureThemesStatus>(`/api/data/future-themes/status`),

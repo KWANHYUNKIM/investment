@@ -7,16 +7,18 @@ import { MarketReport } from "@/components/MarketReport";
 import { LivePulse } from "@/components/LivePulse";
 import { FutureTheme } from "@/components/FutureTheme";
 import { MoneyFlow } from "@/components/MoneyFlow";
+import { KoreaFlow } from "@/components/KoreaFlow";
 import { InstitutionalFlow } from "@/components/InstitutionalFlow";
 import { IndexStrip } from "@/components/IndexStrip";
 import { IndustryMap } from "@/components/IndustryMap";
 
-type Tab = "market" | "live" | "money" | "inst" | "future" | "report" | "industry";
+type Tab = "market" | "live" | "money" | "korea" | "inst" | "future" | "report" | "industry";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "market", label: "전종목 분석" },
   { id: "live", label: "실시간 시황" },
   { id: "money", label: "자금 흐름" },
+  { id: "korea", label: "한국 경제 흐름" },
   { id: "inst", label: "기관 추적" },
   { id: "future", label: "미래 성장테마" },
   { id: "report", label: "데일리 리포트" },
@@ -89,6 +91,7 @@ export default function Home() {
             <div className="w-full px-5 py-5">
               {tab === "live" && <LivePulse />}
               {tab === "money" && <MoneyFlow />}
+              {tab === "korea" && <KoreaFlow />}
               {tab === "inst" && <InstitutionalFlow />}
               {tab === "future" && <FutureTheme />}
               {tab === "report" && <MarketReport />}

@@ -28,6 +28,7 @@ from app.data import (
     industry_research,
     industry_scheduler,
     investor,
+    korea_flow,
     market_report,
     news,
     price_scheduler,
@@ -416,6 +417,12 @@ def institutional_endpoint():
 def money_flow_endpoint():
     """글로벌 자금 흐름 — 유동성 레짐(완화/긴축)·한국 외국인 vs 국내 수급·크로스에셋·자산군별 자금 뉴스."""
     return moneyflow.pulse()
+
+
+@router.get("/korea-flow")
+def korea_flow_endpoint():
+    """한국 경제 흐름 — 부동산/리츠 ETF·국채 ETF 자금 신호 + 부동산·국채 뉴스 동향. 키 불필요."""
+    return korea_flow.snapshot()
 
 
 @router.get("/future-themes")
