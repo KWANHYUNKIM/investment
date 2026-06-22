@@ -246,6 +246,38 @@ def _current_account() -> dict | None:
     }
 
 
+def _mortgage_rate() -> dict | None:
+    """예금은행 주택담보대출 금리(121Y006/BECBLA0302, 신규취급액 기준, 월)."""
+    rows = _search("121Y006", "M", _months_ago(15), _months_ago(0), "BECBLA0302")
+    if not rows:
+        return None
+    chg = round(rows[-1]["value"] - rows[-2]["value"], 2) if len(rows) >= 2 else None
+    return {
+        "key": "mortgage_rate", "group": "금리", "label": "주택담보대출 금리",
+        "period": _fmt_period(rows[-1]["period"]),
+        "display": f"{rows[-1]['value']}%",
+        "yoy": _yoy(rows, 12), "yoy_label": "전년동월比(%p)",
+        "mom": chg,
+        "desc": "주담대 금리↑ = 부동산 구매 비용↑(수요 둔화 압력)",
+        "series": [{"t": _fmt_period(r["period"]), "v": r["value"]} for r in rows[-13:]],
+    }
+
+
+def _ppi() -> dict | None:
+    """생산자물가지수(404Y014/*AA 총지수, 월) — 전년동월比가 PPI 상승률(CPI 선행)."""
+    rows = _search("404Y014", "M", _months_ago(15), _months_ago(0), "*AA")
+    if not rows:
+        return None
+    return {
+        "key": "ppi", "group": "물가", "label": "생산자물가지수(PPI)",
+        "period": _fmt_period(rows[-1]["period"]),
+        "display": f"{rows[-1]['value']} ({rows[-1]['unit']})",
+        "yoy": _yoy(rows, 12), "yoy_label": "전년동월比(PPI 상승률)",
+        "desc": "생산자물가는 소비자물가(CPI)에 선행 — 인플레 방향의 선행 신호",
+        "series": [{"t": _fmt_period(r["period"]), "v": r["value"]} for r in rows[-13:]],
+    }
+
+
 def snapshot(force: bool = False) -> dict:
     with _lock:
         if not force and _cache["data"] and (time.time() - _cache["ts"] < TTL):
@@ -256,8 +288,8 @@ def snapshot(force: bool = False) -> dict:
                 "reason": "ECOS_API_KEY 미설정 — backend/.env에 키를 넣으면 활성화됩니다.",
                 "indicators": []}
 
-    builders = [_m2, _household_credit, _msb, _base_rate, _govbond, _cpi,
-                _reserves, _current_account, _house_price, _jeonse_price]
+    builders = [_m2, _household_credit, _msb, _base_rate, _govbond, _mortgage_rate,
+                _cpi, _ppi, _reserves, _current_account, _house_price, _jeonse_price]
     indicators = []
     for b in builders:
         try:
