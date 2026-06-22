@@ -228,6 +228,11 @@ def fundamentals_endpoint(ticker: str = Query(..., description="single ticker"))
             f: round(latest[f] - prev[f], 2) if (latest[f] is not None and prev[f] is not None) else None
             for f in fields
         }
+    # 부채비율(총부채/자기자본 %) — 위기 때 취약성. 펀더멘털 스냅샷엔 없으므로
+    # DART 재무상태표 최신연도 부채총계/자본총계로 파생해 latest에 붙인다.
+    bs = store.dart_latest_bs(ticker)
+    debt, equity = _f(bs.get("부채총계")), _f(bs.get("자본총계"))
+    latest["debt_ratio"] = round(debt / equity * 100, 1) if (debt is not None and equity) else None
     return {"ticker": ticker, "latest": latest, "prev": prev, "change": change, "history": recs[-30:]}
 
 

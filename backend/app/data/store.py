@@ -528,6 +528,25 @@ def dart_latest_bs_map() -> dict[str, dict]:
     return out
 
 
+def dart_latest_bs(ticker: str) -> dict:
+    """단일 종목의 최신연도 {자산총계, 부채총계, 자본총계} (원). 부채비율 계산용."""
+    with connection() as conn:
+        df = conn.execute(
+            """
+            WITH bs AS (
+                SELECT account_nm, amount,
+                       ROW_NUMBER() OVER (PARTITION BY account_nm ORDER BY year DESC) AS rn
+                FROM dart_financials
+                WHERE ticker = ? AND sj_div = 'BS'
+                  AND account_nm IN ('자산총계', '부채총계', '자본총계')
+            )
+            SELECT account_nm, amount FROM bs WHERE rn = 1
+            """,
+            [ticker],
+        ).df()
+    return {r["account_nm"]: r["amount"] for r in df.to_dict("records")}
+
+
 def financials_latest() -> pd.DataFrame:
     """Per ticker: most recent 사업연도 figures + YoY 영업이익 증감률 (prior year)."""
     with connection() as conn:

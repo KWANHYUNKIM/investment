@@ -105,6 +105,7 @@ export interface FundSnapshot {
   div_yield: number | null;
   market_cap: number | null;
   foreign_ratio: number | null;
+  debt_ratio?: number | null; // 부채비율(총부채/자기자본 %) — DART 재무상태표 파생
 }
 export interface FundamentalsResponse {
   ticker: string;
@@ -583,6 +584,9 @@ export interface IndustryMember {
   net_income?: number | null; // 당기순이익 (억)
   op_margin?: number | null; // 영업이익률 (%)
   op_yoy?: number | null; // 영업이익 전년대비 (%)
+  per?: number | null; // PER (배) — 같은 업종 내 밸류 비교
+  pbr?: number | null; // PBR (배)
+  roe?: number | null; // ROE (%)
 }
 export interface IndustryGroup {
   industry: string;

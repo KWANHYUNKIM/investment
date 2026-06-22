@@ -229,7 +229,7 @@ function Detail({ detail, loading }: { detail: IndustryDetailResponse; loading: 
       </div>
 
       {/* member companies (competition group) */}
-      <Block label="경쟁 기업 (시총순) · 영업이익 · 주요 제품/사업" color="#a9d08e" fg="#244d1a">
+      <Block label="경쟁 기업 (시총순) · 영업이익 · PER/PBR/ROE · 주요 제품/사업" color="#a9d08e" fg="#244d1a">
         <div className="overflow-x-auto">
           <table className="w-full border-collapse text-[13px]">
             <thead>
@@ -242,6 +242,9 @@ function Detail({ detail, loading }: { detail: IndustryDetailResponse; loading: 
                 <Th w={96} right>영업이익</Th>
                 <Th w={64} center>이익률</Th>
                 <Th w={70} center>전년比</Th>
+                <Th w={58} center>PER</Th>
+                <Th w={58} center>PBR</Th>
+                <Th w={58} center>ROE</Th>
                 <Th>주요 제품/사업</Th>
               </tr>
             </thead>
@@ -300,6 +303,15 @@ function MemberRow({ m, n }: { m: IndustryMember; n: number }) {
       </td>
       <td className="border border-[#e6e6e6] px-2 py-1.5 text-center tabular-nums" style={pnlStyle(m.op_yoy)}>
         {m.op_yoy != null ? `${m.op_yoy > 0 ? "+" : ""}${m.op_yoy}%` : "—"}
+      </td>
+      <td className="border border-[#e6e6e6] px-2 py-1.5 text-center tabular-nums text-[#555]">
+        {m.per != null ? `${m.per}` : "—"}
+      </td>
+      <td className="border border-[#e6e6e6] px-2 py-1.5 text-center tabular-nums text-[#555]">
+        {m.pbr != null ? `${m.pbr}` : "—"}
+      </td>
+      <td className="border border-[#e6e6e6] px-2 py-1.5 text-center tabular-nums text-[#555]">
+        {m.roe != null ? `${m.roe}%` : "—"}
       </td>
       <td className="border border-[#e6e6e6] px-2 py-1.5 text-xs text-[#555]">{m.products ?? "—"}</td>
     </tr>

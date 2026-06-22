@@ -120,11 +120,13 @@ def industries(min_members: int = 2) -> list[dict]:
     prof = store.company_profiles()
     moves = _moves()
     fin = financials.latest_op_map()  # ticker -> 최근 사업연도 영업이익 등
+    val = store.fundamentals_latest_map()  # ticker -> {per, pbr, roe, ...} 같은 업종 내 밸류 비교용
     groups: dict[str, list[dict]] = {}
     for rec in prof.to_dict("records"):
         ind = rec.get("wics_sector") or rec.get("industry") or "기타"
         mv = moves.get(rec["ticker"], {})
         f = fin.get(rec["ticker"], {})
+        vu = val.get(rec["ticker"], {})
         groups.setdefault(ind, []).append(
             {
                 "ticker": rec["ticker"],
@@ -141,6 +143,9 @@ def industries(min_members: int = 2) -> list[dict]:
                 "net_income": _num(f.get("net_income")),
                 "op_margin": _num(f.get("op_margin")),
                 "op_yoy": _num(f.get("op_yoy")),
+                "per": _num(vu.get("per")),
+                "pbr": _num(vu.get("pbr")),
+                "roe": _num(vu.get("roe")),
             }
         )
 

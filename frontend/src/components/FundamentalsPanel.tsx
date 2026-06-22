@@ -8,6 +8,7 @@ const ROWS: { key: string; label: string; suffix?: string }[] = [
   { key: "per", label: "PER", suffix: "배" },
   { key: "pbr", label: "PBR", suffix: "배" },
   { key: "roe", label: "ROE", suffix: "%" },
+  { key: "debt_ratio", label: "부채비율", suffix: "%" },
   { key: "div_yield", label: "배당", suffix: "%" },
   { key: "foreign_ratio", label: "외인소진율", suffix: "%" },
 ];
@@ -52,7 +53,7 @@ export function FundamentalsPanel({ stock }: { stock: PickedStock | null }) {
       ) : !lt ? (
         <div className="px-3 py-3 text-xs text-[#bbb]">펀더멘털 데이터가 아직 없습니다(크롤링 대기).</div>
       ) : (
-        <div className="grid grid-cols-5 gap-px bg-[#eee] p-px text-center">
+        <div className="grid grid-cols-3 gap-px bg-[#eee] p-px text-center">
           {ROWS.map((r) => {
             const v = lt[r.key as keyof typeof lt] as number | null;
             const d = ch?.[r.key] ?? null;
