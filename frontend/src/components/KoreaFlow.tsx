@@ -226,7 +226,7 @@ function RealEstateSection() {
   return (
     <section className="overflow-hidden rounded-lg border border-[#e0e0e0]">
       <div className="flex flex-wrap items-center gap-2 border-b border-[#e0e0e0] bg-[#217346] px-3 py-1.5">
-        <span className="text-sm font-bold text-white">부동산 실거래 거래액·거래량 — 서울 아파트 매매</span>
+        <span className="text-sm font-bold text-white">부동산 실거래 거래액·거래량 — 전국 아파트 매매</span>
         {d?.source && <span className="text-[11px] text-white/70">{d.source}</span>}
       </div>
 
@@ -274,14 +274,37 @@ function RealEstateSection() {
             <p className="pt-0.5 text-[10px] text-[#aaa]">* 잠정(신고 진행중)</p>
           </div>
 
-          {/* 지역(구)별 분포 — 완성 최신월 */}
+          {/* 시도별 거래대금 막대 — 완성 최신월 */}
+          {(() => {
+            const maxSido = Math.max(...d.by_sido.map((s) => s.amount_eok || 0), 1);
+            return (
+              <div className="mb-4">
+                <div className="mb-1.5 text-xs font-bold text-[#244d1a]">
+                  시도별 거래대금 (기준 {d.region_ym?.slice(0, 4)}.{d.region_ym?.slice(4)})
+                </div>
+                <div className="grid gap-x-6 gap-y-1 md:grid-cols-2">
+                  {d.by_sido.map((s) => (
+                    <div key={s.sido} className="flex items-center gap-2 text-xs">
+                      <span className="w-24 shrink-0 truncate text-[#444]">{s.sido}</span>
+                      <div className="relative h-3.5 flex-1 rounded bg-[#f0f0f0]">
+                        <div className="absolute left-0 top-0 h-3.5 rounded bg-[#3a9d5d]" style={{ width: `${((s.amount_eok || 0) / maxSido) * 100}%` }} />
+                      </div>
+                      <span className="w-24 shrink-0 text-right tabular-nums text-[#333]">{eok(s.amount_eok)} <span className="text-[#aaa]">{s.count.toLocaleString("ko-KR")}건</span></span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* 상위 시군구 — 완성 최신월 */}
           <div>
-            <div className="mb-1 text-xs font-bold text-[#244d1a]">구별 거래대금 상위 (기준 {d.region_ym?.slice(0, 4)}.{d.region_ym?.slice(4)})</div>
+            <div className="mb-1 text-xs font-bold text-[#244d1a]">거래대금 상위 시군구</div>
             <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 sm:grid-cols-3">
-              {d.by_region.slice(0, 12).map((r) => (
-                <div key={r.region} className="flex items-center justify-between border-b border-[#f0f0f0] py-0.5 text-xs">
-                  <span className="text-[#444]">{r.region}</span>
-                  <span className="tabular-nums text-[#333]">{eok(r.amount_eok)} <span className="text-[#aaa]">{r.count}건</span></span>
+              {d.top_sigungu.map((r) => (
+                <div key={`${r.sido}-${r.region}`} className="flex items-center justify-between border-b border-[#f0f0f0] py-0.5 text-xs">
+                  <span className="truncate text-[#444]" title={`${r.sido} ${r.region}`}>{r.region}</span>
+                  <span className="shrink-0 tabular-nums text-[#333]">{eok(r.amount_eok)} <span className="text-[#aaa]">{r.count}건</span></span>
                 </div>
               ))}
             </div>

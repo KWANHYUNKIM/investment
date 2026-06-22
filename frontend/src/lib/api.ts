@@ -527,8 +527,14 @@ export interface RealEstateMonth {
   amount_eok: number;
   provisional: boolean; // 신고 진행중(잠정) — 보통 당월
 }
-export interface RealEstateRegion {
+export interface RealEstateSido {
+  sido: string;
+  count: number;
+  amount_eok: number;
+}
+export interface RealEstateSigungu {
   region: string;
+  sido: string;
   count: number;
   amount_eok: number;
 }
@@ -544,7 +550,8 @@ export interface RealEstateTrades {
   mom_count_pct?: number | null;
   region_ym?: string;
   monthly: RealEstateMonth[];
-  by_region: RealEstateRegion[];
+  by_sido: RealEstateSido[];
+  top_sigungu: RealEstateSigungu[];
   partial?: boolean;
 }
 
