@@ -127,6 +127,28 @@ def _house_price() -> dict | None:
     }
 
 
+def _govbond() -> dict | None:
+    """국고채 3년·10년 금리(721Y001 시장금리, 월) + 장단기 스프레드(10Y−3Y)."""
+    y3 = _search("721Y001", "M", _months_ago(15), _months_ago(0), "5020000")
+    y10 = _search("721Y001", "M", _months_ago(15), _months_ago(0), "5050000")
+    if not y3 or not y10:
+        return None
+    v3, v10 = round(y3[-1]["value"], 2), round(y10[-1]["value"], 2)
+    spread = round(v10 - v3, 2)
+    mom = None
+    if len(y10) >= 2:
+        mom = round(v10 - round(y10[-2]["value"], 2), 2)
+    return {
+        "key": "govbond", "label": "국고채 금리 (3년·10년)",
+        "period": _fmt_period(y10[-1]["period"]),
+        "display": f"3년 {v3}% · 10년 {v10}%",
+        "yoy": spread, "yoy_label": "장단기 스프레드(10Y−3Y, %p)",
+        "mom": mom,
+        "desc": "금리↑=자금조달비용↑·긴축 / 스프레드 축소·역전=경기 둔화 신호",
+        "series": [{"t": _fmt_period(r["period"]), "v": round(r["value"], 2)} for r in y10[-13:]],
+    }
+
+
 def snapshot(force: bool = False) -> dict:
     with _lock:
         if not force and _cache["data"] and (time.time() - _cache["ts"] < TTL):
@@ -137,7 +159,7 @@ def snapshot(force: bool = False) -> dict:
                 "reason": "ECOS_API_KEY 미설정 — backend/.env에 키를 넣으면 활성화됩니다.",
                 "indicators": []}
 
-    builders = [_m2, _household_credit, _house_price]
+    builders = [_m2, _household_credit, _govbond, _house_price]
     indicators = []
     for b in builders:
         try:

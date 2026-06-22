@@ -162,7 +162,7 @@ function EcosMacroSection() {
       ) : !d || !d.available ? (
         <div className="px-4 py-6 text-center text-sm text-[#999]">{d?.reason ?? "거시지표를 불러오지 못했습니다."}</div>
       ) : (
-        <div className="grid gap-px bg-[#eee] sm:grid-cols-3">
+        <div className="grid gap-px bg-[#eee] sm:grid-cols-2 lg:grid-cols-4">
           {d.indicators.map((i) => (
             <EcosCard key={i.key} ind={i} />
           ))}
