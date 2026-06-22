@@ -82,7 +82,7 @@ def _m2() -> dict | None:
     if not rows:
         return None
     return {
-        "key": "m2", "label": "M2 통화량(광의통화·평잔)",
+        "key": "m2", "group": "통화·신용", "label": "M2 통화량(광의통화·평잔)",
         "period": _fmt_period(rows[-1]["period"]),
         "display": f"{_trillion(rows[-1]['value']):,}조원",
         "yoy": _yoy(rows, 12), "yoy_label": "전년동월比",
@@ -98,7 +98,7 @@ def _household_credit() -> dict | None:
     if not rows:
         return None
     return {
-        "key": "household", "label": "가계신용(가계 빚 잔액)",
+        "key": "household", "group": "통화·신용", "label": "가계신용(가계 빚 잔액)",
         "period": _fmt_period(rows[-1]["period"]),
         "display": f"{_trillion(rows[-1]['value']):,}조원",
         "yoy": _yoy(rows, 4), "yoy_label": "전년동기比",
@@ -117,7 +117,7 @@ def _house_price() -> dict | None:
     if len(rows) >= 2 and rows[-2]["value"]:
         mom = round((rows[-1]["value"] / rows[-2]["value"] - 1.0) * 100.0, 2)
     return {
-        "key": "house_price", "label": "주택매매가격지수(전국·종합)",
+        "key": "house_price", "group": "부동산", "label": "주택매매가격지수(전국·종합)",
         "period": _fmt_period(rows[-1]["period"]),
         "display": f"{rows[-1]['value']} ({rows[-1]['unit']})",
         "yoy": _yoy(rows, 12), "yoy_label": "전년동월比",
@@ -139,7 +139,7 @@ def _govbond() -> dict | None:
     if len(y10) >= 2:
         mom = round(v10 - round(y10[-2]["value"], 2), 2)
     return {
-        "key": "govbond", "label": "국고채 금리 (3년·10년)",
+        "key": "govbond", "group": "금리", "label": "국고채 금리 (3년·10년)",
         "period": _fmt_period(y10[-1]["period"]),
         "display": f"3년 {v3}% · 10년 {v10}%",
         "yoy": spread, "yoy_label": "장단기 스프레드(10Y−3Y, %p)",
@@ -157,7 +157,7 @@ def _jeonse_price() -> dict | None:
     if len(rows) >= 2 and rows[-2]["value"]:
         mom = round((rows[-1]["value"] / rows[-2]["value"] - 1.0) * 100.0, 2)
     return {
-        "key": "jeonse_price", "label": "주택전세가격지수(전국·종합)",
+        "key": "jeonse_price", "group": "부동산", "label": "주택전세가격지수(전국·종합)",
         "period": _fmt_period(rows[-1]["period"]),
         "display": f"{rows[-1]['value']} ({rows[-1]['unit']})",
         "yoy": _yoy(rows, 12), "yoy_label": "전년동월比",
@@ -173,12 +173,76 @@ def _msb() -> dict | None:
     if not rows:
         return None
     return {
-        "key": "msb", "label": "통화안정증권 발행잔액",
+        "key": "msb", "group": "통화·신용", "label": "통화안정증권 발행잔액",
         "period": _fmt_period(rows[-1]["period"]),
         "display": f"{_trillion(rows[-1]['value']):,}조원",
         "yoy": _yoy(rows, 12), "yoy_label": "전년동월比",
         "desc": "한은이 시중 돈을 흡수하려 발행한 채권 잔액↑=유동성 흡수(긴축적)",
         "series": [{"t": _fmt_period(r["period"]), "v": _trillion(r["value"])} for r in rows[-13:]],
+    }
+
+
+def _base_rate() -> dict | None:
+    """한국은행 기준금리(722Y001/0101000, 월) — 통화정책 기준."""
+    rows = _search("722Y001", "M", _months_ago(15), _months_ago(0), "0101000")
+    if not rows:
+        return None
+    chg = round(rows[-1]["value"] - rows[-2]["value"], 2) if len(rows) >= 2 else None
+    return {
+        "key": "base_rate", "group": "금리", "label": "한국은행 기준금리",
+        "period": _fmt_period(rows[-1]["period"]),
+        "display": f"{rows[-1]['value']}%",
+        "yoy": _yoy(rows, 12), "yoy_label": "전년동월比(%p)",
+        "mom": chg,
+        "desc": "정책금리↓ = 완화(유동성 공급) / ↑ = 긴축",
+        "series": [{"t": _fmt_period(r["period"]), "v": r["value"]} for r in rows[-13:]],
+    }
+
+
+def _cpi() -> dict | None:
+    """소비자물가지수(901Y009/0 총지수, 월) — 전년동월比가 물가상승률."""
+    rows = _search("901Y009", "M", _months_ago(15), _months_ago(0), "0")
+    if not rows:
+        return None
+    return {
+        "key": "cpi", "group": "물가", "label": "소비자물가지수(CPI)",
+        "period": _fmt_period(rows[-1]["period"]),
+        "display": f"{rows[-1]['value']} ({rows[-1]['unit']})",
+        "yoy": _yoy(rows, 12), "yoy_label": "전년동월比(물가상승률)",
+        "desc": "물가상승률↑ = 긴축 압력(금리↑) / 둔화 = 완화 여지",
+        "series": [{"t": _fmt_period(r["period"]), "v": r["value"]} for r in rows[-13:]],
+    }
+
+
+def _reserves() -> dict | None:
+    """외환보유액(732Y001/99 합계, 월; 천달러 → 억달러)."""
+    rows = _search("732Y001", "M", _months_ago(15), _months_ago(0), "99")
+    if not rows:
+        return None
+    eok = lambda v: round(v / 100000.0, 0)  # 천달러 → 억달러
+    return {
+        "key": "reserves", "group": "대외", "label": "외환보유액",
+        "period": _fmt_period(rows[-1]["period"]),
+        "display": f"{eok(rows[-1]['value']):,.0f}억$",
+        "yoy": _yoy(rows, 12), "yoy_label": "전년동월比",
+        "desc": "대외지급능력·환율 방어력. 감소 = 외화 유출 압력",
+        "series": [{"t": _fmt_period(r["period"]), "v": eok(r["value"])} for r in rows[-13:]],
+    }
+
+
+def _current_account() -> dict | None:
+    """경상수지(301Y017/SA000 계절조정, 월; 백만달러 → 억달러)."""
+    rows = _search("301Y017", "M", _months_ago(15), _months_ago(0), "SA000")
+    if not rows:
+        return None
+    eok = lambda v: round(v / 100.0, 1)  # 백만달러 → 억달러
+    return {
+        "key": "current_account", "group": "대외", "label": "경상수지(월·계절조정)",
+        "period": _fmt_period(rows[-1]["period"]),
+        "display": f"{eok(rows[-1]['value']):+,.1f}억$",
+        "yoy": None, "yoy_label": "흑자(+)/적자(−)",
+        "desc": "흑자 = 무역으로 외화 유입(원화 강세 요인)",
+        "series": [{"t": _fmt_period(r["period"]), "v": eok(r["value"])} for r in rows[-13:]],
     }
 
 
@@ -192,7 +256,8 @@ def snapshot(force: bool = False) -> dict:
                 "reason": "ECOS_API_KEY 미설정 — backend/.env에 키를 넣으면 활성화됩니다.",
                 "indicators": []}
 
-    builders = [_m2, _household_credit, _govbond, _msb, _house_price, _jeonse_price]
+    builders = [_m2, _household_credit, _msb, _base_rate, _govbond, _cpi,
+                _reserves, _current_account, _house_price, _jeonse_price]
     indicators = []
     for b in builders:
         try:

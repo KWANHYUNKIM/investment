@@ -598,6 +598,7 @@ export interface EcosSeriesPoint {
 }
 export interface EcosIndicator {
   key: string;
+  group: string;
   label: string;
   period: string;
   display: string;
