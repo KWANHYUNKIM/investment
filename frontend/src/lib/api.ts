@@ -555,6 +555,42 @@ export interface RealEstateTrades {
   partial?: boolean;
 }
 
+// 부동산 전월세 실거래 — 국토부 RTMS (전국 아파트 전월세)
+export interface RentMonth {
+  ym: string;
+  label: string;
+  count: number;
+  jeonse: number;
+  wolse: number;
+  wolse_ratio: number | null;
+  avg_jeonse_eok: number | null;
+  provisional: boolean;
+}
+export interface RentSido {
+  sido: string;
+  count: number;
+  wolse_ratio: number | null;
+  avg_jeonse_eok: number | null;
+}
+export interface RealEstateRent {
+  available: boolean;
+  reason?: string;
+  scope: string;
+  source?: string;
+  latest_ym?: string;
+  latest_label?: string;
+  latest_count?: number;
+  latest_jeonse?: number;
+  latest_wolse?: number;
+  latest_wolse_ratio?: number | null;
+  latest_avg_jeonse_eok?: number | null;
+  mom_count_pct?: number | null;
+  region_ym?: string;
+  monthly: RentMonth[];
+  by_sido: RentSido[];
+  partial?: boolean;
+}
+
 // 국내 거시지표 — 한국은행 ECOS (M2·가계신용·주택매매가격지수)
 export interface EcosSeriesPoint {
   t: string;
@@ -1025,6 +1061,7 @@ export const api = {
   moneyFlow: () => request<GlobalMoneyFlow>(`/api/data/money-flow`),
   koreaFlow: () => request<KoreaFlow>(`/api/data/korea-flow`),
   realestateTrades: () => request<RealEstateTrades>(`/api/data/realestate-trades`),
+  realestateRent: () => request<RealEstateRent>(`/api/data/realestate-rent`),
   ecosMacro: () => request<EcosMacro>(`/api/data/ecos-macro`),
   institutional: () => request<InstitutionalFlow>(`/api/data/institutional`),
   futureThemes: () => request<FutureThemesResponse>(`/api/data/future-themes`),

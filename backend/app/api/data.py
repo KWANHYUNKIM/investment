@@ -30,6 +30,7 @@ from app.data import (
     investor,
     korea_flow,
     realestate,
+    rent,
     ecos,
     market_report,
     news,
@@ -431,6 +432,12 @@ def korea_flow_endpoint():
 def realestate_trades_endpoint():
     """부동산 실거래 — 서울 25개구 아파트 매매 월별 거래량·거래대금 + 지역별 분포(국토부 RTMS)."""
     return realestate.snapshot()
+
+
+@router.get("/realestate-rent")
+def realestate_rent_endpoint():
+    """부동산 전월세 실거래 — 전국 아파트 월별 거래량·전세/월세 비중·평균 전세보증금(국토부 RTMS)."""
+    return rent.snapshot()
 
 
 @router.get("/ecos-macro")

@@ -17,7 +17,7 @@ import time
 
 from app.core.config import get_settings
 from app.data import (
-    ecos, futuretheme, korea_flow, livepulse, macro, moneyflow, realestate, store,
+    ecos, futuretheme, korea_flow, livepulse, macro, moneyflow, realestate, rent, store,
 )
 
 _state = {
@@ -60,7 +60,7 @@ def _tick() -> None:
     # 2-b) 한국 경제 흐름 캐시도 데운다 — 첫 진입이 즉시 보이도록(부동산 실거래는
     #      150콜이라 첫 사용자가 기다리던 것을 백그라운드로 옮긴다). 각자의 TTL을
     #      존중하므로(force 아님) 만료됐을 때만 실제 재집계한다.
-    for warm in (korea_flow.snapshot, realestate.snapshot, ecos.snapshot):
+    for warm in (korea_flow.snapshot, realestate.snapshot, rent.snapshot, ecos.snapshot):
         try:
             warm()
         except Exception:
