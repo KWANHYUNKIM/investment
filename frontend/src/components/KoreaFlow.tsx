@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { api, KoreaFlow as KF, KoreaFlowItem, KoreaFlowNews, RealEstateTrades } from "@/lib/api";
+import { api, KoreaFlow as KF, KoreaFlowItem, KoreaFlowNews, RealEstateTrades, EcosIndicator, EcosMacro } from "@/lib/api";
 
 const RED = "#c92a2a";
 const BLUE = "#1971c2";
@@ -86,6 +86,9 @@ export function KoreaFlow() {
         <p className="mt-1 text-[11px] text-[#aaa]">{d.note}</p>
       </section>
 
+      {/* 국내 거시지표 — 한국은행 ECOS (M2·가계신용·주택가격) */}
+      <EcosMacroSection />
+
       {/* 부동산 실거래 거래액·거래량 (국토부 RTMS) */}
       <RealEstateSection />
 
@@ -112,6 +115,85 @@ export function KoreaFlow() {
           ))}
         </div>
       </section>
+    </div>
+  );
+}
+
+function Sparkline({ pts, color }: { pts: number[]; color: string }) {
+  if (pts.length < 2) return null;
+  const w = 120, h = 30, pad = 2;
+  const min = Math.min(...pts), max = Math.max(...pts);
+  const span = max - min || 1;
+  const xs = (i: number) => pad + (i / (pts.length - 1)) * (w - 2 * pad);
+  const ys = (v: number) => h - pad - ((v - min) / span) * (h - 2 * pad);
+  const dPath = pts.map((v, i) => `${i === 0 ? "M" : "L"}${xs(i).toFixed(1)},${ys(v).toFixed(1)}`).join(" ");
+  return (
+    <svg width={w} height={h} className="overflow-visible">
+      <path d={dPath} fill="none" stroke={color} strokeWidth={1.5} />
+      <circle cx={xs(pts.length - 1)} cy={ys(pts[pts.length - 1])} r={2} fill={color} />
+    </svg>
+  );
+}
+
+function EcosMacroSection() {
+  const [d, setD] = useState<EcosMacro | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let alive = true;
+    api
+      .ecosMacro()
+      .then((r) => alive && setD(r))
+      .catch(() => alive && setD(null))
+      .finally(() => alive && setLoading(false));
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  return (
+    <section className="overflow-hidden rounded-lg border border-[#e0e0e0]">
+      <div className="flex flex-wrap items-center gap-2 border-b border-[#e0e0e0] bg-[#1b5e3a] px-3 py-1.5">
+        <span className="text-sm font-bold text-white">국내 돈 흐름 — 거시지표 (한국은행 ECOS)</span>
+        <span className="text-[11px] text-white/70">M2 통화량 · 가계 빚 · 집값</span>
+      </div>
+      {loading ? (
+        <div className="py-8 text-center text-sm text-[#888]">거시지표 불러오는 중…</div>
+      ) : !d || !d.available ? (
+        <div className="px-4 py-6 text-center text-sm text-[#999]">{d?.reason ?? "거시지표를 불러오지 못했습니다."}</div>
+      ) : (
+        <div className="grid gap-px bg-[#eee] sm:grid-cols-3">
+          {d.indicators.map((i) => (
+            <EcosCard key={i.key} ind={i} />
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function EcosCard({ ind }: { ind: EcosIndicator }) {
+  const up = (ind.yoy ?? 0) > 0;
+  return (
+    <div className="bg-white p-3">
+      <div className="text-xs font-semibold text-[#555]">{ind.label}</div>
+      <div className="mt-1 flex items-end justify-between gap-2">
+        <div>
+          <div className="text-lg font-bold tabular-nums text-[#1f1f1f]">{ind.display}</div>
+          <div className="text-[10px] text-[#aaa]">{ind.period} 기준</div>
+        </div>
+        <Sparkline pts={ind.series.map((p) => p.v)} color={up ? "#c92a2a" : "#1971c2"} />
+      </div>
+      <div className="mt-1.5 flex items-center gap-2 text-xs">
+        <span className="text-[#888]">{ind.yoy_label}</span>
+        <span className="font-bold tabular-nums" style={retStyle(ind.yoy)}>
+          {ind.yoy != null ? `${ind.yoy > 0 ? "+" : ""}${ind.yoy}%` : "—"}
+        </span>
+        {ind.mom != null && (
+          <span className="text-[#aaa]">· MoM <span style={retStyle(ind.mom)}>{ind.mom > 0 ? "+" : ""}{ind.mom}%</span></span>
+        )}
+      </div>
+      <p className="mt-1 text-[10px] leading-tight text-[#999]">{ind.desc}</p>
     </div>
   );
 }

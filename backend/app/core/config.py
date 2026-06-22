@@ -30,6 +30,10 @@ class Settings(BaseSettings):
     # 한국 경제 흐름 탭의 '부동산 거래액·거래량'(월별·지역별) 집계에 쓴다.
     data_go_kr_key: str = ""
 
+    # 한국은행 ECOS 무료 키 — 거시 통화/신용/주택 지표(M2·가계신용·주택매매가격지수).
+    # 한국 경제 흐름 탭의 '국내 돈 흐름' 하드데이터로 쓴다.
+    ecos_api_key: str = ""
+
     # Demo mode: synthesize small intraday ticks on top of the settled snapshot
     # so the live grid visibly moves without a brokerage streaming API.
     mock_ticks: bool = True

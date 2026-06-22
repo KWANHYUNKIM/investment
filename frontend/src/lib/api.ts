@@ -548,6 +548,29 @@ export interface RealEstateTrades {
   partial?: boolean;
 }
 
+// 국내 거시지표 — 한국은행 ECOS (M2·가계신용·주택매매가격지수)
+export interface EcosSeriesPoint {
+  t: string;
+  v: number;
+}
+export interface EcosIndicator {
+  key: string;
+  label: string;
+  period: string;
+  display: string;
+  yoy: number | null;
+  yoy_label: string;
+  mom?: number | null;
+  desc: string;
+  series: EcosSeriesPoint[];
+}
+export interface EcosMacro {
+  available: boolean;
+  reason?: string;
+  source?: string;
+  indicators: EcosIndicator[];
+}
+
 // 미래 성장테마 — 메가트렌드 동향 + 매핑 종목(미래가치 후보)
 export interface FutureThemeMember {
   ticker: string;
@@ -995,6 +1018,7 @@ export const api = {
   moneyFlow: () => request<GlobalMoneyFlow>(`/api/data/money-flow`),
   koreaFlow: () => request<KoreaFlow>(`/api/data/korea-flow`),
   realestateTrades: () => request<RealEstateTrades>(`/api/data/realestate-trades`),
+  ecosMacro: () => request<EcosMacro>(`/api/data/ecos-macro`),
   institutional: () => request<InstitutionalFlow>(`/api/data/institutional`),
   futureThemes: () => request<FutureThemesResponse>(`/api/data/future-themes`),
   futureThemesStatus: () => request<FutureThemesStatus>(`/api/data/future-themes/status`),
