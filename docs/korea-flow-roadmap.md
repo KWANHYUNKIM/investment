@@ -41,6 +41,15 @@
 
 > 키는 `backend/.env`에 추가 (기존 `DART_API_KEY`, `FINNHUB_API_KEY`와 동일 방식, config가 자동 로드).
 
+### 3. 스케줄러 워밍 — 완료
+- [x] `growth_scheduler._tick`이 korea_flow·realestate·ecos snapshot을 주기적으로
+      호출해 캐시를 데움 → 첫 진입 즉시 표시(부동산 실거래 15초 대기 제거).
+      각자 TTL 존중(force 아님). 검증: 워밍 후 세 엔드포인트 <10ms.
+
+### 4. 전세 — 일부 완료
+- [x] **주택전세가격지수**(전국·종합) — 901Y114/H69A·R70A(월). ECOS 6번째 카드.
+- [ ] **전월세 실거래·전세가율** — data.go.kr "아파트 전월세 실거래가" API 추가 신청 필요.
+
 ## 남은 작업 — 키 없이 추가 가능 (fdr)
 - [ ] 자산 로테이션 ETF 추가 — 달러 ETF(KODEX 미국달러선물)·금 ETF(KODEX 골드선물): "원화 약세 → 달러·금 도피" 흐름
 - [ ] 부동산 ETF 그룹 모멘텀 게이지(평균 수익률 한눈에)
