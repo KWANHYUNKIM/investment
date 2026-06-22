@@ -278,6 +278,38 @@ def _ppi() -> dict | None:
     }
 
 
+def _esi() -> dict | None:
+    """경제심리지수 ESI(513Y001/E1000 원계열, 월) — 기업+소비자 종합 심리(100 기준)."""
+    rows = _search("513Y001", "M", _months_ago(15), _months_ago(0), "E1000")
+    if not rows:
+        return None
+    chg = round(rows[-1]["value"] - rows[-2]["value"], 1) if len(rows) >= 2 else None
+    return {
+        "key": "esi", "group": "심리", "label": "경제심리지수(ESI)",
+        "period": _fmt_period(rows[-1]["period"]),
+        "display": f"{rows[-1]['value']}",
+        "yoy": chg, "yoy_label": "전월比(p, 100=중립)",
+        "desc": "기업+소비자 종합 심리. 100 위 = 경기 낙관(돈 돌기 쉬움)",
+        "series": [{"t": _fmt_period(r["period"]), "v": r["value"]} for r in rows[-13:]],
+    }
+
+
+def _ccsi() -> dict | None:
+    """소비자심리지수 CCSI(511Y002/FME, 월) — 100 위면 소비심리 낙관."""
+    rows = _search("511Y002", "M", _months_ago(15), _months_ago(0), "FME")
+    if not rows:
+        return None
+    chg = round(rows[-1]["value"] - rows[-2]["value"], 1) if len(rows) >= 2 else None
+    return {
+        "key": "ccsi", "group": "심리", "label": "소비자심리지수(CCSI)",
+        "period": _fmt_period(rows[-1]["period"]),
+        "display": f"{rows[-1]['value']}",
+        "yoy": chg, "yoy_label": "전월比(p, 100=중립)",
+        "desc": "100 위 = 소비심리 낙관 / 아래 = 위축(지갑 닫음)",
+        "series": [{"t": _fmt_period(r["period"]), "v": r["value"]} for r in rows[-13:]],
+    }
+
+
 def snapshot(force: bool = False) -> dict:
     with _lock:
         if not force and _cache["data"] and (time.time() - _cache["ts"] < TTL):
@@ -289,7 +321,8 @@ def snapshot(force: bool = False) -> dict:
                 "indicators": []}
 
     builders = [_m2, _household_credit, _msb, _base_rate, _govbond, _mortgage_rate,
-                _cpi, _ppi, _reserves, _current_account, _house_price, _jeonse_price]
+                _cpi, _ppi, _reserves, _current_account, _esi, _ccsi,
+                _house_price, _jeonse_price]
     indicators = []
     for b in builders:
         try:
