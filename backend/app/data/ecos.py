@@ -30,7 +30,7 @@ def _search(stat: str, cycle: str, start: str, end: str, *items: str) -> list[di
     key = get_settings().ecos_api_key
     if not key:
         return None
-    url = f"{_BASE}/{key}/json/kr/1/200/{stat}/{cycle}/{start}/{end}/" + "/".join(items)
+    url = f"{_BASE}/{key}/json/kr/1/10000/{stat}/{cycle}/{start}/{end}/" + "/".join(items)
     try:
         j = requests.get(url, timeout=15).json()
     except Exception:
@@ -63,6 +63,46 @@ def _trillion(v: float) -> float:
     return round(v / 1000.0, 1)
 
 
+def _id(v: float) -> float:
+    return v
+
+
+def _eok_res(v: float) -> float:
+    return v / 100000.0  # 천달러 → 억달러
+
+
+def _eok_ca(v: float) -> float:
+    return v / 100.0     # 백만달러 → 억달러
+
+
+def _span(rows: list[dict], kind: str, conv=_id) -> dict:
+    """전체 기간 요약: 언제부터(from)~언제까지(to), 처음(first)→끝(last) 얼마나 변했나.
+
+    kind=level → 누적 변화율(change_pct, %), 그 외(rate/flow/index) → 변화폭(change_delta).
+    """
+    fv = round(conv(rows[0]["value"]), 2)
+    lv = round(conv(rows[-1]["value"]), 2)
+    out = {
+        "from": _fmt_period(rows[0]["period"]),
+        "to": _fmt_period(rows[-1]["period"]),
+        "first": fv, "last": lv, "n": len(rows), "kind": kind,
+    }
+    if kind == "level":
+        out["change_pct"] = round((lv / fv - 1.0) * 100.0, 1) if fv else None
+    else:
+        out["change_delta"] = round(lv - fv, 2)
+    return out
+
+
+def _pack(rows: list[dict], kind: str, conv=_id) -> dict:
+    """전체 시계열 + 기간 요약을 한 번에. (그래프가 전 구간을 그릴 수 있도록 series는 전체)"""
+    return {
+        "kind": kind,
+        "span": _span(rows, kind, conv),
+        "series": [{"t": _fmt_period(r["period"]), "v": round(conv(r["value"]), 2)} for r in rows],
+    }
+
+
 def _yoy(rows: list[dict], lag: int) -> float | None:
     """최신값 vs lag기간 전 값의 증감률(%)."""
     if len(rows) <= lag:
@@ -78,7 +118,7 @@ def _fmt_period(p: str) -> str:
 
 
 def _m2() -> dict | None:
-    rows = _search("161Y006", "M", _months_ago(15), _months_ago(0), "BBHA00")
+    rows = _search("161Y006", "M", "200001", _months_ago(0), "BBHA00")
     if not rows:
         return None
     return {
@@ -87,14 +127,14 @@ def _m2() -> dict | None:
         "display": f"{_trillion(rows[-1]['value']):,}조원",
         "yoy": _yoy(rows, 12), "yoy_label": "전년동월比",
         "desc": "통화량 증가율↑ = 시중 유동성 확대(돈이 늘어남)",
-        "series": [{"t": _fmt_period(r["period"]), "v": _trillion(r["value"])} for r in rows[-13:]],
+        **_pack(rows, "level", _trillion),
     }
 
 
 def _household_credit() -> dict | None:
     d = datetime.date.today()
     cur_q = (d.month - 1) // 3 + 1
-    rows = _search("151Y001", "Q", f"{d.year - 2}Q1", f"{d.year}Q{cur_q}", "1000000")
+    rows = _search("151Y001", "Q", "2000Q1", f"{d.year}Q{cur_q}", "1000000")
     if not rows:
         return None
     return {
@@ -103,14 +143,13 @@ def _household_credit() -> dict | None:
         "display": f"{_trillion(rows[-1]['value']):,}조원",
         "yoy": _yoy(rows, 4), "yoy_label": "전년동기比",
         "desc": "가계 빚 증가율↑ = 부채로 자산 매입(과열) / 둔화 = 디레버리징",
-        "series": [{"t": _fmt_period(r["period"]), "v": _trillion(r["value"])} for r in rows[-6:]],
+        **_pack(rows, "level", _trillion),
     }
 
 
 def _house_price() -> dict | None:
-    # 주택가격지수는 발표가 ~5개월 지연 → 전년동월比 계산에 12개월 전 값이 잡히도록
-    # 넉넉히(약 22개월) 받아온다.
-    rows = _search("901Y113", "M", _months_ago(22), _months_ago(0), "H69A", "R70A")
+    # 901Y113은 2021.06 재기준(2025.03=100) 시리즈라 그때부터 전 구간을 받는다.
+    rows = _search("901Y113", "M", "202101", _months_ago(0), "H69A", "R70A")
     if not rows:
         return None
     mom = None
@@ -123,14 +162,14 @@ def _house_price() -> dict | None:
         "yoy": _yoy(rows, 12), "yoy_label": "전년동월比",
         "mom": mom,
         "desc": "집값 지수↑ = 부동산 상승(자금 유입) · ↓ = 조정",
-        "series": [{"t": _fmt_period(r["period"]), "v": r["value"]} for r in rows[-13:]],
+        **_pack(rows, "level"),
     }
 
 
 def _govbond() -> dict | None:
     """국고채 3년·10년 금리(721Y001 시장금리, 월) + 장단기 스프레드(10Y−3Y)."""
-    y3 = _search("721Y001", "M", _months_ago(15), _months_ago(0), "5020000")
-    y10 = _search("721Y001", "M", _months_ago(15), _months_ago(0), "5050000")
+    y3 = _search("721Y001", "M", "199501", _months_ago(0), "5020000")
+    y10 = _search("721Y001", "M", "199501", _months_ago(0), "5050000")
     if not y3 or not y10:
         return None
     v3, v10 = round(y3[-1]["value"], 2), round(y10[-1]["value"], 2)
@@ -145,12 +184,12 @@ def _govbond() -> dict | None:
         "yoy": spread, "yoy_label": "장단기 스프레드(10Y−3Y, %p)",
         "mom": mom,
         "desc": "금리↑=자금조달비용↑·긴축 / 스프레드 축소·역전=경기 둔화 신호",
-        "series": [{"t": _fmt_period(r["period"]), "v": round(r["value"], 2)} for r in y10[-13:]],
+        **_pack(y10, "rate"),
     }
 
 
 def _jeonse_price() -> dict | None:
-    rows = _search("901Y114", "M", _months_ago(22), _months_ago(0), "H69A", "R70A")
+    rows = _search("901Y114", "M", "202101", _months_ago(0), "H69A", "R70A")
     if not rows:
         return None
     mom = None
@@ -163,13 +202,13 @@ def _jeonse_price() -> dict | None:
         "yoy": _yoy(rows, 12), "yoy_label": "전년동월比",
         "mom": mom,
         "desc": "전세가↑ = 전세수요·자금 유입(매매 선행 신호일 때 많음)",
-        "series": [{"t": _fmt_period(r["period"]), "v": r["value"]} for r in rows[-13:]],
+        **_pack(rows, "level"),
     }
 
 
 def _msb() -> dict | None:
     """통화안정증권 발행잔액(191Y001 주요 국공채, 통안증권×잔액, 월) — 한은의 시중자금 흡수."""
-    rows = _search("191Y001", "M", _months_ago(15), _months_ago(0), "0800000", "4")
+    rows = _search("191Y001", "M", "199001", _months_ago(0), "0800000", "4")
     if not rows:
         return None
     return {
@@ -178,13 +217,13 @@ def _msb() -> dict | None:
         "display": f"{_trillion(rows[-1]['value']):,}조원",
         "yoy": _yoy(rows, 12), "yoy_label": "전년동월比",
         "desc": "한은이 시중 돈을 흡수하려 발행한 채권 잔액↑=유동성 흡수(긴축적)",
-        "series": [{"t": _fmt_period(r["period"]), "v": _trillion(r["value"])} for r in rows[-13:]],
+        **_pack(rows, "level", _trillion),
     }
 
 
 def _base_rate() -> dict | None:
     """한국은행 기준금리(722Y001/0101000, 월) — 통화정책 기준."""
-    rows = _search("722Y001", "M", _months_ago(15), _months_ago(0), "0101000")
+    rows = _search("722Y001", "M", "199001", _months_ago(0), "0101000")
     if not rows:
         return None
     chg = round(rows[-1]["value"] - rows[-2]["value"], 2) if len(rows) >= 2 else None
@@ -195,13 +234,13 @@ def _base_rate() -> dict | None:
         "yoy": _yoy(rows, 12), "yoy_label": "전년동월比(%p)",
         "mom": chg,
         "desc": "정책금리↓ = 완화(유동성 공급) / ↑ = 긴축",
-        "series": [{"t": _fmt_period(r["period"]), "v": r["value"]} for r in rows[-13:]],
+        **_pack(rows, "rate"),
     }
 
 
 def _cpi() -> dict | None:
     """소비자물가지수(901Y009/0 총지수, 월) — 전년동월比가 물가상승률."""
-    rows = _search("901Y009", "M", _months_ago(15), _months_ago(0), "0")
+    rows = _search("901Y009", "M", "198001", _months_ago(0), "0")
     if not rows:
         return None
     return {
@@ -210,45 +249,43 @@ def _cpi() -> dict | None:
         "display": f"{rows[-1]['value']} ({rows[-1]['unit']})",
         "yoy": _yoy(rows, 12), "yoy_label": "전년동월比(물가상승률)",
         "desc": "물가상승률↑ = 긴축 압력(금리↑) / 둔화 = 완화 여지",
-        "series": [{"t": _fmt_period(r["period"]), "v": r["value"]} for r in rows[-13:]],
+        **_pack(rows, "level"),
     }
 
 
 def _reserves() -> dict | None:
     """외환보유액(732Y001/99 합계, 월; 천달러 → 억달러)."""
-    rows = _search("732Y001", "M", _months_ago(15), _months_ago(0), "99")
+    rows = _search("732Y001", "M", "198001", _months_ago(0), "99")
     if not rows:
         return None
-    eok = lambda v: round(v / 100000.0, 0)  # 천달러 → 억달러
     return {
         "key": "reserves", "group": "대외", "label": "외환보유액",
         "period": _fmt_period(rows[-1]["period"]),
-        "display": f"{eok(rows[-1]['value']):,.0f}억$",
+        "display": f"{_eok_res(rows[-1]['value']):,.0f}억$",
         "yoy": _yoy(rows, 12), "yoy_label": "전년동월比",
         "desc": "대외지급능력·환율 방어력. 감소 = 외화 유출 압력",
-        "series": [{"t": _fmt_period(r["period"]), "v": eok(r["value"])} for r in rows[-13:]],
+        **_pack(rows, "level", _eok_res),
     }
 
 
 def _current_account() -> dict | None:
     """경상수지(301Y017/SA000 계절조정, 월; 백만달러 → 억달러)."""
-    rows = _search("301Y017", "M", _months_ago(15), _months_ago(0), "SA000")
+    rows = _search("301Y017", "M", "198001", _months_ago(0), "SA000")
     if not rows:
         return None
-    eok = lambda v: round(v / 100.0, 1)  # 백만달러 → 억달러
     return {
         "key": "current_account", "group": "대외", "label": "경상수지(월·계절조정)",
         "period": _fmt_period(rows[-1]["period"]),
-        "display": f"{eok(rows[-1]['value']):+,.1f}억$",
+        "display": f"{_eok_ca(rows[-1]['value']):+,.1f}억$",
         "yoy": None, "yoy_label": "흑자(+)/적자(−)",
         "desc": "흑자 = 무역으로 외화 유입(원화 강세 요인)",
-        "series": [{"t": _fmt_period(r["period"]), "v": eok(r["value"])} for r in rows[-13:]],
+        **_pack(rows, "flow", _eok_ca),
     }
 
 
 def _mortgage_rate() -> dict | None:
     """예금은행 주택담보대출 금리(121Y006/BECBLA0302, 신규취급액 기준, 월)."""
-    rows = _search("121Y006", "M", _months_ago(15), _months_ago(0), "BECBLA0302")
+    rows = _search("121Y006", "M", "200101", _months_ago(0), "BECBLA0302")
     if not rows:
         return None
     chg = round(rows[-1]["value"] - rows[-2]["value"], 2) if len(rows) >= 2 else None
@@ -259,13 +296,13 @@ def _mortgage_rate() -> dict | None:
         "yoy": _yoy(rows, 12), "yoy_label": "전년동월比(%p)",
         "mom": chg,
         "desc": "주담대 금리↑ = 부동산 구매 비용↑(수요 둔화 압력)",
-        "series": [{"t": _fmt_period(r["period"]), "v": r["value"]} for r in rows[-13:]],
+        **_pack(rows, "rate"),
     }
 
 
 def _ppi() -> dict | None:
     """생산자물가지수(404Y014/*AA 총지수, 월) — 전년동월比가 PPI 상승률(CPI 선행)."""
-    rows = _search("404Y014", "M", _months_ago(15), _months_ago(0), "*AA")
+    rows = _search("404Y014", "M", "198001", _months_ago(0), "*AA")
     if not rows:
         return None
     return {
@@ -274,13 +311,13 @@ def _ppi() -> dict | None:
         "display": f"{rows[-1]['value']} ({rows[-1]['unit']})",
         "yoy": _yoy(rows, 12), "yoy_label": "전년동월比(PPI 상승률)",
         "desc": "생산자물가는 소비자물가(CPI)에 선행 — 인플레 방향의 선행 신호",
-        "series": [{"t": _fmt_period(r["period"]), "v": r["value"]} for r in rows[-13:]],
+        **_pack(rows, "level"),
     }
 
 
 def _esi() -> dict | None:
     """경제심리지수 ESI(513Y001/E1000 원계열, 월) — 기업+소비자 종합 심리(100 기준)."""
-    rows = _search("513Y001", "M", _months_ago(15), _months_ago(0), "E1000")
+    rows = _search("513Y001", "M", "200301", _months_ago(0), "E1000")
     if not rows:
         return None
     chg = round(rows[-1]["value"] - rows[-2]["value"], 1) if len(rows) >= 2 else None
@@ -290,13 +327,13 @@ def _esi() -> dict | None:
         "display": f"{rows[-1]['value']}",
         "yoy": chg, "yoy_label": "전월比(p, 100=중립)",
         "desc": "기업+소비자 종합 심리. 100 위 = 경기 낙관(돈 돌기 쉬움)",
-        "series": [{"t": _fmt_period(r["period"]), "v": r["value"]} for r in rows[-13:]],
+        **_pack(rows, "index"),
     }
 
 
 def _ccsi() -> dict | None:
     """소비자심리지수 CCSI(511Y002/FME, 월) — 100 위면 소비심리 낙관."""
-    rows = _search("511Y002", "M", _months_ago(15), _months_ago(0), "FME")
+    rows = _search("511Y002", "M", "200807", _months_ago(0), "FME")
     if not rows:
         return None
     chg = round(rows[-1]["value"] - rows[-2]["value"], 1) if len(rows) >= 2 else None
@@ -306,7 +343,7 @@ def _ccsi() -> dict | None:
         "display": f"{rows[-1]['value']}",
         "yoy": chg, "yoy_label": "전월比(p, 100=중립)",
         "desc": "100 위 = 소비심리 낙관 / 아래 = 위축(지갑 닫음)",
-        "series": [{"t": _fmt_period(r["period"]), "v": r["value"]} for r in rows[-13:]],
+        **_pack(rows, "index"),
     }
 
 

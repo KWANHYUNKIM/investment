@@ -29,6 +29,9 @@ from app.data import (
     industry_scheduler,
     investor,
     korea_flow,
+    money_analysis,
+    money_supply,
+    realeconomy,
     realestate,
     rent,
     ecos,
@@ -444,6 +447,24 @@ def realestate_rent_endpoint():
 def ecos_macro_endpoint():
     """국내 거시지표 — M2 통화량·가계신용·주택매매가격지수 추이 + 증가율(한국은행 ECOS)."""
     return ecos.snapshot()
+
+
+@router.get("/money-supply")
+def money_supply_endpoint():
+    """통화량 장기·국가 비교 — 한국 M2를 과거 위기(IMF·금융위기·코로나)·해외 주요국과 견줌."""
+    return money_supply.snapshot()
+
+
+@router.get("/money-analysis")
+def money_analysis_endpoint():
+    """통화량 심층분석 — 마샬케이·유통속도·실질통화량·신용/GDP + 돈의 행선지(자산 상관) + 실질금리·NBER 침체."""
+    return money_analysis.snapshot()
+
+
+@router.get("/real-economy")
+def real_economy_endpoint():
+    """실물경제 — 한국 국민계정(민간소비·설비/건설투자·수출·취업자수) + 세계 비교(물가·소비·투자·수출·경상수지·실업률)."""
+    return realeconomy.snapshot()
 
 
 @router.get("/future-themes")

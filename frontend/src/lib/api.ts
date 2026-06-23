@@ -596,6 +596,16 @@ export interface EcosSeriesPoint {
   t: string;
   v: number;
 }
+export interface EcosSpan {
+  from: string;
+  to: string;
+  first: number;
+  last: number;
+  n: number;
+  kind: string;
+  change_pct?: number | null;
+  change_delta?: number | null;
+}
 export interface EcosIndicator {
   key: string;
   group: string;
@@ -606,6 +616,8 @@ export interface EcosIndicator {
   yoy_label: string;
   mom?: number | null;
   desc: string;
+  kind: string;
+  span: EcosSpan;
   series: EcosSeriesPoint[];
 }
 export interface EcosMacro {
@@ -613,6 +625,155 @@ export interface EcosMacro {
   reason?: string;
   source?: string;
   indicators: EcosIndicator[];
+}
+
+// 통화량 장기·국가 비교 — 과거 위기(IMF·금융위기·코로나) + 해외 주요국
+export interface MoneyGrowthPoint {
+  year: number;
+  growth: number | null;
+}
+export interface MoneyCountry {
+  iso: string;
+  name: string;
+  currency: string;
+  latest_year: number;
+  latest: number;
+  avg: number | null;
+  avg_years: string;
+  min: number | null;
+  min_year: number | null;
+  max: number | null;
+  max_year: number | null;
+  tone: "hot" | "cold" | "neutral";
+  series: MoneyGrowthPoint[];
+}
+export interface MoneyCrisis {
+  key: string;
+  name: string;
+  period: string;
+  scope: string;
+  tone: "hot" | "cold" | "mixed";
+  kr_growth: MoneyGrowthPoint[] | null;
+  us_growth: MoneyGrowthPoint[] | null;
+  headline: string;
+  narrative: string;
+  lesson: string;
+  data_note: string | null;
+}
+export interface MoneySupply {
+  available: boolean;
+  reason?: string;
+  as_of?: string | null;
+  source?: string;
+  headline?: {
+    kr_m2_display: string | null;
+    kr_m2_period: string | null;
+    kr_m2_yoy: number | null;
+    us_m2_yoy: number | null;
+  };
+  verdict?: {
+    stance: string;
+    current: number | null;
+    current_label: string;
+    avg_20y: number | null;
+    narrative: string;
+  };
+  crises: MoneyCrisis[];
+  countries: MoneyCountry[];
+  note?: string;
+}
+
+// 통화량 심층분석 — 마샬케이·실질통화량·신용 + 돈의 행선지 + 레짐
+export interface AnalysisPoint {
+  year: number;
+  v: number;
+}
+export interface StructuralMetric {
+  latest: number | null;
+  latest_year?: number | null;
+  avg?: number | null;
+  trend?: string;
+  max?: number | null;
+  series: AnalysisPoint[];
+}
+export interface StructuralCountry {
+  iso: string;
+  name: string;
+  latest_year: number;
+  marshall_k: StructuralMetric;
+  velocity: StructuralMetric;
+  real_m2: StructuralMetric;
+  credit_gdp: StructuralMetric;
+}
+export interface AssetLinkItem {
+  key: string;
+  label: string;
+  from: number;
+  to: number;
+  series: AnalysisPoint[];
+  m2_series: AnalysisPoint[];
+  corr: number | null;
+  asset_total_ret: number;
+  m2_total_ret: number;
+  outpaced: "asset" | "m2";
+}
+export interface AssetLink {
+  assets: AssetLinkItem[];
+  narrative: string;
+  from: number;
+  to: number;
+}
+export interface RealRate {
+  policy: number;
+  inflation: number | null;
+  real: number;
+  period: string;
+}
+export interface Regime {
+  kr: RealRate | null;
+  us: RealRate | null;
+  us_recession_now: boolean | null;
+  recessions: { start: string; end: string }[];
+  narrative: string;
+}
+export interface MoneyAnalysis {
+  available: boolean;
+  reason?: string;
+  as_of?: string;
+  source?: string;
+  structural: StructuralCountry[];
+  asset_link: AssetLink | null;
+  regime: Regime | null;
+  note?: string;
+}
+
+// 실물경제 — 한국(ECOS) & 세계(World Bank)
+export interface WorldEntity {
+  iso: string;
+  name: string;
+  latest: number;
+  latest_year: number;
+  first_year: number;
+  series: { year: number; v: number }[];
+}
+export interface WorldIndicator {
+  key: string;
+  label: string;
+  unit: string;
+  kind: string;
+  desc: string;
+  world_latest: number | null;
+  world_year: number | null;
+  entities: WorldEntity[];
+}
+export interface RealEconomy {
+  available: boolean;
+  reason?: string;
+  as_of?: number | null;
+  source?: string;
+  korea: EcosIndicator[];
+  world: WorldIndicator[];
+  note?: string;
 }
 
 // 미래 성장테마 — 메가트렌드 동향 + 매핑 종목(미래가치 후보)
@@ -1064,6 +1225,9 @@ export const api = {
   realestateTrades: () => request<RealEstateTrades>(`/api/data/realestate-trades`),
   realestateRent: () => request<RealEstateRent>(`/api/data/realestate-rent`),
   ecosMacro: () => request<EcosMacro>(`/api/data/ecos-macro`),
+  moneySupply: () => request<MoneySupply>(`/api/data/money-supply`),
+  moneyAnalysis: () => request<MoneyAnalysis>(`/api/data/money-analysis`),
+  realEconomy: () => request<RealEconomy>(`/api/data/real-economy`),
   institutional: () => request<InstitutionalFlow>(`/api/data/institutional`),
   futureThemes: () => request<FutureThemesResponse>(`/api/data/future-themes`),
   futureThemesStatus: () => request<FutureThemesStatus>(`/api/data/future-themes/status`),
