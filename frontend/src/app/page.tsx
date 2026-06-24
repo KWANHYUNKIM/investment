@@ -11,8 +11,9 @@ import { KoreaFlow } from "@/components/KoreaFlow";
 import { InstitutionalFlow } from "@/components/InstitutionalFlow";
 import { IndexStrip } from "@/components/IndexStrip";
 import { IndustryMap } from "@/components/IndustryMap";
+import { CrisisSim } from "@/components/CrisisSim";
 
-type Tab = "market" | "live" | "money" | "korea" | "inst" | "future" | "report" | "industry";
+type Tab = "market" | "live" | "money" | "korea" | "inst" | "future" | "report" | "industry" | "crisis";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "market", label: "전종목 분석" },
@@ -23,6 +24,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "future", label: "미래 성장테마" },
   { id: "report", label: "데일리 리포트" },
   { id: "industry", label: "산업 지도" },
+  { id: "crisis", label: "위기 시뮬레이터" },
 ];
 
 export default function Home() {
@@ -96,6 +98,7 @@ export default function Home() {
               {tab === "future" && <FutureTheme />}
               {tab === "report" && <MarketReport />}
               {tab === "industry" && <IndustryMap />}
+              {tab === "crisis" && <CrisisSim />}
             </div>
           </div>
         )}

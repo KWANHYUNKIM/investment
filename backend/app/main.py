@@ -8,12 +8,13 @@ from __future__ import annotations
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import backtest, data, portfolio, screening
+from app.api import backtest, crisis, data, portfolio, screening
 from app.core.config import get_settings
 from app.data import (
     fundamentals_crawler, growth_scheduler, industry_scheduler,
     price_scheduler, report_scheduler, store,
 )
+from app.data import crisis as crisis_data
 
 settings = get_settings()
 
@@ -50,6 +51,9 @@ def _startup() -> None:
     # Background growth scheduler: keep the news-driven feeds (미래 성장테마·실시간 시황)
     # continuously crawled/warmed and snapshot the future-theme picture daily.
     growth_scheduler.start()
+    # 금융위기 시뮬레이터: 필요한 FRED 시계열을 백그라운드에서 천천히 받아 디스크 캐시에
+    # 저장(throttle 회피). 이후 /api/crisis/sim 은 캐시에서 즉시 응답한다.
+    crisis_data.start()
 
 
 @app.get("/api/health", tags=["meta"])
@@ -58,6 +62,7 @@ def health():
 
 
 app.include_router(data.router)
+app.include_router(crisis.router)
 app.include_router(screening.router)
 app.include_router(backtest.router)
 app.include_router(portfolio.router)

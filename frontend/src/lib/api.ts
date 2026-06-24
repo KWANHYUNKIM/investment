@@ -1034,6 +1034,74 @@ export interface GlobalClustersResponse {
   foreign_loaded: number;
 }
 
+// --- 금융위기 시뮬레이터 -----------------------------------------------------
+export interface CrisisPoint {
+  day: number; // 위기 후 거래일 오프셋 (Day0=0)
+  v: number; // Day0=100 정규화 값
+}
+export interface CrisisMetricMeta {
+  key: string; // fx / stock / bond
+  label: string;
+  direction: "down" | "up"; // down=아래로 붕괴, up=위로 붕괴(금리)
+  desc: string;
+}
+export interface CrisisEpisodeMeta {
+  key: string;
+  label: string;
+  day0: string;
+  trigger: string;
+  desc: string;
+  color: string;
+}
+export interface CrisisMeta {
+  metrics: CrisisMetricMeta[];
+  crises: CrisisEpisodeMeta[];
+  source: string;
+  note: string;
+}
+export interface CrisisSeries {
+  code: string;
+  crisis: string;
+  label: string;
+  name: string;
+  color: string;
+  freq: string; // 일별 / 월별
+  points: CrisisPoint[];
+  extreme_day: number | null;
+  extreme_v: number | null;
+  depth_pct: number | null; // 붕괴 깊이 (음수=하락 / 양수=상승)
+}
+export interface CrisisCurrent {
+  label: string;
+  anchor_date: string;
+  as_of: string;
+  days_elapsed: number;
+  points: CrisisPoint[];
+  extreme_day: number | null;
+  extreme_v: number | null;
+  depth_pct: number | null;
+}
+export interface CrisisMatch {
+  crisis: string;
+  crisis_label: string;
+  code: string;
+  name: string;
+  label: string;
+  color: string;
+  score: number; // 0~100
+  corr: number;
+  verdict: string; // 매우 유사 / 유사 / 다소 유사 / 약한 유사
+  their_v_at_now: number | null;
+}
+export interface CrisisSim {
+  metric: CrisisMetricMeta;
+  crises: CrisisEpisodeMeta[];
+  series: CrisisSeries[];
+  current: CrisisCurrent | null;
+  similarity: CrisisMatch[];
+  axis: { min_day: number; max_day: number };
+}
+
 export interface ReportResponse {
   ticker: string;
   name: string;
@@ -1251,6 +1319,12 @@ export const api = {
   fundamentals: (ticker: string) => request<FundamentalsResponse>(`/api/data/fundamentals?ticker=${ticker}`),
   financials: (ticker: string) => request<FinancialsResponse>(`/api/data/financials?ticker=${ticker}`),
   dartFinancials: (ticker: string) => request<DartFinancials>(`/api/data/dart-financials?ticker=${ticker}`),
+  crisisMeta: () => request<CrisisMeta>(`/api/crisis/meta`),
+  crisisSim: (metric: string, crises?: string[]) => {
+    const q = new URLSearchParams({ metric });
+    if (crises && crises.length) q.set("crises", crises.join(","));
+    return request<CrisisSim>(`/api/crisis/sim?${q.toString()}`);
+  },
   globalClusters: () => request<GlobalClustersResponse>(`/api/data/global-clusters`),
   globalCluster: (key: string) => request<GlobalCluster>(`/api/data/global-cluster?key=${encodeURIComponent(key)}`),
   ohlc: (params: { ticker: string; start?: string; end?: string }) => {
