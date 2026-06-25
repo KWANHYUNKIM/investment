@@ -1132,6 +1132,8 @@ export interface CrisisKrSign {
   status: "ok" | "watch" | "alert";
   benchmark: number | null; // 교수 기준선(예: 환율 1500, 부채 60)
   desc: string;
+  as_of?: string | null; // 기준 시점
+  source?: string | null; // 출처(한국은행/FRED)
 }
 export interface CrisisKrSwap {
   label: string;
@@ -1144,6 +1146,8 @@ export interface CrisisKoreaWarning {
   signs: CrisisKrSign[];
   swaps: CrisisKrSwap[];
   as_of: string | null;
+  reserves_as_of?: string | null;
+  reserves_source?: string | null;
   frame: string;
   note: string;
 }

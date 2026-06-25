@@ -347,13 +347,18 @@ export function CrisisSim() {
                       </div>
                       <div className="mt-1 flex items-baseline gap-2">
                         <span className="text-lg font-bold tabular-nums" style={{ color: st.fg }}>
-                          {s.value}
+                          {s.value.toLocaleString()}
                           <span className="ml-0.5 text-[11px] font-normal text-[#999]">{s.unit}</span>
                         </span>
                         {s.benchmark != null && (
                           <span className="text-[10px] text-[#aaa]">교수 기준선 {s.benchmark}{s.unit}</span>
                         )}
                       </div>
+                      {(s.as_of || s.source) && (
+                        <div className="mt-0.5 text-[10px] text-[#aaa]">
+                          {s.as_of} {s.source ? `· ${s.source}` : ""}
+                        </div>
+                      )}
                     </div>
                   );
                 })}

@@ -797,39 +797,72 @@ _KR_SWAPS = [
 ]
 
 
+def _kr_reserves() -> tuple[float | None, str | None, str | None, float | None]:
+    """한국 외환보유액 (십억 달러, 'YYYY.MM' 기준, 출처, 전년동월%).
+    가장 신선한 한국은행 ECOS를 우선 쓰고, 키 없거나 실패 시 FRED(더 지연)로 폴백."""
+    try:
+        from app.data.macro import ecos
+        rv = ecos._reserves()                     # series 단위: 억달러
+        if rv and rv.get("series"):
+            last_b = rv["series"][-1]["v"] / 10.0  # 억달러 → 십억달러
+            return round(last_b, 1), rv.get("period"), "한국은행(ECOS)", rv.get("yoy")
+    except Exception:
+        pass
+    res = fred_cached("TRESEGKRM052N")             # 백만 달러
+    if res:
+        last_b = res[-1][1] / 1000.0
+        yoy = None
+        if len(res) > 12 and res[-13][1]:
+            yoy = round((res[-1][1] / res[-13][1] - 1) * 100, 1)
+        return round(last_b, 1), res[-1][0][:7].replace("-", "."), "FRED", yoy
+    return None, None, None, None
+
+
 def korea_fx_warning() -> dict:
     """교수 프레임의 한국 외환위기 전조지표를 현재값·임계값으로 점검."""
     signs: list[dict] = []
     statuses: list[str] = []
 
-    def add(key, label, value, unit, watch, alert, danger, desc, benchmark=None):
+    def add(key, label, value, unit, watch, alert, danger, desc, benchmark=None,
+            as_of=None, source=None):
         if value is None:
             return
         st = _status(value, watch, alert, danger)
         signs.append({"key": key, "label": label, "value": round(value, 1), "unit": unit,
-                      "status": st, "benchmark": benchmark, "desc": desc})
+                      "status": st, "benchmark": benchmark, "desc": desc,
+                      "as_of": as_of, "source": source})
         statuses.append(st)
 
     fx = fred_cached("DEXKOUS")
-    res = fred_cached("TRESEGKRM052N")           # 외환보유액(백만 달러, 월)
     gdp = fred_cached("MKTGDPKRA646NWDB")         # 명목 GDP(달러, 연)
     debt = fred_cached("GGGDTPKRA188N")           # 일반정부부채/GDP(%, 연)
     exp = fred_cached("XTEXVA01KRM667S")          # 수출(달러, 월)
     imp = fred_cached("XTIMVA01KRM667S")          # 수입(달러, 월)
+    reserves_b, res_asof, res_src, res_yoy = _kr_reserves()   # 십억 달러
+    gdp_usd = gdp[-1][1] if gdp else None
 
     # 1) 원/달러 환율 — 교수 전망 1,500원
     if fx:
         add("fx", "원/달러 환율", fx[-1][1], "원", 1350, 1450, "high",
-            "상승할수록 원화 약세·외화 이탈 압력. 교수 전망 1,500원.", benchmark=1500)
+            "상승할수록 원화 약세·외화 이탈 압력. 교수 전망 1,500원.", benchmark=1500,
+            as_of=fx[-1][0], source="FRED")
 
-    # 2) 외환보유액/GDP — 교수: 23%로 취약 (BIS 권고 수준까지 확대 주장)
-    reserves_b = res[-1][1] / 1000 if res else None         # 십억 달러
-    gdp_usd = gdp[-1][1] if gdp else None
+    # 2) 외환보유액 (최신 한국은행) — 전년比 감소 시 주의
+    if reserves_b:
+        st = "watch" if (res_yoy is not None and res_yoy < 0) else "ok"
+        yoy_txt = f" 전년比 {res_yoy:+.1f}%" if res_yoy is not None else ""
+        signs.append({"key": "reserves", "label": "외환보유액", "value": reserves_b,
+                      "unit": "십억$", "status": st, "benchmark": 920,
+                      "as_of": res_asof, "source": res_src,
+                      "desc": f"{res_asof} 기준({res_src}).{yoy_txt} 교수: BIS 권고 $920B까지 확대 주장."})
+        statuses.append(st)
+
+    # 3) 외환보유액/GDP — 교수: 23%로 취약
     if reserves_b and gdp_usd:
         ratio = reserves_b * 1e9 / gdp_usd * 100
         add("reserves_gdp", "외환보유액 / GDP", ratio, "%", 25, 20, "low",
-            f"현재 외환보유액 약 ${reserves_b:.0f}B. 교수: GDP 대비 23%로 취약(BIS 권고 $920B까지 확대 주장).",
-            benchmark=None)
+            "교수: GDP 대비 23%로 취약. 통상 적정선보다 낮으면 방어력 부족.",
+            benchmark=None, as_of=res_asof, source=res_src)
 
     # 3) 국가부채/GDP — IMF 60% 초과 시 위험국 (교수: 2029년 60% 전망)
     if debt:
@@ -850,7 +883,9 @@ def korea_fx_warning() -> dict:
     level = "위험" if score >= 70 else "경고" if score >= 45 else "주의" if score >= 20 else "낮음"
     return {
         "score": score, "level": level, "signs": signs, "swaps": _KR_SWAPS,
-        "as_of": max((d[-1][0] for d in (fx, res, debt) if d), default=None),
+        "reserves_as_of": res_asof, "reserves_source": res_src,
+        "as_of": max([d[-1][0] for d in (fx, debt) if d] + ([res_asof] if res_asof else []),
+                     default=None),
         "frame": "김대종 세종대 교수 『제2 IMF 외환위기 다시 오는가?』(2025) 프레임",
         "note": "한 학자의 특정·논쟁적 시각을 점검표로 옮긴 것입니다. 임계값도 교수 주장 기준이며, 한국은행·기재부 공식 설명과 다른 견해도 함께 보세요. 위기 시점을 예측하지 않습니다.",
     }
