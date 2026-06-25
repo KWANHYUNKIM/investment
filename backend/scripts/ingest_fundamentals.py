@@ -6,7 +6,7 @@ Run from backend/ with the API server STOPPED (DuckDB is single-writer):
 """
 from __future__ import annotations
 
-from app.data import store
+from app.data.infra import store
 from app.data.loaders import naver
 
 

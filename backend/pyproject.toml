@@ -1,0 +1,14 @@
+[project]
+name = "investment-backend"
+version = "0.1.0"
+description = "FastAPI backend (layered) for the investment dashboard"
+requires-python = ">=3.10"
+# 런타임 의존성은 requirements.txt 로 관리(핀 고정). 개발용은 [optional] 참고.
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[tool.pytest.ini_options]
+# backend/ 에서 `pytest` 만 쳐도 app 패키지를 찾도록 경로 추가(PYTHONPATH 불필요).
+pythonpath = ["."]
+testpaths = ["tests"]

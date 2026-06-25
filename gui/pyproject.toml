@@ -1,0 +1,18 @@
+[project]
+name = "investment-gui"
+version = "0.1.0"
+description = "PySide6 desktop GUI (Qt Model/View, MVC) for the investment dashboard backend"
+requires-python = ">=3.10"
+dependencies = [
+    "PySide6>=6.6",
+    "requests>=2.31",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+# 이 디렉터리 자체가 gui 패키지다. 루트에서 `python -m gui.main` 으로 실행.
+packages = ["gui", "gui.services", "gui.models", "gui.views", "gui.controllers"]
+package-dir = { "gui" = "." }

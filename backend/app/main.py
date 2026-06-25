@@ -10,11 +10,13 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api import backtest, crisis, data, portfolio, screening
 from app.core.config import get_settings
-from app.data import (
-    fundamentals_crawler, growth_scheduler, industry_scheduler,
-    price_scheduler, report_scheduler, store,
-)
-from app.data import crisis as crisis_data
+from app.data.fundamentals import fundamentals_crawler
+from app.data.schedulers import growth_scheduler
+from app.data.schedulers import industry_scheduler
+from app.data.schedulers import price_scheduler
+from app.data.schedulers import report_scheduler
+from app.data.infra import store
+from app.data.market import crisis as crisis_data
 
 settings = get_settings()
 

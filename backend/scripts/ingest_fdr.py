@@ -18,7 +18,7 @@ import time
 import pandas as pd
 import FinanceDataReader as fdr
 
-from app.data import store
+from app.data.infra import store
 
 START = "2019-01-01"
 END = "2025-12-31"

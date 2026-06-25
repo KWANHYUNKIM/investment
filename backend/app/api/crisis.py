@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Query
 
-from app.data import crisis
+from app.data.market import crisis
 
 router = APIRouter(prefix="/api/crisis", tags=["crisis"])
 

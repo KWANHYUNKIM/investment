@@ -4,7 +4,7 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException
 
 from app.core.config import get_settings
-from app.data import store
+from app.data.infra import store
 from app.models.schemas import PortfolioRequest
 from app.quant import metrics, portfolio
 

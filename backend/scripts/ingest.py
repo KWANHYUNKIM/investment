@@ -17,7 +17,7 @@ from __future__ import annotations
 import argparse
 from datetime import date, datetime
 
-from app.data import store
+from app.data.infra import store
 from app.data.loaders import krx, us
 
 

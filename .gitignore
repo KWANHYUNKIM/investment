@@ -14,6 +14,7 @@ env/
 
 # Data (generated DB / caches — keep out of git; app recreates the dir at runtime)
 /data/
+/backend/data/
 data/*.duckdb
 data/*.parquet
 data/**/*.parquet

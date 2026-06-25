@@ -1,0 +1,105 @@
+"""In-process scheduler for the live, news-driven feeds (미래 성장테마 · 실시간 시황).
+
+These feeds are otherwise computed on-demand (cache TTL) — meaning they only
+refresh when someone opens the tab. This daemon keeps them **continuously**
+crawled and tidy: on a slow cadence it (1) re-crawls the future-theme news +
+re-maps stocks (warming the cache so a viewer always gets fresh data), (2) warms
+the live-pulse + macro caches, and (3) persists one **future-theme snapshot per
+trading day** so the picture of "what the era is building" accumulates over time.
+
+Same process → shares the DuckDB writer (no lock conflict). Disable with
+``GROWTH_SCHEDULER=false``.
+"""
+from __future__ import annotations
+
+import threading
+import time
+
+from app.core.config import get_settings
+from app.data.macro import ecos
+from app.data.intel import futuretheme
+from app.data.macro import korea_flow
+from app.data.news import livepulse
+from app.data.macro import macro
+from app.data.macro import money_analysis
+from app.data.macro import money_supply
+from app.data.macro import moneyflow
+from app.data.macro import realeconomy
+from app.data.macro import realestate
+from app.data.macro import rent
+from app.data.infra import store
+
+_state = {
+    "running": False,
+    "ticks": 0,
+    "theme_refreshes": 0,
+    "snapshots": 0,
+    "last_run": None,
+    "last_snapshot_date": None,
+    "last_error": None,
+}
+
+
+def status() -> dict:
+    s = get_settings()
+    return {
+        **{k: _state[k] for k in _state},
+        "interval_sec": s.growth_scheduler_interval,
+        "snapshot_dates": futuretheme.list_dates(),
+    }
+
+
+def _tick() -> None:
+    # 1) 뉴스 재크롤 + 종목 재매핑으로 미래 성장테마 캐시를 데운다(force).
+    futuretheme.themes(force=True)
+    _state["theme_refreshes"] += 1
+    # 2) 실시간 시황·매크로 캐시도 데워 둔다(다음 조회가 즉시 최신).
+    try:
+        livepulse.pulse(force=True)
+    except Exception:
+        pass
+    try:
+        moneyflow.pulse(force=True)  # 글로벌 자금 흐름도 상시 재크롤
+    except Exception:
+        pass
+    try:
+        macro.market_macro()
+    except Exception:
+        pass
+    # 2-b) 한국 경제 흐름 캐시도 데운다 — 첫 진입이 즉시 보이도록(부동산 실거래는
+    #      150콜이라 첫 사용자가 기다리던 것을 백그라운드로 옮긴다). 각자의 TTL을
+    #      존중하므로(force 아님) 만료됐을 때만 실제 재집계한다.
+    for warm in (korea_flow.snapshot, realestate.snapshot, rent.snapshot, ecos.snapshot,
+                 money_supply.snapshot, money_analysis.snapshot, realeconomy.snapshot):
+        try:
+            warm()
+        except Exception:
+            pass
+    # 3) 거래일당 1회 미래 성장테마 스냅샷 저장(누적).
+    res = futuretheme.snapshot()
+    if res.get("status") == "saved":
+        _state["snapshots"] += 1
+        _state["last_snapshot_date"] = res.get("date")
+
+
+def _loop() -> None:
+    time.sleep(60)  # let startup settle (DB init, first price snapshot, profiles)
+    while True:
+        interval = get_settings().growth_scheduler_interval
+        try:
+            _tick()
+            _state["ticks"] += 1
+            _state["last_run"] = time.strftime("%Y-%m-%d %H:%M:%S")
+            _state["last_error"] = None
+        except Exception as e:
+            _state["last_error"] = f"{type(e).__name__}: {str(e)[:120]}"
+        time.sleep(interval)
+
+
+def start() -> None:
+    if _state["running"]:
+        return
+    if not get_settings().growth_scheduler:
+        return
+    _state["running"] = True
+    threading.Thread(target=_loop, daemon=True, name="growth-scheduler").start()

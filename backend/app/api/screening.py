@@ -4,7 +4,7 @@ from __future__ import annotations
 import numpy as np
 from fastapi import APIRouter, HTTPException
 
-from app.data import store
+from app.data.infra import store
 from app.models.schemas import ScreenRequest
 from app.quant import screening
 
