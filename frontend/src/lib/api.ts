@@ -1071,35 +1071,81 @@ export interface CrisisSeries {
   extreme_v: number | null;
   depth_pct: number | null; // 붕괴 깊이 (음수=하락 / 양수=상승)
 }
-export interface CrisisCurrent {
-  label: string;
-  anchor_date: string;
-  as_of: string;
-  days_elapsed: number;
-  points: CrisisPoint[];
-  extreme_day: number | null;
-  extreme_v: number | null;
-  depth_pct: number | null;
-}
-export interface CrisisMatch {
+// 아날로그(현재가 과거 위기의 어느 시점과 닮았나).
+export interface CrisisAnalog {
   crisis: string;
   crisis_label: string;
+  color: string;
+  corr: number; // 상관(-1~1)
+  lead_days: number; // 위기까지 남은 일수(0=이미 발발 이후)
+  phase: string; // "위기 51일 전" / "위기 후 132일"
+}
+export interface CrisisBest extends CrisisAnalog {
+  expected_pct: number | null; // 역사 반복 시 horizon 내 예상 변화율
+  horizon: number; // 예상 구간(일)
+}
+// 현재 지수 1개. 과거 위기 타임라인의 best 위치에 정렬된 현재선 + 이후 투영(예상 시나리오).
+export interface CrisisCurrentLine {
   code: string;
   name: string;
-  label: string;
   color: string;
-  score: number; // 0~100
-  corr: number;
-  verdict: string; // 매우 유사 / 유사 / 다소 유사 / 약한 유사
-  their_v_at_now: number | null;
+  label: string;
+  as_of: string;
+  same_instrument: boolean;
+  points: CrisisPoint[]; // best 아날로그 위치에 정렬된 현재 구간
+  projection: CrisisPoint[]; // 그 위기의 이후 경로(예상 시나리오)
+  best: CrisisBest | null;
+  analogs: CrisisAnalog[]; // 닮은 위기 랭킹
 }
 export interface CrisisSim {
   metric: CrisisMetricMeta;
   crises: CrisisEpisodeMeta[];
   series: CrisisSeries[];
-  current: CrisisCurrent | null;
-  similarity: CrisisMatch[];
+  currents: CrisisCurrentLine[];
   axis: { min_day: number; max_day: number };
+}
+// 위기 선행징후 (조기경보)
+export interface CrisisWarnSign {
+  key: string;
+  label: string;
+  value: number;
+  unit: string;
+  status: "ok" | "watch" | "alert";
+  pre_crisis_avg: number | null; // 과거 위기 직전 평균
+  desc: string;
+  as_of: string;
+  extra: string | null;
+}
+export interface CrisisWarning {
+  score: number; // 0~100 종합 경보
+  level: string; // 낮음/주의/경고/위험
+  signs: CrisisWarnSign[];
+  as_of: string | null;
+  note: string;
+}
+// 한국 외환위기 선행징후 (김대종 교수 프레임)
+export interface CrisisKrSign {
+  key: string;
+  label: string;
+  value: number;
+  unit: string;
+  status: "ok" | "watch" | "alert";
+  benchmark: number | null; // 교수 기준선(예: 환율 1500, 부채 60)
+  desc: string;
+}
+export interface CrisisKrSwap {
+  label: string;
+  status: "ok" | "watch" | "alert";
+  note: string;
+}
+export interface CrisisKoreaWarning {
+  score: number;
+  level: string;
+  signs: CrisisKrSign[];
+  swaps: CrisisKrSwap[];
+  as_of: string | null;
+  frame: string;
+  note: string;
 }
 
 export interface ReportResponse {
@@ -1325,6 +1371,8 @@ export const api = {
     if (crises && crises.length) q.set("crises", crises.join(","));
     return request<CrisisSim>(`/api/crisis/sim?${q.toString()}`);
   },
+  crisisWarning: () => request<CrisisWarning>(`/api/crisis/warning`),
+  crisisKoreaWarning: () => request<CrisisKoreaWarning>(`/api/crisis/korea-warning`),
   globalClusters: () => request<GlobalClustersResponse>(`/api/data/global-clusters`),
   globalCluster: (key: string) => request<GlobalCluster>(`/api/data/global-cluster?key=${encodeURIComponent(key)}`),
   ohlc: (params: { ticker: string; start?: string; end?: string }) => {

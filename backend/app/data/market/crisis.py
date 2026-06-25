@@ -31,7 +31,6 @@ from pathlib import Path
 import httpx
 
 from app.core.config import get_settings
-from app.data.infra import store
 
 # --------------------------------------------------------------------------- #
 # 위기 에피소드 — Day 0 = 방아쇠 사건
@@ -39,25 +38,25 @@ from app.data.infra import store
 CRISES: list[dict] = [
     {
         "key": "1997_asia", "label": "1997 아시아 외환위기", "day0": "1997-07-02",
-        "pre": 30, "post": 320, "color": "#c92a2a",
+        "pre": 240, "post": 320, "color": "#c92a2a",
         "trigger": "태국 바트 변동환율 전환",
         "desc": "태국이 달러 페그를 포기하자 바트·원·링깃이 연쇄 폭락 — 외환위기의 교과서.",
     },
     {
         "key": "2008_gfc", "label": "2008 글로벌 금융위기", "day0": "2008-09-15",
-        "pre": 30, "post": 300, "color": "#e8590c",
+        "pre": 240, "post": 300, "color": "#e8590c",
         "trigger": "리먼 브러더스 파산",
         "desc": "신용경색이 전 세계로 번지며 신흥국 통화·증시가 동반 급락.",
     },
     {
         "key": "2010_euro", "label": "2010 유럽 재정위기", "day0": "2010-04-23",
-        "pre": 30, "post": 520, "color": "#1971c2",
+        "pre": 240, "post": 520, "color": "#1971c2",
         "trigger": "그리스 구제금융 요청",
         "desc": "남유럽 국가신용 불안으로 그리스·스페인·이탈리아 국채금리가 급등.",
     },
     {
         "key": "2020_covid", "label": "2020 코로나 쇼크", "day0": "2020-02-19",
-        "pre": 30, "post": 200, "color": "#7048e8",
+        "pre": 240, "post": 200, "color": "#7048e8",
         "trigger": "팬데믹 증시 고점",
         "desc": "사상 최속 폭락 후 막대한 유동성으로 V자 반등 — 짧고 깊은 충격.",
     },
@@ -87,17 +86,15 @@ CRISIS_FX = {
     "2020_covid": ["KR", "BR", "MX", "IN", "JP", "EU"],
 }
 
-# 주가 (FRED 일별). 한국 현재선은 DuckDB 프록시로 별도 처리.
+# 주가 (FRED). 미·일은 일별, 한국 코스피는 월별(일별 과거치는 무료로 못 구함 →
+# OECD 월별 한국 주가지수로 '같은 지수' 비교).
 STOCK = {
-    "US": {"name": "미국 나스닥", "fred": "NASDAQCOM", "color": "#e8590c"},
-    "JP": {"name": "일본 닛케이225", "fred": "NIKKEI225", "color": "#9c36b5"},
+    "US": {"name": "미국 나스닥", "fred": "NASDAQCOM", "freq": "일별", "color": "#e8590c"},
+    "JP": {"name": "일본 닛케이225", "fred": "NIKKEI225", "freq": "일별", "color": "#9c36b5"},
+    "KRM": {"name": "한국 코스피(월)", "fred": "SPASTT01KRM661N", "freq": "월별", "color": "#c92a2a"},
 }
-CRISIS_STOCK = {
-    "1997_asia": ["US", "JP"],
-    "2008_gfc": ["US", "JP"],
-    "2010_euro": ["US", "JP"],
-    "2020_covid": ["US", "JP"],
-}
+CRISIS_STOCK = {k: ["US", "JP", "KRM"] for k in
+                ("1997_asia", "2008_gfc", "2010_euro", "2020_covid")}
 
 # 국채 10년물 (FRED). US만 일별, 나머지는 월별. 방향: 위로=신용악화.
 BOND = {
@@ -112,14 +109,75 @@ CRISIS_BOND = {
     "2008_gfc": ["US", "KR"],
 }
 
+# 변동성 (VIX, 일별). 위로 = 공포 급등.
+VIX = {"VIX": {"name": "VIX 변동성", "fred": "VIXCLS", "freq": "일별", "color": "#7048e8"}}
+CRISIS_VIX = {k: ["VIX"] for k in ("1997_asia", "2008_gfc", "2010_euro", "2020_covid")}
+
+# 신용 스프레드 (하이일드·투자등급 OAS, 일별). 위로 = 신용경색.
+CREDIT = {
+    "HY": {"name": "美 하이일드 스프레드", "fred": "BAMLH0A0HYM2", "freq": "일별", "color": "#c92a2a"},
+    "IG": {"name": "美 투자등급 스프레드", "fred": "BAMLC0A0CM", "freq": "일별", "color": "#1971c2"},
+}
+CRISIS_CREDIT = {k: ["HY", "IG"] for k in ("2008_gfc", "2010_euro", "2020_covid")}
+
+# 유가 (WTI, 일별). 아래로 = 수요 붕괴(경기침체형).
+OIL = {"WTI": {"name": "WTI 유가", "fred": "DCOILWTICO", "freq": "일별", "color": "#e8590c"}}
+CRISIS_OIL = {k: ["WTI"] for k in ("1997_asia", "2008_gfc", "2010_euro", "2020_covid")}
+
+# 고용 (실업수당청구 주간 + 실업률 월별). 위로 = 고용 악화.
+EMPLOY = {
+    "ICSA": {"name": "美 신규 실업수당청구", "fred": "ICSA", "freq": "주간", "color": "#c92a2a"},
+    "UNRATE": {"name": "美 실업률", "fred": "UNRATE", "freq": "월별", "color": "#e8590c"},
+    "KRU": {"name": "한국 실업률", "fred": "LRHUTTTTKRM156S", "freq": "월별", "color": "#2f9e44"},
+}
+CRISIS_EMPLOY = {k: ["ICSA", "UNRATE", "KRU"] for k in
+                 ("1997_asia", "2008_gfc", "2010_euro", "2020_covid")}
+
 METRICS = {
     "fx": {"label": "환율 (통화가치)", "direction": "down",
            "desc": "USD 대비 통화가치. 아래로 내려갈수록 통화 붕괴(외환위기형)."},
     "stock": {"label": "주가지수", "direction": "down",
-              "desc": "대표 주가지수. 아래로 내려갈수록 증시 폭락."},
+              "desc": "대표 주가지수. 아래로 내려갈수록 증시 폭락. (한국=월별)"},
     "bond": {"label": "국채금리 (신용)", "direction": "up",
              "desc": "10년물 국채금리. 위로 올라갈수록 국가신용 불안(금리 급등)."},
+    "vix": {"label": "변동성 (VIX)", "direction": "up",
+            "desc": "공포지수. 위로 급등할수록 패닉(증시 폭락 동반)."},
+    "credit": {"label": "신용 스프레드", "direction": "up",
+               "desc": "회사채 가산금리. 위로 벌어질수록 신용경색(자금 경색)."},
+    "oil": {"label": "유가 (WTI)", "direction": "down",
+            "desc": "원유 가격. 아래로 급락할수록 글로벌 수요 붕괴(침체형)."},
+    "employment": {"label": "고용", "direction": "up",
+                   "desc": "실업수당청구·실업률. 위로 치솟을수록 고용 충격."},
 }
+
+# 지표별 설정 — 레지스트리/위기 구성원/정규화/현재선 소스를 한 곳에 모은다.
+# norm: "strength"=환율 강도(역수), "index"=Day0=100 지수화.
+METRIC_CFG = {
+    "fx":     {"registry": FX,     "members": CRISIS_FX,     "norm": "strength",
+               "current_codes": ["KR", "JP", "EU", "BR"]},
+    "stock":  {"registry": STOCK,  "members": CRISIS_STOCK,  "norm": "index",
+               "current_codes": ["US", "JP", "KRM"]},
+    "bond":   {"registry": BOND,   "members": CRISIS_BOND,   "norm": "index",
+               "current_codes": ["KR", "US"]},
+    "vix":    {"registry": VIX,    "members": CRISIS_VIX,    "norm": "index",
+               "current_codes": ["VIX"]},
+    "credit": {"registry": CREDIT, "members": CRISIS_CREDIT, "norm": "index",
+               "current_codes": ["HY", "IG"]},
+    "oil":    {"registry": OIL,    "members": CRISIS_OIL,    "norm": "index",
+               "current_codes": ["WTI"]},
+    "employment": {"registry": EMPLOY, "members": CRISIS_EMPLOY, "norm": "index",
+                   "current_codes": ["ICSA", "UNRATE", "KRU"]},
+}
+
+
+def _lookback_rows(freq: str) -> int:
+    """현재선용 최근 행 수(빈도별)."""
+    return {"일별": 400, "주간": 140, "월별": 54}.get(freq, 400)
+
+
+def _anchor_search(freq: str) -> int:
+    """현재 기준점(고점/저점) 탐색 범위(빈도별 행 수)."""
+    return {"일별": 180, "주간": 40, "월별": 14}.get(freq, 180)
 
 # --------------------------------------------------------------------------- #
 # FRED 페치 (+디스크 캐시) — 키 불필요 CSV 다운로드
@@ -276,22 +334,25 @@ def _to_date(s: str) -> datetime.date:
 
 
 def _window(rows: list[tuple[str, float]], day0: str, pre: int, post: int) -> list[tuple[int, float]]:
-    """Day0(>= 기준일 첫 거래일)을 0으로 한 거래일 오프셋 시계열.
-    pre 거래일 전 ~ post 거래일 후 구간을 (day_offset, value)로."""
+    """Day0을 0으로 한 '달력일' 오프셋 시계열. pre일 전 ~ post일 후 구간을 (day_offset, value)로.
+
+    오프셋을 거래일 인덱스가 아닌 달력일로 잡으면 일·주·월별 시계열이 같은 시간축에
+    정렬되어 한 그래프에 겹쳐 그릴 수 있다(예: 일별 나스닥 + 월별 코스피)."""
     if not rows:
         return []
     d0 = _to_date(day0)
-    # Day0 위치: 기준일 이상인 첫 점
-    i0 = None
-    for i, (d, _v) in enumerate(rows):
-        if _to_date(d) >= d0:
-            i0 = i
-            break
+    i0 = next((i for i, (d, _v) in enumerate(rows) if _to_date(d) >= d0), None)
     if i0 is None:
         return []
-    lo = max(0, i0 - pre)
-    hi = min(len(rows), i0 + post + 1)
-    return [(i - i0, rows[i][1]) for i in range(lo, hi)]
+    base = _to_date(rows[i0][0])
+    lo_d = base - datetime.timedelta(days=pre)
+    hi_d = base + datetime.timedelta(days=post)
+    out: list[tuple[int, float]] = []
+    for d, v in rows:
+        dd = _to_date(d)
+        if lo_d <= dd <= hi_d:
+            out.append(((dd - base).days, v))
+    return out
 
 
 def _strength(points: list[tuple[int, float]], per_usd: bool) -> list[tuple[int, float]]:
@@ -333,71 +394,6 @@ def _stats(norm: list[tuple[int, float]], direction: str) -> dict:
         d_ext, v_ext = max(post, key=lambda x: x[1])
         depth = round(v_ext - 100.0, 1)        # 양수 = 상승폭
     return {"extreme_day": d_ext, "extreme_v": round(v_ext, 1), "depth_pct": depth}
-
-
-# --------------------------------------------------------------------------- #
-# 한국 '현재' 시계열
-# --------------------------------------------------------------------------- #
-def _kr_fx_now(lookback: int = 220) -> list[tuple[str, float]]:
-    rows = fred_cached("DEXKOUS")
-    return rows[-lookback:] if rows else []
-
-
-def _kr_stock_now(lookback: int = 220) -> list[tuple[str, float]]:
-    """로컬 DuckDB로 만든 시가총액 가중 한국 주가 프록시 (최근 lookback 거래일).
-    최신 시가총액을 정적 가중치로, 구간 전체에 존재하는 종목만 사용."""
-    try:
-        with store.connection() as conn:
-            dates = [r[0] for r in conn.execute(
-                "SELECT DISTINCT date FROM prices WHERE market='KR' ORDER BY date DESC LIMIT ?",
-                [lookback],
-            ).fetchall()]
-            if not dates:
-                return []
-            start = min(dates)
-            df = conn.execute(
-                """
-                WITH w AS (
-                    SELECT ticker, market_cap,
-                           ROW_NUMBER() OVER (PARTITION BY ticker ORDER BY date DESC) rn
-                    FROM fundamentals WHERE market='KR' AND market_cap IS NOT NULL
-                )
-                SELECT p.date AS date,
-                       SUM(p.close / b.base * w.market_cap) AS idx,
-                       SUM(w.market_cap) AS wsum
-                FROM prices p
-                JOIN w ON w.ticker = p.ticker AND w.rn = 1
-                JOIN (
-                    SELECT ticker, close AS base FROM prices
-                    WHERE market='KR' AND date = ?
-                ) b ON b.ticker = p.ticker
-                WHERE p.market='KR' AND p.date >= ? AND p.close IS NOT NULL
-                GROUP BY p.date
-                ORDER BY p.date
-                """,
-                [start, start],
-            ).fetchall()
-        out = []
-        for d, idx, wsum in df:
-            if wsum:
-                out.append((str(d), float(idx) / float(wsum) * 100.0))
-        return out
-    except Exception:
-        return []
-
-
-def _kr_bond_now(lookback: int = 36) -> list[tuple[str, float]]:
-    rows = fred_cached("IRLTLT01KRM156N")
-    return rows[-lookback:] if rows else []
-
-
-def _now_series(metric: str) -> tuple[list[tuple[str, float]], bool]:
-    """(원시 (날짜,값) 시계열, per_usd) — 한국 '현재' 신호."""
-    if metric == "fx":
-        return _kr_fx_now(), True
-    if metric == "stock":
-        return _kr_stock_now(), False  # 이미 지수(레벨)
-    return _kr_bond_now(), False
 
 
 # --------------------------------------------------------------------------- #
@@ -452,28 +448,25 @@ def _verdict(score: float) -> str:
 # 시리즈 빌더
 # --------------------------------------------------------------------------- #
 def _build_series(metric: str, crisis_key: str) -> list[dict]:
+    cfg = METRIC_CFG[metric]
+    reg = cfg["registry"]
+    members = cfg["members"].get(crisis_key, [])
     c = CRISIS_BY_KEY[crisis_key]
+    direction = METRICS[metric]["direction"]
     out: list[dict] = []
-    if metric == "fx":
-        members, reg = CRISIS_FX.get(crisis_key, []), FX
-    elif metric == "stock":
-        members, reg = CRISIS_STOCK.get(crisis_key, []), STOCK
-    else:
-        members, reg = CRISIS_BOND.get(crisis_key, []), BOND
-
     for code in members:
         meta = reg[code]
         rows = fred_cached(meta["fred"])
         win = _window(rows, c["day0"], c["pre"], c["post"])
-        if len(win) < 10:
+        if len(win) < 6:
             continue
-        if metric == "fx":
-            norm = _strength(win, meta["per_usd"])
+        if cfg["norm"] == "strength":
+            norm = _strength(win, meta.get("per_usd", False))
         else:
             norm = _index100(win)
-        if len(norm) < 10:
+        if len(norm) < 6:
             continue
-        st = _stats(norm, METRICS[metric]["direction"])
+        st = _stats(norm, direction)
         out.append({
             "code": code,
             "crisis": crisis_key,
@@ -487,78 +480,134 @@ def _build_series(metric: str, crisis_key: str) -> list[dict]:
     return out
 
 
-def _build_current(metric: str) -> dict | None:
-    raw, per_usd = _now_series(metric)
-    if len(raw) < 20:
-        return None
-    direction = METRICS[metric]["direction"]
-    if metric == "fx":
-        # 환율은 '통화 강도'(USD 대비)로 변환 — anchor에서 다시 100 기준을 잡는다.
-        strength = []
-        for d, v in raw:
-            if not v:
-                continue
-            strength.append((d, (raw[0][1] / v) if per_usd else (v / raw[0][1])))
-        dates = [d for d, _ in strength]
-        vals = [v for _, v in strength]
-    else:
-        dates = [d for d, _ in raw]
-        vals = [v for _, v in raw]
+# 현재 궤적 색(과거 위기선과 구분되는 진한 톤). 없으면 레지스트리 색 사용.
+_CURRENT_COLORS = {
+    "KR": "#111111", "US": "#0b7285", "JP": "#5f3dc4", "EU": "#1864ab",
+    "BR": "#a61e4d", "MX": "#a61e4d", "GR": "#862e2e", "ES": "#b35309", "IT": "#9c6312",
+    "KRM": "#111111",
+}
 
-    anchor = _anchor(vals, direction)
-    base = vals[anchor]
-    if not base:
+
+# 현재 구간 길이(빈도별 행 수) — 아날로그 매칭에 쓰는 '최근 N'
+_WINDOW = {"일별": 120, "주간": 52, "월별": 12}
+# 투영 시 '향후 며칠'을 예상 변화로 요약할지(빈도별 달력일)
+_HORIZON = {"일별": 60, "주간": 60, "월별": 150}
+
+
+def _recent_series(metric: str, code: str) -> dict | None:
+    """현재의 '최근 구간'(고점 앵커 없이 마지막 W개). 아날로그 매칭의 질의 시계열."""
+    cfg = METRIC_CFG[metric]
+    meta = cfg["registry"][code]
+    freq = meta.get("freq", "일별")
+    rows = fred_cached(meta["fred"])
+    if not rows:
         return None
-    seg_vals = vals[anchor:]
-    seg_dates = dates[anchor:]
-    norm = [round(v / base * 100.0, 3) for v in seg_vals]
-    points = [{"day": i, "v": norm[i]} for i in range(len(norm))]
-    st = _stats([(i, norm[i]) for i in range(len(norm))], direction)
-    label_map = {"fx": "한국 원화 (현재)", "stock": "한국 증시 (현재)", "bond": "한국 10년물 (현재)"}
+    rows = rows[-_WINDOW.get(freq, 120):]
+    per_usd = cfg["norm"] == "strength" and meta.get("per_usd", False)
+    if per_usd:
+        pairs = [(d, 1.0 / v) for d, v in rows if v]
+    else:
+        pairs = [(d, v) for d, v in rows if v is not None]
+    if len(pairs) < 8:
+        return None
+    dates = [d for d, _ in pairs]
+    base = pairs[0][1] or 1.0
+    norm = [v / base * 100.0 for _, v in pairs]
     return {
-        "label": label_map[metric],
-        "anchor_date": str(seg_dates[0]),
-        "as_of": str(seg_dates[-1]),
-        "days_elapsed": len(norm) - 1,
-        "norm": norm,                       # 유사도 계산용 (내부)
-        "points": points,
-        **st,
+        "code": code, "name": meta["name"], "freq": freq,
+        "color": _CURRENT_COLORS.get(code, meta.get("color", "#111")),
+        "norm": norm, "as_of": str(dates[-1]),
     }
 
 
-def _similarity(metric: str, current: dict, all_series: list[dict]) -> list[dict]:
-    if not current:
-        return []
-    cur = current["norm"]
-    n = len(cur)
-    out = []
-    for s in all_series:
-        seg = [p["v"] for p in s["points"] if p["day"] >= 0][:n]
-        if len(seg) < max(5, n // 2):
+def _slide_best(cur: list[float], cv: list[float]) -> tuple[float, int] | None:
+    """현재 구간 cur 를 과거 곡선 cv 위로 슬라이딩하며 상관 최대 위치(코릴, start) 반환."""
+    W = len(cur)
+    if len(cv) < W:
+        return None
+    best: tuple[float, int] | None = None
+    for start in range(0, len(cv) - W + 1):
+        cor = _corr(cur, cv[start:start + W])
+        if cor is None:
             continue
-        cor = _corr(cur, seg)
-        rmse = _rmse(cur, seg)
-        if cor is None or rmse is None:
+        if best is None or cor > best[0]:
+            best = (cor, start)
+    return best
+
+
+def _analog_for(metric: str, code: str, series: list[dict]) -> dict | None:
+    """아날로그 예측: 현재 최근 구간을 같은 지수의 과거 위기 '전체 타임라인'에 맞춰
+    가장 닮은 위치를 찾고(=위기 며칠 전인지), 그 위기의 이후 경로를 예상 시나리오로 투영."""
+    rec = _recent_series(metric, code)
+    if not rec:
+        return None
+    cur = rec["norm"]
+    W = len(cur)
+    direction = METRICS[metric]["direction"]
+    same = [s for s in series if s["code"] == code]
+
+    analogs: list[dict] = []
+    for s in same:
+        cv = [p["v"] for p in s["points"]]
+        cd = [p["day"] for p in s["points"]]
+        res = _slide_best(cur, cv)
+        if res is None:
             continue
-        # 점수: 모양(상관) 70% + 수준근접(오차) 30%
-        shape = max(0.0, cor) * 100.0
-        prox = max(0.0, 100.0 - rmse * 4.0)
-        score = round(shape * 0.7 + prox * 0.3, 1)
-        crisis = CRISIS_BY_KEY[s["crisis"]]
-        out.append({
-            "crisis": s["crisis"],
-            "crisis_label": crisis["label"],
-            "code": s["code"],
-            "name": s["name"],
-            "label": s["label"],
-            "color": s["color"],
-            "score": score,
-            "corr": round(cor, 3),
-            "verdict": _verdict(score),
-            # 그 위기가 같은 일수 시점에 도달했던 낙폭 (참고)
-            "their_v_at_now": round(seg[-1], 1) if seg else None,
+        cor, start = res
+        end_day = cd[start + W - 1]            # 현재의 끝점이 위기축에서 며칠째인가
+        lead = -end_day if end_day < 0 else 0  # 위기까지 남은 일수(음수면 이미 발발 이후)
+        phase = f"위기 {abs(end_day)}일 전" if end_day < 0 else f"위기 후 {end_day}일"
+        analogs.append({
+            "crisis": s["crisis"], "crisis_label": CRISIS_BY_KEY[s["crisis"]]["label"],
+            "color": s["color"], "corr": round(cor, 3),
+            "lead_days": lead, "phase": phase, "end_day": end_day,
+            "_cv": cv, "_cd": cd, "_start": start,
         })
-    out.sort(key=lambda x: x["score"], reverse=True)
+    analogs.sort(key=lambda x: x["corr"], reverse=True)
+
+    base_out = {
+        "code": code, "name": rec["name"], "color": rec["color"],
+        "label": f"{rec['name']} (현재)", "as_of": rec["as_of"],
+        "same_instrument": bool(same),
+    }
+    if not analogs:
+        # 비교할 과거 곡선이 없으면 현재선만(달력일 0..)
+        return {**base_out, "points": [{"day": i, "v": round(cur[i], 3)} for i in range(W)],
+                "projection": [], "best": None, "analogs": []}
+
+    top = analogs[0]
+    cv, cd, start = top["_cv"], top["_cd"], top["_start"]
+    seg = cv[start:start + W]
+    mcur, mseg = sum(cur) / W, sum(seg) / W
+    factor = (mseg / mcur) if mcur else 1.0   # 현재를 위기 곡선 스케일로 맞춤
+    aligned = [{"day": cd[start + i], "v": round(cur[i] * factor, 3)} for i in range(W)]
+    projection = [{"day": cd[j], "v": round(cv[j], 3)} for j in range(start + W, len(cv))]
+
+    # 예상 변화: 현재 끝점 이후 horizon 일 내 극값 대비 변화율
+    end_day, base_v = cd[start + W - 1], cv[start + W - 1]
+    horizon = _HORIZON.get(rec["freq"], 60)
+    fut = [cv[j] for j in range(start + W, len(cv)) if cd[j] - end_day <= horizon]
+    expected = None
+    if fut and base_v:
+        ext = min(fut) if direction == "down" else max(fut)
+        expected = round((ext / base_v - 1) * 100.0, 1)
+
+    best = {
+        "crisis": top["crisis"], "crisis_label": top["crisis_label"], "color": top["color"],
+        "corr": top["corr"], "lead_days": top["lead_days"], "phase": top["phase"],
+        "expected_pct": expected, "horizon": horizon,
+    }
+    pub = lambda a: {k: a[k] for k in ("crisis", "crisis_label", "color", "corr", "lead_days", "phase")}
+    return {**base_out, "points": aligned, "projection": projection,
+            "best": best, "analogs": [pub(a) for a in analogs[:6]]}
+
+
+def _build_currents(metric: str, series: list[dict]) -> list[dict]:
+    out: list[dict] = []
+    for code in METRIC_CFG[metric]["current_codes"]:
+        a = _analog_for(metric, code, series)
+        if a:
+            out.append(a)
     return out
 
 
@@ -566,12 +615,21 @@ def _similarity(metric: str, current: dict, all_series: list[dict]) -> list[dict
 # 캐시 워밍 — 필요한 FRED 시계열을 백그라운드에서 한 번 천천히 받아 디스크에 저장.
 # 요청 때마다 FRED를 두드리지 않게 해 throttle(읽기 타임아웃)을 피한다.
 # --------------------------------------------------------------------------- #
+# 조기경보 전용 추가 시계열(레지스트리에 없는 것)
+_WARN_SERIES = ["NFCI", "T10Y2Y", "DRTSCILM", "UMCSENT",
+                "TRESEGKRM052N", "MKTGDPKRA646NWDB", "GGGDTPKRA188N",
+                "XTEXVA01KRM667S", "XTIMVA01KRM667S"]
+
+
 def _all_series() -> list[str]:
     ids: list[str] = []
-    for reg in (FX, STOCK, BOND):
+    for reg in (FX, STOCK, BOND, VIX, CREDIT, OIL, EMPLOY):
         for meta in reg.values():
             if meta["fred"] not in ids:
                 ids.append(meta["fred"])
+    for s in _WARN_SERIES:
+        if s not in ids:
+            ids.append(s)
     return ids
 
 
@@ -626,6 +684,176 @@ def warm_status() -> dict:
 
 
 # --------------------------------------------------------------------------- #
+# 위기 선행징후 (조기경보) — 곡선 모양이 아니라 '전조 증상'을 임계값과 견준다.
+#   거품·과열(기대수익 괴리) / 신용경색 / 침체예고(금리차) / 심리·금융여건.
+# --------------------------------------------------------------------------- #
+_WARN = [
+    {"key": "nfci", "label": "금융 스트레스 (NFCI)", "fred": "NFCI", "danger": "high",
+     "watch": 0.0, "alert": 0.4, "unit": "",
+     "desc": "시카고연준 금융여건지수. 양수면 돈줄이 마르는 중(스트레스)."},
+    {"key": "yield", "label": "장단기 금리차 (10Y-2Y)", "fred": "T10Y2Y", "danger": "low",
+     "watch": 0.5, "alert": 0.0, "unit": "%p",
+     "desc": "0 밑(역전)이면 12~18개월 내 침체 신호. 역사상 모든 침체에 선행."},
+    {"key": "lending", "label": "은행 대출태도", "fred": "DRTSCILM", "danger": "high",
+     "watch": 10, "alert": 25, "unit": "%",
+     "desc": "은행이 기업대출을 조이는 순비율. 양수↑면 신용경색 전조."},
+    {"key": "sentiment", "label": "소비심리 (미시간대)", "fred": "UMCSENT", "danger": "low",
+     "watch": 75, "alert": 65, "unit": "",
+     "desc": "소비심리가 급락하면 수요·소비 둔화."},
+    {"key": "credit", "label": "하이일드 스프레드", "fred": "BAMLH0A0HYM2", "danger": "high",
+     "watch": 4.5, "alert": 7.0, "unit": "%p", "no_benchmark": True,
+     "desc": "회사채 가산금리. 벌어지면 위험회피·신용경색 (현재값만, 과거치 미제공)."},
+]
+_LEVEL_SCORE = {"ok": 0, "watch": 1, "alert": 2}
+
+
+def _status(v: float, watch: float, alert: float, danger: str) -> str:
+    if danger == "high":
+        return "alert" if v >= alert else "watch" if v >= watch else "ok"
+    return "alert" if v <= alert else "watch" if v <= watch else "ok"
+
+
+def _precrisis_avg(rows: list[tuple[str, float]], lo: int = 150, hi: int = 20) -> float | None:
+    """과거 위기들 직전(Day0-lo ~ Day0-hi일)의 평균값 — '위기 터지기 직전엔 이랬다'."""
+    vals: list[float] = []
+    for c in CRISES:
+        d0 = _to_date(c["day0"])
+        a, b = d0 - datetime.timedelta(days=lo), d0 - datetime.timedelta(days=hi)
+        seg = [v for d, v in rows if a <= _to_date(d) <= b]
+        if seg:
+            vals.append(sum(seg) / len(seg))
+    return round(sum(vals) / len(vals), 2) if vals else None
+
+
+def warning_signs() -> dict:
+    """현재 전조지표들을 임계값·과거 위기직전 수준과 견줘 조기경보를 만든다."""
+    signs: list[dict] = []
+    statuses: list[str] = []
+
+    # 증시 과열도 — 나스닥이 장기추세(400일선) 대비 몇 % 위인가 (거품/기대 괴리 프록시)
+    nq = fred_cached("NASDAQCOM")
+    if nq and len(nq) >= 420:
+        last = nq[-1][1]
+        dev = round((last / (sum(v for _, v in nq[-400:]) / 400) - 1) * 100, 1)
+        pcv = []
+        for c in CRISES:
+            d0 = _to_date(c["day0"])
+            idx = next((i for i, (d, _) in enumerate(nq) if _to_date(d) >= d0), None)
+            if idx and idx >= 400:
+                base = sum(v for _, v in nq[idx - 400:idx]) / 400
+                pcv.append((nq[idx][1] / base - 1) * 100)
+        st = _status(dev, 12, 25, "high")
+        signs.append({"key": "overheat", "label": "증시 과열도 (추세 이탈)", "value": dev,
+                      "unit": "%", "status": st, "as_of": nq[-1][0], "extra": None,
+                      "pre_crisis_avg": round(sum(pcv) / len(pcv), 1) if pcv else None,
+                      "desc": "나스닥이 장기추세(400일 평균) 대비 +면 과열·거품(기대수익 괴리)."})
+        statuses.append(st)
+
+    for w in _WARN:
+        rows = fred_cached(w["fred"])
+        if not rows:
+            continue
+        cur = rows[-1][1]
+        st = _status(cur, w["watch"], w["alert"], w["danger"])
+        extra = None
+        if w["key"] == "yield":
+            recent = [v for d, v in rows
+                      if (_to_date(rows[-1][0]) - _to_date(d)).days <= 730]
+            if recent and min(recent) < 0:
+                extra = "최근 2년 내 금리차 역전 발생"
+                if st == "ok":
+                    st = "watch"
+        signs.append({
+            "key": w["key"], "label": w["label"], "value": round(cur, 2),
+            "unit": w["unit"], "status": st, "as_of": rows[-1][0], "extra": extra,
+            "pre_crisis_avg": None if w.get("no_benchmark") else _precrisis_avg(rows),
+            "desc": w["desc"],
+        })
+        statuses.append(st)
+
+    score = round(sum(_LEVEL_SCORE[s] for s in statuses) / (2 * len(statuses)) * 100) if statuses else 0
+    level = "위험" if score >= 70 else "경고" if score >= 45 else "주의" if score >= 20 else "낮음"
+    return {
+        "score": score, "level": level, "signs": signs,
+        "as_of": max((s["as_of"] for s in signs), default=None),
+        "note": "전조지표를 임계값·과거 위기직전 수준과 비교. 경고가 많을수록 위기 환경에 가깝다는 뜻이며, 시점을 예측하진 않습니다.",
+    }
+
+
+# --------------------------------------------------------------------------- #
+# 한국 외환위기 선행징후 (김대종 교수 프레임)
+#   외환보유액·통화스와프·국가부채·무역의존도·환율 — 교수의 임계값을 기준선으로.
+#   ※ 한 학자의 특정(논쟁적) 시각. 객관적 사실이 아니라 '그 프레임의 점검표'.
+# --------------------------------------------------------------------------- #
+# 통화스와프는 자동 피드가 없어 알려진 현황을 수동 기입(설명에 근거 명시).
+_KR_SWAPS = [
+    {"label": "한미 통화스와프", "status": "alert",
+     "note": "상설 미체결(2021.12 한시 종료). 교수: 위기 시 달러 방어선 부재가 최대 약점."},
+    {"label": "한일 통화스와프", "status": "watch",
+     "note": "2023년 100억 달러 복원(상설 아님)."},
+]
+
+
+def korea_fx_warning() -> dict:
+    """교수 프레임의 한국 외환위기 전조지표를 현재값·임계값으로 점검."""
+    signs: list[dict] = []
+    statuses: list[str] = []
+
+    def add(key, label, value, unit, watch, alert, danger, desc, benchmark=None):
+        if value is None:
+            return
+        st = _status(value, watch, alert, danger)
+        signs.append({"key": key, "label": label, "value": round(value, 1), "unit": unit,
+                      "status": st, "benchmark": benchmark, "desc": desc})
+        statuses.append(st)
+
+    fx = fred_cached("DEXKOUS")
+    res = fred_cached("TRESEGKRM052N")           # 외환보유액(백만 달러, 월)
+    gdp = fred_cached("MKTGDPKRA646NWDB")         # 명목 GDP(달러, 연)
+    debt = fred_cached("GGGDTPKRA188N")           # 일반정부부채/GDP(%, 연)
+    exp = fred_cached("XTEXVA01KRM667S")          # 수출(달러, 월)
+    imp = fred_cached("XTIMVA01KRM667S")          # 수입(달러, 월)
+
+    # 1) 원/달러 환율 — 교수 전망 1,500원
+    if fx:
+        add("fx", "원/달러 환율", fx[-1][1], "원", 1350, 1450, "high",
+            "상승할수록 원화 약세·외화 이탈 압력. 교수 전망 1,500원.", benchmark=1500)
+
+    # 2) 외환보유액/GDP — 교수: 23%로 취약 (BIS 권고 수준까지 확대 주장)
+    reserves_b = res[-1][1] / 1000 if res else None         # 십억 달러
+    gdp_usd = gdp[-1][1] if gdp else None
+    if reserves_b and gdp_usd:
+        ratio = reserves_b * 1e9 / gdp_usd * 100
+        add("reserves_gdp", "외환보유액 / GDP", ratio, "%", 25, 20, "low",
+            f"현재 외환보유액 약 ${reserves_b:.0f}B. 교수: GDP 대비 23%로 취약(BIS 권고 $920B까지 확대 주장).",
+            benchmark=None)
+
+    # 3) 국가부채/GDP — IMF 60% 초과 시 위험국 (교수: 2029년 60% 전망)
+    if debt:
+        add("debt_gdp", "국가부채 / GDP", debt[-1][1], "%", 50, 60, "high",
+            "IMF 기준 60% 초과 시 위험국 분류. 교수: 2026년 50%·2029년 60% 전망.", benchmark=60)
+
+    # 4) 무역의존도 = 최근 12개월 (수출+수입) / GDP — 교수: 75%로 세계 2위
+    if exp and imp and gdp_usd:
+        trade = sum(v for _, v in exp[-12:]) + sum(v for _, v in imp[-12:])
+        dep = trade / gdp_usd * 100
+        add("trade_dep", "무역의존도", dep, "%", 70, 90, "high",
+            "(연 수출+수입)/GDP. 높을수록 대외충격에 민감. 교수: 약 75%로 세계 2위.", benchmark=75)
+
+    # 통화스와프 상태 반영
+    statuses += [s["status"] for s in _KR_SWAPS]
+
+    score = round(sum(_LEVEL_SCORE[s] for s in statuses) / (2 * len(statuses)) * 100) if statuses else 0
+    level = "위험" if score >= 70 else "경고" if score >= 45 else "주의" if score >= 20 else "낮음"
+    return {
+        "score": score, "level": level, "signs": signs, "swaps": _KR_SWAPS,
+        "as_of": max((d[-1][0] for d in (fx, res, debt) if d), default=None),
+        "frame": "김대종 세종대 교수 『제2 IMF 외환위기 다시 오는가?』(2025) 프레임",
+        "note": "한 학자의 특정·논쟁적 시각을 점검표로 옮긴 것입니다. 임계값도 교수 주장 기준이며, 한국은행·기재부 공식 설명과 다른 견해도 함께 보세요. 위기 시점을 예측하지 않습니다.",
+    }
+
+
+# --------------------------------------------------------------------------- #
 # 공개 API
 # --------------------------------------------------------------------------- #
 def meta() -> dict:
@@ -639,8 +867,8 @@ def meta() -> dict:
     return {
         "metrics": metrics,
         "crises": crises,
-        "source": "FRED (환율·미/일 지수·국채금리) + 로컬 DuckDB (한국 현재 주가 프록시)",
-        "note": "Day0=위기 방아쇠 사건. 모든 지표는 Day0=100으로 정규화. 환율·주가는 ↓=붕괴, 금리는 ↑=붕괴.",
+        "source": "FRED (환율·주가·국채금리·VIX·신용스프레드·유가·고용)",
+        "note": "Day0=위기 방아쇠 사건. 모든 지표는 Day0=100으로 정규화. 현재선은 같은 지수의 과거 위기와 비교. (한국 코스피·실업률 등 일부는 월별)",
     }
 
 
@@ -654,23 +882,19 @@ def simulate(metric: str, crisis_keys: list[str] | None = None) -> dict:
     for k in keys:
         series.extend(_build_series(metric, k))
 
-    current = _build_current(metric)
-    similarity = _similarity(metric, current, series) if current else []
+    currents = _build_currents(metric, series)
 
-    # 그래프 표시 범위
+    # 그래프 표시 범위 (현재 정렬 위치·투영 포함)
     max_day = 0
     min_day = 0
     for s in series:
         for p in s["points"]:
             max_day = max(max_day, p["day"])
             min_day = min(min_day, p["day"])
-    if current:
-        max_day = max(max_day, current["days_elapsed"])
-
-    # 응답에서 내부용 norm 제거
-    cur_out = None
-    if current:
-        cur_out = {k: v for k, v in current.items() if k != "norm"}
+    for c in currents:
+        for p in c["points"] + c.get("projection", []):
+            max_day = max(max_day, p["day"])
+            min_day = min(min_day, p["day"])
 
     return {
         "metric": {"key": metric, **METRICS[metric]},
@@ -680,7 +904,6 @@ def simulate(metric: str, crisis_keys: list[str] | None = None) -> dict:
             "day0": CRISIS_BY_KEY[k]["day0"], "desc": CRISIS_BY_KEY[k]["desc"],
         } for k in keys],
         "series": series,
-        "current": cur_out,
-        "similarity": similarity,
+        "currents": currents,
         "axis": {"min_day": min_day, "max_day": max_day},
     }
