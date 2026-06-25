@@ -1147,6 +1147,25 @@ export interface CrisisKoreaWarning {
   frame: string;
   note: string;
 }
+// 국가별 거시지표 비교표
+export interface CrisisCountryRow {
+  country: string;
+  iso: string;
+  gdp_usd: number | null;
+  gdp_year: string | null;
+  gdp_growth: number | null;
+  rate: number | null;
+  cpi: number | null;
+  unemployment: number | null;
+  debt_gdp: number | null;
+  current_account: number | null;
+  population: number | null;
+}
+export interface CrisisCountries {
+  countries: CrisisCountryRow[];
+  as_of: string | null;
+  note: string;
+}
 
 export interface ReportResponse {
   ticker: string;
@@ -1373,6 +1392,7 @@ export const api = {
   },
   crisisWarning: () => request<CrisisWarning>(`/api/crisis/warning`),
   crisisKoreaWarning: () => request<CrisisKoreaWarning>(`/api/crisis/korea-warning`),
+  crisisCountries: () => request<CrisisCountries>(`/api/crisis/countries`),
   globalClusters: () => request<GlobalClustersResponse>(`/api/data/global-clusters`),
   globalCluster: (key: string) => request<GlobalCluster>(`/api/data/global-cluster?key=${encodeURIComponent(key)}`),
   ohlc: (params: { ticker: string; start?: string; end?: string }) => {

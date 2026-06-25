@@ -33,6 +33,11 @@ def crisis_korea_warning():
     return crisis.korea_fx_warning()
 
 
+@router.get("/countries")
+def crisis_countries():
+    return crisis.country_macros()
+
+
 @router.get("/sim")
 def crisis_sim(
     metric: str = Query(default="fx"),

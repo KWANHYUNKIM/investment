@@ -5,7 +5,9 @@ import {
   ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid,
   ReferenceLine, ReferenceDot,
 } from "recharts";
-import { api, CrisisSim as Sim, CrisisMeta, CrisisSeries, CrisisWarning, CrisisKoreaWarning } from "@/lib/api";
+import {
+  api, CrisisSim as Sim, CrisisMeta, CrisisSeries, CrisisWarning, CrisisKoreaWarning, CrisisCountries,
+} from "@/lib/api";
 import { Card, Empty, Spinner } from "@/components/ui";
 
 const RED = "#c92a2a";
@@ -19,6 +21,24 @@ const STAT: Record<string, { bg: string; fg: string; t: string }> = {
 };
 function levelColor(level: string) {
   return level === "위험" ? "#c92a2a" : level === "경고" ? "#e8590c" : level === "주의" ? "#b8860b" : "#217346";
+}
+function fmtNum(v: number | null, suffix = "") {
+  return v == null ? "—" : `${v}${suffix}`;
+}
+function fmtGdp(v: number | null) {
+  if (v == null) return "—";
+  return v >= 1e12 ? `$${(v / 1e12).toFixed(2)}T` : `$${(v / 1e9).toFixed(0)}B`;
+}
+function fmtPop(v: number | null) {
+  if (v == null) return "—";
+  return v >= 1e8 ? `${(v / 1e8).toFixed(2)}억` : `${(v / 1e6).toFixed(1)}M`;
+}
+// 음수면 빨강(경상수지 적자), 부채는 높을수록 빨강
+function signColor(v: number | null, kind: "ca" | "debt" | "neutral" = "neutral") {
+  if (v == null) return "#999";
+  if (kind === "ca") return v < 0 ? RED : "#217346";
+  if (kind === "debt") return v >= 100 ? RED : v >= 60 ? "#b8860b" : "#444";
+  return "#444";
 }
 
 // 기본 선택: 데이터가 가장 촘촘하고 잘 알려진 두 위기.
@@ -54,12 +74,14 @@ export function CrisisSim() {
 
   const [warn, setWarn] = useState<CrisisWarning | null>(null);
   const [krWarn, setKrWarn] = useState<CrisisKoreaWarning | null>(null);
+  const [countries, setCountries] = useState<CrisisCountries | null>(null);
 
-  // 메타·조기경보 1회 로드
+  // 메타·조기경보·국가비교 1회 로드
   useEffect(() => {
     api.crisisMeta().then(setMeta).catch((e) => setErr(e?.message ?? "메타를 불러오지 못했습니다."));
     api.crisisWarning().then(setWarn).catch(() => {});
     api.crisisKoreaWarning().then(setKrWarn).catch(() => {});
+    api.crisisCountries().then(setCountries).catch(() => {});
   }, []);
 
   // 지표·위기 변경 시 시뮬레이션 로드
@@ -355,6 +377,60 @@ export function CrisisSim() {
             </div>
           </div>
           <p className="mt-3 text-[11px] leading-relaxed text-[#c0392b]">⚠ {krWarn.note}</p>
+        </Card>
+      )}
+
+      {/* ── 주요국 거시지표 비교표 ────────────────────────────── */}
+      {countries && countries.countries.length > 0 && (
+        <Card title="주요국 거시지표 비교" subtitle="한국 vs 주요 경제국 — GDP·성장률·금리·물가·실업·부채·경상수지·인구">
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b border-[#e0e0e0] text-[#888]">
+                  <th className="px-2 py-1.5 text-left font-semibold">국가</th>
+                  <th className="px-2 py-1.5 text-right font-semibold">GDP</th>
+                  <th className="px-2 py-1.5 text-right font-semibold">성장률</th>
+                  <th className="px-2 py-1.5 text-right font-semibold">금리</th>
+                  <th className="px-2 py-1.5 text-right font-semibold">물가</th>
+                  <th className="px-2 py-1.5 text-right font-semibold">실업률</th>
+                  <th className="px-2 py-1.5 text-right font-semibold">부채/GDP</th>
+                  <th className="px-2 py-1.5 text-right font-semibold">경상수지</th>
+                  <th className="px-2 py-1.5 text-right font-semibold">인구</th>
+                </tr>
+              </thead>
+              <tbody>
+                {countries.countries.map((r) => {
+                  const isKR = r.iso === "KR";
+                  return (
+                    <tr
+                      key={r.iso}
+                      className={`border-b border-[#f0f0f0] ${isKR ? "bg-[#f6fbf8] font-semibold" : "hover:bg-[#fafafa]"}`}
+                    >
+                      <td className="px-2 py-1.5 text-left">
+                        {isKR && <span className="mr-1 text-[#217346]">★</span>}
+                        {r.country}
+                      </td>
+                      <td className="px-2 py-1.5 text-right tabular-nums">{fmtGdp(r.gdp_usd)}</td>
+                      <td className="px-2 py-1.5 text-right tabular-nums" style={{ color: signColor(r.gdp_growth) }}>
+                        {fmtNum(r.gdp_growth, "%")}
+                      </td>
+                      <td className="px-2 py-1.5 text-right tabular-nums">{fmtNum(r.rate, "%")}</td>
+                      <td className="px-2 py-1.5 text-right tabular-nums">{fmtNum(r.cpi, "%")}</td>
+                      <td className="px-2 py-1.5 text-right tabular-nums">{fmtNum(r.unemployment, "%")}</td>
+                      <td className="px-2 py-1.5 text-right tabular-nums" style={{ color: signColor(r.debt_gdp, "debt") }}>
+                        {fmtNum(r.debt_gdp, "%")}
+                      </td>
+                      <td className="px-2 py-1.5 text-right tabular-nums" style={{ color: signColor(r.current_account, "ca") }}>
+                        {r.current_account == null ? "—" : `${r.current_account > 0 ? "+" : ""}${r.current_account}%`}
+                      </td>
+                      <td className="px-2 py-1.5 text-right tabular-nums text-[#666]">{fmtPop(r.population)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <p className="mt-2 text-[11px] leading-relaxed text-[#999]">{countries.note}</p>
         </Card>
       )}
 

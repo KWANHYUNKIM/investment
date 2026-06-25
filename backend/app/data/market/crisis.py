@@ -630,6 +630,9 @@ def _all_series() -> list[str]:
     for s in _WARN_SERIES:
         if s not in ids:
             ids.append(s)
+    for s in _country_series_ids():
+        if s not in ids:
+            ids.append(s)
     return ids
 
 
@@ -850,6 +853,83 @@ def korea_fx_warning() -> dict:
         "as_of": max((d[-1][0] for d in (fx, res, debt) if d), default=None),
         "frame": "김대종 세종대 교수 『제2 IMF 외환위기 다시 오는가?』(2025) 프레임",
         "note": "한 학자의 특정·논쟁적 시각을 점검표로 옮긴 것입니다. 임계값도 교수 주장 기준이며, 한국은행·기재부 공식 설명과 다른 견해도 함께 보세요. 위기 시점을 예측하지 않습니다.",
+    }
+
+
+# --------------------------------------------------------------------------- #
+# 국가별 거시지표 비교표 (Trading Economics 스타일) — FRED 국가별 시리즈.
+#   GDP·성장률·금리·물가·실업률·부채/GDP·경상수지·인구 (정부예산은 무료 일관 소스 없음).
+# --------------------------------------------------------------------------- #
+_COUNTRIES = [
+    {"name": "한국", "iso2": "KR", "iso3": "KOR"},
+    {"name": "미국", "iso2": "US", "iso3": "USA"},
+    {"name": "일본", "iso2": "JP", "iso3": "JPN"},
+    {"name": "중국", "iso2": "CN", "iso3": "CHN"},
+    {"name": "독일", "iso2": "DE", "iso3": "DEU"},
+    {"name": "영국", "iso2": "GB", "iso3": "GBR"},
+]
+
+
+def _country_series(c: dict) -> dict[str, str]:
+    """국가별 지표 → FRED series id (코드 체계가 지표마다 2/3글자로 다름)."""
+    i2, i3 = c["iso2"], c["iso3"]
+    return {
+        "gdp": f"MKTGDP{i2}A646NWDB",          # 명목 GDP(달러, 연)
+        "growth": f"{i3}GDPRQPSMEI",           # 실질 GDP 성장률(전년동기%, OECD)
+        "rate": f"IR3TIB01{i2}M156N",          # 3개월 단기금리(%)
+        "cpi": f"FPCPITOTLZG{i3}",             # 물가상승률(연%)
+        "unemp": f"LRHUTTTT{i2}M156S",         # 실업률(월%)
+        "debt": f"GGGDTP{i2}A188N",            # 일반정부부채/GDP(%)
+        "ca": f"{i3}B6BLTT02STSAQ",            # 경상수지/GDP(%)
+        "pop": f"POPTOT{i2}A647NWDB",          # 인구(명, 연)
+    }
+
+
+def _country_series_ids() -> list[str]:
+    ids: list[str] = []
+    for c in _COUNTRIES:
+        ids.extend(_country_series(c).values())
+    return ids
+
+
+def _last(series: str) -> tuple[float | None, str | None]:
+    r = fred_cached(series)
+    return (r[-1][1], r[-1][0]) if r else (None, None)
+
+
+def country_macros() -> dict:
+    """주요국 핵심 거시지표 최신값 비교표. 캐시만 읽으므로(워밍 의존) 비면 None."""
+    rows: list[dict] = []
+    for c in _COUNTRIES:
+        s = _country_series(c)
+        gdp, gdp_d = _last(s["gdp"])
+        growth, _ = _last(s["growth"])
+        rate, _ = _last(s["rate"])
+        cpi, _ = _last(s["cpi"])
+        unemp, _ = _last(s["unemp"])
+        debt, _ = _last(s["debt"])
+        ca, _ = _last(s["ca"])
+        pop, _ = _last(s["pop"])
+
+        def rnd(v, n=2):
+            return round(v, n) if v is not None else None
+
+        rows.append({
+            "country": c["name"], "iso": c["iso2"],
+            "gdp_usd": gdp,                      # 명목 GDP(달러)
+            "gdp_year": gdp_d[:4] if gdp_d else None,
+            "gdp_growth": rnd(growth, 1),       # %
+            "rate": rnd(rate),                  # %
+            "cpi": rnd(cpi, 1),                 # %
+            "unemployment": rnd(unemp, 1),      # %
+            "debt_gdp": rnd(debt, 1),           # %
+            "current_account": rnd(ca, 1),      # % of GDP
+            "population": pop,                  # 명
+        })
+    return {
+        "countries": rows,
+        "as_of": max((d for d in (_last(s)[1] for s in _country_series_ids()) if d), default=None),
+        "note": "주요국 핵심 거시지표(FRED). GDP·인구는 연간, 성장률·경상수지는 분기, 금리·실업률은 월간 최신값. 정부예산수지는 국가별 무료 일관 소스가 없어 제외. 빈칸은 해당국 미제공/적재중.",
     }
 
 
