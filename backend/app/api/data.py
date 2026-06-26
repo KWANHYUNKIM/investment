@@ -435,6 +435,20 @@ def realestate_trades_endpoint():
     return realestate.snapshot()
 
 
+@router.get("/realestate-map")
+def realestate_map_endpoint():
+    """부동산 지도 — 시군구별 아파트 실거래(완성 최신월)에 좌표를 얹어 지도용으로(국토부 RTMS)."""
+    from app.data.macro import realestate_map
+    return realestate_map.map_snapshot()
+
+
+@router.get("/realestate-deals")
+def realestate_deals_endpoint(lawd: str, ym: str | None = None):
+    """시군구(LAWD) 단지별 아파트 매매 실거래 상세 — 지도 마커 클릭 시 드릴다운."""
+    from app.data.macro import realestate_map
+    return realestate_map.region_deals(lawd, ym)
+
+
 @router.get("/realestate-rent")
 def realestate_rent_endpoint():
     """부동산 전월세 실거래 — 전국 아파트 월별 거래량·전세/월세 비중·평균 전세보증금(국토부 RTMS)."""

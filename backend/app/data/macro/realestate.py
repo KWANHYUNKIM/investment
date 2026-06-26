@@ -26,6 +26,7 @@ _HEADERS = {"User-Agent": "Mozilla/5.0"}
 
 _lock = threading.Lock()
 _cache: dict = {"ts": 0.0, "data": None}
+_status_seen: set[int] = set()   # 한 스냅샷 동안 본 비정상 HTTP 코드(429/403 구분용)
 TTL = 12 * 3600.0  # 12시간 (전국 1,500여 콜이라 자주 받지 않음, 스케줄러가 워밍)
 MONTHS = 6
 
@@ -69,6 +70,7 @@ def _fetch_one(lawd: str, ymd: str) -> tuple[int, float, bool]:
         except Exception:
             return count, amount_manwon, False
         if r.status_code != 200:
+            _status_seen.add(r.status_code)
             return count, amount_manwon, False
         try:
             root = ET.fromstring(r.text)
@@ -99,6 +101,58 @@ def _fetch_one(lawd: str, ymd: str) -> tuple[int, float, bool]:
     return count, amount_manwon, True
 
 
+def deals(lawd: str, ymd: str | None = None, limit: int = 300) -> list[dict]:
+    """한 시군구(LAWD)의 아파트 매매 실거래 상세 목록 (단지명·면적·금액·일자)."""
+    key = get_settings().data_go_kr_key
+    if not key:
+        return []
+    if not ymd:
+        # 완성 최신월(전월) 기준
+        ymd = _recent_months(2)[0]
+    out: list[dict] = []
+    page = 1
+    while True:
+        params = {"serviceKey": key, "LAWD_CD": lawd, "DEAL_YMD": ymd,
+                  "pageNo": str(page), "numOfRows": "1000"}
+        try:
+            r = requests.get(_URL, params=params, headers=_HEADERS, timeout=12)
+            root = ET.fromstring(r.text)
+        except Exception:
+            break
+        items = root.findall(".//item")
+        for it in items:
+            amt = _txt(it, "dealAmount", "거래금액")
+            if not amt:
+                continue
+            try:
+                manwon = float(amt.replace(",", "").strip())
+            except ValueError:
+                continue
+            y = _txt(it, "dealYear", "년") or ymd[:4]
+            m = _txt(it, "dealMonth", "월") or ymd[4:]
+            d = _txt(it, "dealDay", "일") or ""
+            area = _txt(it, "excluUseAr", "전용면적")
+            out.append({
+                "apt": _txt(it, "aptNm", "아파트") or "-",
+                "dong": _txt(it, "umdNm", "법정동") or "",
+                "area": round(float(area), 1) if area else None,
+                "amount_eok": round(manwon / 10000.0, 2),
+                "floor": _txt(it, "floor", "층"),
+                "build_year": _txt(it, "buildYear", "건축년도"),
+                "date": f"{int(y):04d}-{int(m):02d}-{int(d):02d}" if d else f"{y}-{m}",
+            })
+        total = _txt(root, ".//totalCount")
+        try:
+            total_n = int(total) if total else len(out)
+        except ValueError:
+            total_n = len(out)
+        if len(out) >= total_n or not items or page > 30:
+            break
+        page += 1
+    out.sort(key=lambda x: (x["date"], x["amount_eok"]), reverse=True)
+    return out[:limit]
+
+
 def snapshot(months: int = MONTHS, force: bool = False) -> dict:
     with _lock:
         if not force and _cache["data"] and (time.time() - _cache["ts"] < TTL):
@@ -111,6 +165,7 @@ def snapshot(months: int = MONTHS, force: bool = False) -> dict:
 
     yms = _recent_months(months)
     jobs = [(lawd, sido, name, ym) for ym in yms for (lawd, sido, name) in SIGUNGU]
+    _status_seen.clear()
 
     def run(job):
         lawd, sido, name, ym = job
@@ -123,10 +178,16 @@ def snapshot(months: int = MONTHS, force: bool = False) -> dict:
 
     ok_n = sum(1 for r in results if r["ok"])
     if ok_n == 0:
-        return {"available": False,
-                "reason": "data.go.kr API가 403(키 미반영)으로 응답 — 활용신청 직후 게이트웨이 "
-                          "반영까지 시간이 걸릴 수 있습니다. 활성화되면 자동 표시됩니다.",
-                "monthly": [], "by_sido": [], "top_sigungu": [], "scope": "전국"}
+        if 429 in _status_seen:
+            reason = ("data.go.kr 일일 호출량 초과(429) — 무료 등급 한도를 다 썼습니다. "
+                      "보통 다음 날 0시 리셋되며, 리셋 후 스케줄러가 자동으로 채웁니다.")
+        elif 403 in _status_seen:
+            reason = ("data.go.kr 403 — 키가 이 API(아파트 실거래)에 활용신청·승인되지 "
+                      "않았거나 게이트웨이 반영 전입니다. 승인되면 자동 표시됩니다.")
+        else:
+            reason = "data.go.kr 응답 실패(네트워크/타임아웃). 잠시 후 다시 시도됩니다."
+        return {"available": False, "reason": reason,
+                "monthly": [], "by_sido": [], "top_sigungu": [], "region_all": [], "scope": "전국"}
 
     cur_ym = _recent_months(1)[0]
 
@@ -173,6 +234,14 @@ def snapshot(months: int = MONTHS, force: bool = False) -> dict:
         key=lambda x: x["amount_eok"], reverse=True,
     )[:15]
 
+    # 전 시군구(지도용) — 좌표는 realestate_map 에서 붙인다
+    region_all = [
+        {"region": r["region"], "sido": r["sido"], "lawd": r["lawd"],
+         "count": r["count"], "amount_eok": round(r["manwon"] / 10000.0, 1),
+         "avg_eok": round(r["manwon"] / 10000.0 / r["count"], 2) if r["count"] else None}
+        for r in region_rows if r["count"] > 0
+    ]
+
     data = {
         "available": True,
         "scope": "전국 250개 시군구",
@@ -181,6 +250,7 @@ def snapshot(months: int = MONTHS, force: bool = False) -> dict:
         "latest_count": head["count"], "latest_amount_eok": head["amount_eok"],
         "mom_count_pct": mom, "region_ym": region_ym,
         "monthly": monthly, "by_sido": by_sido, "top_sigungu": top_sigungu,
+        "region_all": region_all,
         "partial": ok_n < len(results),
     }
     with _lock:

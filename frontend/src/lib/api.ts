@@ -1170,6 +1170,44 @@ export interface CrisisCountries {
   as_of: string | null;
   note: string;
 }
+// 부동산 실거래 지도
+export interface RealEstateRegion {
+  region: string;
+  sido: string;
+  lawd: string;
+  count: number;
+  amount_eok: number;
+  avg_eok: number | null;
+  lat: number;
+  lng: number;
+  approx: boolean; // true=시도 중심 근사(지오코딩 미완)
+}
+export interface RealEstateMapData {
+  ready: boolean; // 실거래 데이터가 채워졌는지 (false여도 지도는 표시)
+  warming: boolean;
+  message: string | null; // 수집중/안내 메시지
+  source?: string;
+  latest_label?: string | null;
+  region_ym?: string | null;
+  count?: number;
+  geocoded?: number;
+  regions: RealEstateRegion[];
+  note?: string;
+}
+export interface RealEstateDeal {
+  apt: string;
+  dong: string;
+  area: number | null;
+  amount_eok: number;
+  floor: string | null;
+  build_year: string | null;
+  date: string;
+}
+export interface RealEstateDeals {
+  lawd: string;
+  count: number;
+  deals: RealEstateDeal[];
+}
 
 export interface ReportResponse {
   ticker: string;
@@ -1397,6 +1435,9 @@ export const api = {
   crisisWarning: () => request<CrisisWarning>(`/api/crisis/warning`),
   crisisKoreaWarning: () => request<CrisisKoreaWarning>(`/api/crisis/korea-warning`),
   crisisCountries: () => request<CrisisCountries>(`/api/crisis/countries`),
+  realestateMap: () => request<RealEstateMapData>(`/api/data/realestate-map`),
+  realestateDeals: (lawd: string, ym?: string) =>
+    request<RealEstateDeals>(`/api/data/realestate-deals?lawd=${encodeURIComponent(lawd)}${ym ? `&ym=${ym}` : ""}`),
   globalClusters: () => request<GlobalClustersResponse>(`/api/data/global-clusters`),
   globalCluster: (key: string) => request<GlobalCluster>(`/api/data/global-cluster?key=${encodeURIComponent(key)}`),
   ohlc: (params: { ticker: string; start?: string; end?: string }) => {
