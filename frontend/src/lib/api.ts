@@ -1208,6 +1208,94 @@ export interface RealEstateDeals {
   count: number;
   deals: RealEstateDeal[];
 }
+export interface RealEstateApartment {
+  apt: string;
+  dong: string;
+  count: number;
+  recent_eok: number;
+  recent_area: number | null;
+  recent_date: string;
+  recent_floor: string | null;
+  build_year: string | null;
+  min_eok: number;
+  max_eok: number;
+  areas: number[];
+  lat: number;
+  lng: number;
+  approx: boolean; // true=동 좌표 미확보 → 시군구 중심 근사
+  deals: RealEstateDeal[];
+}
+export interface RealEstateApartments {
+  lawd: string;
+  sido: string;
+  region: string;
+  ym?: string | null;
+  count: number;
+  deal_count: number;
+  geocoded: number;
+  geocoding: boolean; // 동 좌표 채우는 중 → 잠시 후 재조회하면 정밀해짐
+  center: number[];
+  apartments: RealEstateApartment[];
+}
+export interface ReDealPt {
+  date: string;
+  eok: number;
+  floor: string | null;
+  area: number | null;
+}
+export interface ReSeriesPt {
+  ym: string; // YYYY-MM
+  avg: number;
+  min: number;
+  max: number;
+  count: number;
+}
+export interface ReAreaMeta {
+  area: number;
+  key: string; // series 키
+  count: number;
+  min_eok: number;
+  max_eok: number;
+  recent_eok: number;
+  recent_date: string;
+  deals: ReDealPt[];
+}
+export interface ReStatic {
+  available: boolean;
+  reason: string;
+  households: number | null;
+  dong_count: number | null;
+  approval_date: string | null;
+  floors: string | null;
+  parking: string | null;
+  far: number | null;
+  bcr: number | null;
+  builder: string | null;
+  heating: string | null;
+  office_tel: string | null;
+  road_address: string | null;
+}
+export interface RealEstateApartmentDetail {
+  lawd: string;
+  sido: string;
+  region: string;
+  apt: string;
+  dong: string;
+  ready: boolean;
+  warming: boolean;
+  progress: { done: number; total: number };
+  months?: number;
+  hist_from?: string; // YYYYMM
+  build_year: string | null;
+  total_deals?: number;
+  last_date?: string | null;
+  areas: ReAreaMeta[];
+  series: Record<string, ReSeriesPt[]>;
+  static: ReStatic;
+  source?: string;
+  note?: string;
+  message?: string;
+}
 
 export interface ReportResponse {
   ticker: string;
@@ -1438,6 +1526,14 @@ export const api = {
   realestateMap: () => request<RealEstateMapData>(`/api/data/realestate-map`),
   realestateDeals: (lawd: string, ym?: string) =>
     request<RealEstateDeals>(`/api/data/realestate-deals?lawd=${encodeURIComponent(lawd)}${ym ? `&ym=${ym}` : ""}`),
+  realestateApartments: (lawd: string, ym?: string) =>
+    request<RealEstateApartments>(`/api/data/realestate-apartments?lawd=${encodeURIComponent(lawd)}${ym ? `&ym=${ym}` : ""}`),
+  realestateApartment: (lawd: string, apt: string, dong?: string, months = 120) =>
+    request<RealEstateApartmentDetail>(
+      `/api/data/realestate-apartment?lawd=${encodeURIComponent(lawd)}&apt=${encodeURIComponent(apt)}${
+        dong ? `&dong=${encodeURIComponent(dong)}` : ""
+      }&months=${months}`,
+    ),
   globalClusters: () => request<GlobalClustersResponse>(`/api/data/global-clusters`),
   globalCluster: (key: string) => request<GlobalCluster>(`/api/data/global-cluster?key=${encodeURIComponent(key)}`),
   ohlc: (params: { ticker: string; start?: string; end?: string }) => {

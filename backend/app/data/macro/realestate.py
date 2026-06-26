@@ -101,24 +101,34 @@ def _fetch_one(lawd: str, ymd: str) -> tuple[int, float, bool]:
     return count, amount_manwon, True
 
 
-def deals(lawd: str, ymd: str | None = None, limit: int = 300) -> list[dict]:
-    """한 시군구(LAWD)의 아파트 매매 실거래 상세 목록 (단지명·면적·금액·일자)."""
+def month_deals(lawd: str, ymd: str) -> tuple[list[dict], bool]:
+    """한 시군구·한 달의 아파트 매매 실거래 **전체** 목록과 성공여부(ok).
+
+    ok=False면 키 미반영/429/네트워크 실패(부분수집 구분용). 정렬·자르기 안 함.
+    """
     key = get_settings().data_go_kr_key
     if not key:
-        return []
-    if not ymd:
-        # 완성 최신월(전월) 기준
-        ymd = _recent_months(2)[0]
+        return [], False
     out: list[dict] = []
     page = 1
+    ok = True
     while True:
         params = {"serviceKey": key, "LAWD_CD": lawd, "DEAL_YMD": ymd,
                   "pageNo": str(page), "numOfRows": "1000"}
         try:
             r = requests.get(_URL, params=params, headers=_HEADERS, timeout=12)
-            root = ET.fromstring(r.text)
         except Exception:
-            break
+            return out, False
+        if r.status_code != 200:
+            _status_seen.add(r.status_code)
+            return out, False
+        try:
+            root = ET.fromstring(r.text)
+        except ET.ParseError:
+            return out, False
+        rc = _txt(root, ".//resultCode") or _txt(root, ".//returnReasonCode")
+        if rc not in (None, "000", "00", "0"):
+            return out, False
         items = root.findall(".//item")
         for it in items:
             amt = _txt(it, "dealAmount", "거래금액")
@@ -149,6 +159,15 @@ def deals(lawd: str, ymd: str | None = None, limit: int = 300) -> list[dict]:
         if len(out) >= total_n or not items or page > 30:
             break
         page += 1
+    return out, ok
+
+
+def deals(lawd: str, ymd: str | None = None, limit: int = 300) -> list[dict]:
+    """한 시군구(LAWD)의 아파트 매매 실거래 상세 목록 (단지명·면적·금액·일자)."""
+    if not ymd:
+        # 완성 최신월(전월) 기준
+        ymd = _recent_months(2)[0]
+    out, _ok = month_deals(lawd, ymd)
     out.sort(key=lambda x: (x["date"], x["amount_eok"]), reverse=True)
     return out[:limit]
 

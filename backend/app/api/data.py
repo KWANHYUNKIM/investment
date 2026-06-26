@@ -449,6 +449,21 @@ def realestate_deals_endpoint(lawd: str, ym: str | None = None):
     return realestate_map.region_deals(lawd, ym)
 
 
+@router.get("/realestate-apartments")
+def realestate_apartments_endpoint(lawd: str, ym: str | None = None):
+    """시군구(LAWD) 실거래를 단지 단위로 묶어 지도 마커용 — 읍/면/동 지오코딩 + 단지 분산."""
+    from app.data.macro import realestate_map
+    return realestate_map.region_apartments(lawd, ym)
+
+
+@router.get("/realestate-apartment")
+def realestate_apartment_endpoint(lawd: str, apt: str, dong: str | None = None,
+                                  months: int = 120):
+    """단지 상세 — 면적별 시세/실거래 시계열·거래이력·요약(국토부 N개월 실거래 이력 기반)."""
+    from app.data.macro import realestate_map
+    return realestate_map.apartment_detail(lawd, apt, dong, months)
+
+
 @router.get("/realestate-rent")
 def realestate_rent_endpoint():
     """부동산 전월세 실거래 — 전국 아파트 월별 거래량·전세/월세 비중·평균 전세보증금(국토부 RTMS)."""

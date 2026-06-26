@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
-import { api, RealEstateMapData, RealEstateRegion, RealEstateDeals } from "@/lib/api";
+import { api, RealEstateMapData, RealEstateRegion, RealEstateApartments, RealEstateApartment } from "@/lib/api";
 import { Card, Spinner } from "@/components/ui";
+import { RealEstateAptDetail } from "@/components/RealEstateAptDetail";
 
 // 지도는 브라우저 전용(leaflet) → SSR 비활성으로 동적 로드
 const MapInner = dynamic(() => import("@/components/RealEstateMapInner"), {
@@ -19,9 +20,13 @@ export function RealEstateMap() {
   const [data, setData] = useState<RealEstateMapData | null>(null);
   const [err, setErr] = useState("");
   const [sel, setSel] = useState<RealEstateRegion | null>(null);
-  const [deals, setDeals] = useState<RealEstateDeals | null>(null);
-  const [dealsLoading, setDealsLoading] = useState(false);
+  const [apts, setApts] = useState<RealEstateApartments | null>(null);
+  const [aptsLoading, setAptsLoading] = useState(false);
   const [sido, setSido] = useState<string>("전체");
+  const [flyTarget, setFlyTarget] = useState<{ lat: number; lng: number; zoom: number } | null>(null);
+  const [detail, setDetail] = useState<{ lawd: string; apt: string; dong: string } | null>(null);
+  const [query, setQuery] = useState("");
+  const aptTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   useEffect(() => {
     let alive = true;
@@ -40,14 +45,34 @@ export function RealEstateMap() {
     return () => { alive = false; if (timer) clearTimeout(timer); };
   }, []);
 
+  function loadApts(lawd: string) {
+    api.realestateApartments(lawd, data?.region_ym ?? undefined)
+      .then((d) => {
+        setApts(d);
+        setAptsLoading(false);
+        // 동 좌표 채우는 중이면 잠시 후 다시 (정밀 좌표로 자동 갱신)
+        if (aptTimer.current) clearTimeout(aptTimer.current);
+        if (d.geocoding) aptTimer.current = setTimeout(() => loadApts(lawd), 6000);
+      })
+      .catch(() => {
+        setApts(null);
+        setAptsLoading(false);
+      });
+  }
+
   function onSelect(r: RealEstateRegion) {
     setSel(r);
-    setDeals(null);
-    setDealsLoading(true);
-    api.realestateDeals(r.lawd, data?.region_ym ?? undefined)
-      .then(setDeals)
-      .catch(() => setDeals(null))
-      .finally(() => setDealsLoading(false));
+    setApts(null);
+    setAptsLoading(true);
+    setFlyTarget({ lat: r.lat, lng: r.lng, zoom: 13 });
+    if (aptTimer.current) clearTimeout(aptTimer.current);
+    loadApts(r.lawd);
+  }
+
+  useEffect(() => () => { if (aptTimer.current) clearTimeout(aptTimer.current); }, []);
+
+  function openDetail(a: RealEstateApartment) {
+    setDetail({ lawd: apts?.lawd ?? sel?.lawd ?? "", apt: a.apt, dong: a.dong });
   }
 
   const sidos = useMemo(() => {
@@ -59,6 +84,21 @@ export function RealEstateMap() {
     if (!data) return [];
     return sido === "전체" ? data.regions : data.regions.filter((r) => r.sido === sido);
   }, [data, sido]);
+
+  // 검색: 현재 시군구의 단지명 + (지역 미선택 시) 시군구명으로 이동
+  const aptMatches = useMemo(() => {
+    const q = query.trim();
+    if (!q || !apts) return [];
+    return apts.apartments.filter((a) => a.apt.includes(q)).slice(0, 8);
+  }, [query, apts]);
+
+  const regionMatches = useMemo(() => {
+    const q = query.trim();
+    if (!q) return [];
+    return (data?.regions ?? [])
+      .filter((r) => `${r.sido} ${r.region}`.includes(q) || r.region.includes(q))
+      .slice(0, 6);
+  }, [query, data]);
 
   if (err) return <div className="py-20 text-center text-sm text-rose-600">{err}</div>;
   if (!data) return <div className="flex items-center justify-center gap-2 py-24 text-sm text-[#888]"><Spinner /> 불러오는 중…</div>;
@@ -85,10 +125,57 @@ export function RealEstateMap() {
           ))}
         </div>
 
+        {/* 검색 */}
+        <div className="relative mb-3 max-w-md">
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder={sel ? `${sel.region} 단지 또는 지역(시군구) 검색…` : "지역(시군구) 검색 — 예: 둔산, 서구"}
+            className="w-full rounded border border-[#cdcdcd] px-3 py-1.5 text-[12px] outline-none focus:border-[#217346]"
+          />
+          {query.trim() && (aptMatches.length > 0 || regionMatches.length > 0) && (
+            <div className="absolute z-[1100] mt-1 max-h-72 w-full overflow-y-auto rounded border border-[#ddd] bg-white shadow-lg">
+              {aptMatches.length > 0 && (
+                <div className="px-2 py-1 text-[10px] font-bold text-[#aaa]">단지 ({sel?.region})</div>
+              )}
+              {aptMatches.map((a, i) => (
+                <button
+                  key={`a${i}`}
+                  onClick={() => { openDetail(a); setQuery(""); }}
+                  className="flex w-full items-center justify-between px-3 py-1.5 text-left text-[12px] hover:bg-[#eef6f0]"
+                >
+                  <span className="font-semibold text-[#333]">{a.apt}<span className="ml-1 text-[#aaa]">{a.dong}</span></span>
+                  <span className="font-bold text-[#217346]">{a.recent_eok}억</span>
+                </button>
+              ))}
+              {regionMatches.length > 0 && (
+                <div className="border-t border-[#f0f0f0] px-2 py-1 text-[10px] font-bold text-[#aaa]">지역 이동</div>
+              )}
+              {regionMatches.map((r, i) => (
+                <button
+                  key={`r${i}`}
+                  onClick={() => { onSelect(r); setSido(r.sido); setQuery(""); }}
+                  className="flex w-full items-center justify-between px-3 py-1.5 text-left text-[12px] hover:bg-[#eef6f0]"
+                >
+                  <span className="text-[#333]">{r.sido} <b>{r.region}</b></span>
+                  <span className="text-[#999]">거래 {r.count}건</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_360px]">
           {/* 지도 (데이터 없어도 항상 표시) */}
           <div className="relative h-[600px] w-full overflow-hidden rounded border border-[#e6e6e6]">
-            <MapInner regions={regions} selected={sel?.lawd ?? null} onSelect={onSelect} />
+            <MapInner
+              regions={regions}
+              apartments={apts?.lawd === sel?.lawd ? apts?.apartments ?? null : null}
+              selected={sel?.lawd ?? null}
+              flyTarget={flyTarget}
+              onSelect={onSelect}
+              onAptDetail={openDetail}
+            />
             {!data.ready && data.message && (
               <div className="pointer-events-none absolute left-1/2 top-3 z-[1000] -translate-x-1/2 rounded-full border border-[#e0c98a] bg-[#fff8e6]/95 px-4 py-1.5 text-xs font-semibold text-[#8a6d1a] shadow">
                 {data.warming && <span className="mr-1 inline-block animate-pulse">●</span>}
@@ -101,7 +188,7 @@ export function RealEstateMap() {
           <div className="h-[600px] overflow-y-auto rounded border border-[#e6e6e6] bg-white p-3">
             {!sel ? (
               <div className="flex h-full items-center justify-center px-4 text-center text-xs text-[#999]">
-                지도에서 지역(원)을 클릭하면<br />그 시군구의 단지별 실거래가 표시됩니다.
+                지도에서 지역(원)을 클릭하면<br />그 시군구로 확대되며<br />단지별 실거래가 지도에 표시됩니다.
               </div>
             ) : (
               <>
@@ -109,12 +196,16 @@ export function RealEstateMap() {
                   <div className="text-sm font-bold text-[#333]">{sel.sido} {sel.region}</div>
                   <div className="text-[11px] text-[#888]">
                     {data.latest_label} · 거래 {sel.count}건 · 평균 {sel.avg_eok ?? "—"}억
-                    {sel.approx && <span className="text-[#c92a2a]"> · 위치 근사</span>}
+                    {apts && (
+                      <> · 단지 {apts.count}곳
+                        {apts.geocoding && <span className="text-[#8a6d1a]"> · 위치 보정 중…</span>}
+                      </>
+                    )}
                   </div>
                 </div>
-                {dealsLoading ? (
-                  <div className="flex items-center gap-2 py-6 text-xs text-[#888]"><Spinner /> 실거래 불러오는 중…</div>
-                ) : !deals || deals.deals.length === 0 ? (
+                {aptsLoading && !apts ? (
+                  <div className="flex items-center gap-2 py-6 text-xs text-[#888]"><Spinner /> 단지 실거래 불러오는 중…</div>
+                ) : !apts || apts.apartments.length === 0 ? (
                   <div className="py-6 text-center text-xs text-[#999]">실거래 내역이 없습니다.</div>
                 ) : (
                   <table className="w-full text-[11px]">
@@ -122,20 +213,27 @@ export function RealEstateMap() {
                       <tr className="border-b border-[#eee] text-[#999]">
                         <th className="py-1 text-left font-semibold">단지 / 동</th>
                         <th className="py-1 text-right font-semibold">전용</th>
-                        <th className="py-1 text-right font-semibold">거래가</th>
-                        <th className="py-1 text-right font-semibold">일자</th>
+                        <th className="py-1 text-right font-semibold">실거래</th>
+                        <th className="py-1 text-right font-semibold">건수</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {deals.deals.map((d, i) => (
-                        <tr key={i} className="border-b border-[#f4f4f4]">
+                      {apts.apartments.map((a, i) => (
+                        <tr
+                          key={i}
+                          className="cursor-pointer border-b border-[#f4f4f4] hover:bg-[#eef6f0]"
+                          title="클릭 → 단지 시세/실거래 상세"
+                          onClick={() => { setFlyTarget({ lat: a.lat, lng: a.lng, zoom: 16 }); openDetail(a); }}
+                        >
                           <td className="py-1 text-left">
-                            <span className="font-semibold text-[#333]">{d.apt}</span>
-                            <span className="ml-1 text-[#aaa]">{d.dong}</span>
+                            <span className="font-semibold text-[#217346] underline-offset-2 hover:underline">{a.apt}</span>
+                            <span className="ml-1 text-[#aaa]">{a.dong}</span>
                           </td>
-                          <td className="py-1 text-right tabular-nums text-[#666]">{d.area ? `${d.area}㎡` : "—"}</td>
-                          <td className="py-1 text-right font-bold tabular-nums text-[#217346]">{d.amount_eok}억</td>
-                          <td className="py-1 text-right tabular-nums text-[#999]">{d.date.slice(5)}</td>
+                          <td className="py-1 text-right tabular-nums text-[#666]">{a.recent_area ? `${a.recent_area}㎡` : "—"}</td>
+                          <td className="py-1 text-right font-bold tabular-nums text-[#217346]">
+                            {a.min_eok === a.max_eok ? `${a.recent_eok}억` : `${a.min_eok}~${a.max_eok}억`}
+                          </td>
+                          <td className="py-1 text-right tabular-nums text-[#999]">{a.count}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -145,8 +243,20 @@ export function RealEstateMap() {
             )}
           </div>
         </div>
-        <p className="mt-2 text-[11px] leading-relaxed text-[#999]">{data.note}</p>
+        <p className="mt-2 text-[11px] leading-relaxed text-[#999]">
+          {data.note}
+          {sel && " · 단지 마커 위치는 동 단위 근사 배치(정부 실거래 API가 단지 좌표를 제공하지 않음) — 가격·면적·거래일은 실제값."}
+        </p>
       </Card>
+
+      {detail && detail.lawd && (
+        <RealEstateAptDetail
+          lawd={detail.lawd}
+          apt={detail.apt}
+          dong={detail.dong}
+          onClose={() => setDetail(null)}
+        />
+      )}
     </div>
   );
 }
