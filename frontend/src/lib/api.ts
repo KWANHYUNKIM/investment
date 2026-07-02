@@ -775,6 +775,62 @@ export interface LoanSim {
   verdict: string; warning: string;
 }
 
+export interface RealtySim {
+  mode: string; price: number; own_capital: number; loan: number; loan_rate: number; years: number; appreciation: number;
+  deposit: number; rent_monthly: number; monthly_interest: number; monthly_cashflow: number;
+  rent_yield_on_capital: number | null; total_interest: number;
+  future_price: number; sale_gain: number; net_profit: number; roe: number | null; roe_no_leverage: number;
+  scenarios: { name: string; appreciation: number; future_price: number; sale_gain: number; net_profit: number; roe: number | null }[];
+  note: string; warning: string;
+}
+
+export interface HoldingCatalogItem {
+  name: string; category: string; benefit: string; example: string; rate: number; bonus_note: string; has_bonus: boolean;
+}
+export interface HoldingItem {
+  name: string; category: string; monthly: number; current: number; rate: number; bonus_note: string;
+  principal: number; invest_value: number; bonus_total: number; total: number; gain: number;
+  yearly: { year: number; total: number }[];
+}
+export interface HoldingsData {
+  holdings: { name: string; monthly: number; current: number }[];
+  horizon: number;
+  catalog: HoldingCatalogItem[];
+  projection: {
+    horizon: number;
+    items: HoldingItem[];
+    totals_by_year: { year: number; total: number }[];
+    summary: { monthly_sum: number; principal: number; bonus_total: number; gain: number; total: number };
+    note: string;
+  };
+}
+
+export interface DividendSim {
+  invest: number; yield_pct: number; years: number; growth_pct: number; reinvest: boolean; tax_pct: number;
+  annual_gross: number; annual_net: number; monthly_net: number; final_value: number; total_dividends_net: number;
+  yearly: { year: number; dividend_net: number; cum_net: number; value: number }[];
+  targets: { monthly: number; invest: number }[];
+  examples: { name: string; yield: string; note: string }[];
+  guide: string[]; note: string;
+}
+export interface IpoSim {
+  offer_price: number; alloc_shares: number; cost: number; subscribe_amount: number; margin_estimate: number;
+  scenarios: { gain_pct: number; sell_price: number; profit: number; roi_on_cost: number | null }[];
+  guide: string[]; note: string;
+}
+
+export interface DividendPick {
+  ticker: string; name: string; sector: string | null; close: number | null;
+  div_yield: number; per: number | null; roe: number | null; monthly_per_10m: number;
+}
+export interface DividendPicks { generated_at: string; picks: DividendPick[]; note: string; }
+export interface IpoScheduleItem {
+  name: string; subscribe: string; status: string; price_confirmed: string | null; price_band: string; underwriter: string;
+}
+export interface IpoSchedule {
+  items: IpoScheduleItem[]; upcoming_count: number; source: string; generated_at: string; error?: string; note: string;
+}
+
 export interface PayslipParse {
   filename: string;
   net: number | null;
@@ -1966,6 +2022,17 @@ export const api = {
     request<WealthPlan>(`/api/data/wealth/profile`, { method: "POST", body: JSON.stringify(profile) }),
   wealthLoanSim: (loanAmount: number, loanRate: number, loanYears: number, investReturn: number) =>
     request<LoanSim>(`/api/data/wealth/loan-sim?loan_amount=${loanAmount}&loan_rate=${loanRate}&loan_years=${loanYears}&invest_return=${investReturn}`),
+  wealthRealtySim: (p: { price: number; own_capital: number; loan_rate: number; years: number; appreciation: number; mode: string; deposit: number; rent_monthly: number }) =>
+    request<RealtySim>(`/api/data/wealth/realty-sim?price=${p.price}&own_capital=${p.own_capital}&loan_rate=${p.loan_rate}&years=${p.years}&appreciation=${p.appreciation}&mode=${p.mode}&deposit=${p.deposit}&rent_monthly=${p.rent_monthly}`),
+  wealthHoldings: () => request<HoldingsData>(`/api/data/wealth/holdings`),
+  wealthSaveHoldings: (holdings: { name: string; monthly: number; current: number }[], horizon: number) =>
+    request<HoldingsData>(`/api/data/wealth/holdings`, { method: "POST", body: JSON.stringify({ holdings, horizon }) }),
+  wealthDividendSim: (p: { invest: number; yield_pct: number; years: number; growth_pct: number; reinvest: boolean }) =>
+    request<DividendSim>(`/api/data/wealth/dividend-sim?invest=${p.invest}&yield_pct=${p.yield_pct}&years=${p.years}&growth_pct=${p.growth_pct}&reinvest=${p.reinvest}`),
+  wealthIpoSim: (p: { offer_price: number; alloc_shares: number; subscribe_amount: number }) =>
+    request<IpoSim>(`/api/data/wealth/ipo-sim?offer_price=${p.offer_price}&alloc_shares=${p.alloc_shares}&subscribe_amount=${p.subscribe_amount}`),
+  wealthDividendPicks: (top = 12) => request<DividendPicks>(`/api/data/wealth/dividend-picks?top=${top}`),
+  wealthIpoSchedule: () => request<IpoSchedule>(`/api/data/wealth/ipo-schedule`),
   koreaFlow: () => request<KoreaFlow>(`/api/data/korea-flow`),
   realestateTrades: () => request<RealEstateTrades>(`/api/data/realestate-trades`),
   realestateRent: () => request<RealEstateRent>(`/api/data/realestate-rent`),

@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { api, WealthPlan as WP, LoanSim } from "@/lib/api";
+import { useEffect, useRef, useState } from "react";
+import { api, WealthPlan as WP, LoanSim, RealtySim, HoldingCatalogItem, HoldingsData, DividendSim, IpoSim, DividendPicks, IpoSchedule } from "@/lib/api";
 
 const GREEN = "#2f9e44";
 const RED = "#c92a2a";
@@ -18,10 +18,403 @@ function won(v: number | null | undefined): string {
 }
 function num(s: string): number { return Number((s || "").replace(/,/g, "")) || 0; }
 
+// "4억", "3천만", "4억5000만", "40,000,000" 모두 원 단위 숫자로 파싱
+function parseKMoney(raw: string): number {
+  if (raw == null) return 0;
+  let s = String(raw).replace(/[\s,]/g, "").replace(/원/g, "");
+  if (s === "") return 0;
+  if (/^\d+(\.\d+)?$/.test(s)) return Math.round(Number(s));
+  let total = 0;
+  const eokM = s.match(/(\d+(?:\.\d+)?)\s*억/); if (eokM) total += parseFloat(eokM[1]) * 1e8;
+  const cmM = s.match(/(\d+(?:\.\d+)?)\s*천만/); if (cmM) total += parseFloat(cmM[1]) * 1e7;
+  const rest = s.replace(/(\d+(?:\.\d+)?)\s*억/, "").replace(/(\d+(?:\.\d+)?)\s*천만/, "");
+  const manM = rest.match(/(\d+(?:\.\d+)?)\s*만/); if (manM) total += parseFloat(manM[1]) * 1e4;
+  const cheonM = rest.match(/(\d+(?:\.\d+)?)\s*천(?!만)/); if (cheonM) total += parseFloat(cheonM[1]) * 1e3;
+  if (total === 0) { const n = s.replace(/[^\d.]/g, ""); return n ? Math.round(Number(n)) : 0; }
+  return Math.round(total);
+}
+function fmtComma(digits: string): string {
+  return digits ? Number(digits.replace(/,/g, "")).toLocaleString("ko-KR") : "";
+}
+
+const inpCls = "mt-0.5 block w-full rounded border border-[#cdcdcd] px-2 py-1 text-right text-sm tabular-nums outline-none focus:border-[#217346]";
+
+// 금액 입력: 콤마 자동 + 한글(억/만) 인식 + 빠른 칩 + 읽기 표시
+function MoneyField({ label, value, onChange, chips, placeholder, w }: {
+  label: string; value: string; onChange: (v: string) => void;
+  chips?: { label: string; value: number }[]; placeholder?: string; w?: string;
+}) {
+  const set = (raw: string) => {
+    if (/[억만천]/.test(raw)) onChange(String(parseKMoney(raw)));
+    else onChange(raw.replace(/[^\d]/g, ""));
+  };
+  const n = Number((value || "").replace(/,/g, "")) || 0;
+  return (
+    <label className="text-xs text-[#555]">{label}
+      <input value={fmtComma(value)} onChange={(e) => set(e.target.value)} inputMode="numeric" placeholder={placeholder} className={`${inpCls} ${w || ""}`} />
+      <div className="mt-0.5 flex items-center justify-between gap-1">
+        <div className="flex flex-wrap gap-1">
+          {chips?.map((c) => (
+            <button key={c.label} type="button" onClick={() => onChange(String(c.value))}
+              className="rounded bg-[#eef4f0] px-1.5 py-0.5 text-[10px] text-[#217346] hover:bg-[#d7e8dd]">{c.label}</button>
+          ))}
+        </div>
+        <span className="shrink-0 text-[10px] font-semibold text-[#217346]">{n > 0 ? `= ${eok(n)}원` : ""}</span>
+      </div>
+    </label>
+  );
+}
+
+// 슬라이더: 비율·기간·나이 드래그 입력
+function Slider({ label, value, onChange, min, max, step, suffix }: {
+  label: string; value: string; onChange: (v: string) => void;
+  min: number; max: number; step: number; suffix: string;
+}) {
+  return (
+    <label className="block text-xs text-[#555]">
+      <span className="flex items-center justify-between">{label}<b className="tabular-nums text-[#217346]">{value || min}{suffix}</b></span>
+      <input type="range" min={min} max={max} step={step} value={Number(value) || min}
+        onChange={(e) => onChange(e.target.value)} className="mt-1 block w-full accent-[#217346]" />
+    </label>
+  );
+}
+
 const catColor: Record<string, string> = {
   "청년지원": "#2f9e44", "세제혜택·노후": "#217346", "세제혜택·투자": "#217346",
   "주택·청약": "#1971c2", "안전저축": "#7a5f10", "투자": "#c92a2a", "주거대출": "#8a6d1a",
 };
+
+const CHIP_INCOME = [{ label: "3천만", value: 30000000 }, { label: "4천만", value: 40000000 }, { label: "5천만", value: 50000000 }, { label: "7천만", value: 70000000 }];
+const CHIP_MONTHLY = [{ label: "200만", value: 2000000 }, { label: "300만", value: 3000000 }, { label: "400만", value: 4000000 }, { label: "500만", value: 5000000 }];
+const CHIP_SAVE = [{ label: "50만", value: 500000 }, { label: "100만", value: 1000000 }, { label: "200만", value: 2000000 }, { label: "300만", value: 3000000 }];
+const CHIP_ASSETS = [{ label: "1천만", value: 10000000 }, { label: "5천만", value: 50000000 }, { label: "1억", value: 100000000 }, { label: "3억", value: 300000000 }];
+const CHIP_GOAL = [{ label: "5천만", value: 50000000 }, { label: "1억", value: 100000000 }, { label: "3억", value: 300000000 }, { label: "5억", value: 500000000 }, { label: "10억", value: 1000000000 }];
+const CHIP_PRICE = [{ label: "3억", value: 300000000 }, { label: "5억", value: 500000000 }, { label: "8억", value: 800000000 }, { label: "10억", value: 1000000000 }];
+const CHIP_OWN = [{ label: "5천만", value: 50000000 }, { label: "1억", value: 100000000 }, { label: "2억", value: 200000000 }, { label: "3억", value: 300000000 }];
+const CHIP_LOAN = [{ label: "1천만", value: 10000000 }, { label: "3천만", value: 30000000 }, { label: "5천만", value: 50000000 }, { label: "1억", value: 100000000 }];
+
+// ── 배당주·공모주 추천 (실시간 갱신) ────────────────────────────────────
+function PicksBoard() {
+  const [dp, setDp] = useState<DividendPicks | null>(null);
+  const [ip, setIp] = useState<IpoSchedule | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const load = () => {
+    setBusy(true);
+    Promise.all([
+      api.wealthDividendPicks(12).then(setDp).catch(() => {}),
+      api.wealthIpoSchedule().then(setIp).catch(() => {}),
+    ]).finally(() => setBusy(false));
+  };
+  useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
+
+  const statusColor = (s: string) => (s === "청약중" ? "#c92a2a" : s === "예정" ? "#2f9e44" : "#aaa");
+
+  return (
+    <div className="lg:col-span-2 overflow-hidden rounded-md border border-[#d0d0d0] bg-white shadow-sm">
+      <div className="flex items-center justify-between bg-[#217346] px-4 py-2 text-white">
+        <span className="text-sm font-semibold">배당주·공모주 추천 (계속 바뀜 · 실시간 갱신)</span>
+        <button onClick={load} disabled={busy} className="rounded bg-white/20 px-2 py-0.5 text-[11px] hover:bg-white/30 disabled:opacity-50">
+          {busy ? "갱신 중…" : "↻ 새로고침"}
+        </button>
+      </div>
+      <div className="grid grid-cols-1 gap-3 p-3 lg:grid-cols-2">
+        {/* 배당주 추천 */}
+        <div className="rounded-lg border border-[#e6ede8] bg-[#f8faf9] p-3">
+          <div className="mb-2 flex items-baseline justify-between">
+            <span className="text-sm font-bold text-[#217346]">고배당주 추천 TOP</span>
+            <span className="text-[10px] text-[#888]">1천만 투자 시 세후 월배당 기준</span>
+          </div>
+          {!dp ? <div className="py-6 text-center text-xs text-[#999]">불러오는 중…</div> : (
+            <div className="overflow-hidden rounded border border-[#eee]">
+              <table className="w-full text-[11px]">
+                <thead><tr className="bg-[#eef4f0] text-[#555]">
+                  <th className="px-2 py-1 text-left">종목</th><th className="px-2 py-1 text-right">배당률</th>
+                  <th className="px-2 py-1 text-right">1천만당 월</th><th className="px-2 py-1 text-left">업종</th>
+                </tr></thead>
+                <tbody>
+                  {dp.picks.map((p, i) => (
+                    <tr key={p.ticker} className={i % 2 ? "bg-[#fafcfb]" : "bg-white"}>
+                      <td className="px-2 py-1 font-semibold text-[#1f1f1f]">{p.name}</td>
+                      <td className="px-2 py-1 text-right font-bold tabular-nums text-[#c0392b]">{p.div_yield}%</td>
+                      <td className="px-2 py-1 text-right tabular-nums text-[#217346]">{won(p.monthly_per_10m)}</td>
+                      <td className="px-2 py-1 text-[10px] text-[#888]">{p.sector || "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          {dp?.note && <div className="mt-1.5 text-[9px] leading-relaxed text-[#bbb]">{dp.note}</div>}
+        </div>
+
+        {/* 공모주 청약일정 */}
+        <div className="rounded-lg border border-[#e6ede8] bg-[#f8faf9] p-3">
+          <div className="mb-2 flex items-baseline justify-between">
+            <span className="text-sm font-bold text-[#c0392b]">공모주 청약일정</span>
+            {ip && <span className="text-[10px] text-[#888]">청약중·예정 {ip.upcoming_count}건 · {ip.source}</span>}
+          </div>
+          {!ip ? <div className="py-6 text-center text-xs text-[#999]">불러오는 중…</div> :
+            ip.error || ip.items.length === 0 ? <div className="py-6 text-center text-xs text-[#999]">{ip.error ? "일정 소스 접속 실패 — 잠시 후 새로고침" : "표시할 공모 일정이 없습니다."}</div> : (
+            <div className="flex flex-col gap-1">
+              {ip.items.map((x, i) => (
+                <div key={i} className="rounded border border-[#eee] bg-white p-1.5">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5">
+                      {x.status && <span className="rounded px-1.5 py-0.5 text-[9px] font-bold text-white" style={{ background: statusColor(x.status) }}>{x.status}</span>}
+                      <span className="text-xs font-semibold text-[#1f1f1f]">{x.name}</span>
+                    </div>
+                    <span className="text-[10px] tabular-nums text-[#555]">{x.subscribe}</span>
+                  </div>
+                  <div className="mt-0.5 flex items-center justify-between text-[10px] text-[#888]">
+                    <span>공모가 {x.price_confirmed ? <b className="text-[#217346]">{x.price_confirmed}원(확정)</b> : `${x.price_band}원(밴드)`}</span>
+                    <span className="truncate pl-2">{x.underwriter}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          {ip?.note && <div className="mt-1.5 text-[9px] leading-relaxed text-[#bbb]">{ip.note}</div>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── 배당주·공모주로 소득 만들기 (가이드 + 계산기) ────────────────────────
+function IncomeBuilder() {
+  const [dv, setDv] = useState({ invest: "100000000", yield: "5", years: "10", growth: "3", reinvest: true });
+  const [ds, setDs] = useState<DividendSim | null>(null);
+  const [io, setIo] = useState({ price: "30000", shares: "10", sub: "5000000" });
+  const [is, setIs] = useState<IpoSim | null>(null);
+
+  useEffect(() => {
+    const t = setTimeout(() => {
+      api.wealthDividendSim({ invest: num(dv.invest), yield_pct: Number(dv.yield) || 0, years: Number(dv.years) || 10, growth_pct: Number(dv.growth) || 0, reinvest: dv.reinvest }).then(setDs).catch(() => {});
+    }, 400);
+    return () => clearTimeout(t);
+  }, [dv]);
+  useEffect(() => {
+    const t = setTimeout(() => {
+      api.wealthIpoSim({ offer_price: num(io.price), alloc_shares: Number(io.shares) || 0, subscribe_amount: num(io.sub) }).then(setIs).catch(() => {});
+    }, 400);
+    return () => clearTimeout(t);
+  }, [io]);
+
+  return (
+    <div className="lg:col-span-2 overflow-hidden rounded-md border border-[#d0d0d0] bg-white shadow-sm">
+      <div className="bg-[#217346] px-4 py-2 text-sm font-semibold text-white">배당주·공모주로 소득 만들기 (방법 + 계산기)</div>
+      <div className="grid grid-cols-1 gap-3 p-3 lg:grid-cols-2">
+        {/* ── 배당주 ── */}
+        <div className="rounded-lg border border-[#e6ede8] bg-[#f8faf9] p-3">
+          <div className="mb-2 text-sm font-bold text-[#217346]">① 배당주 — 보유만 해도 나오는 현금흐름</div>
+          <div className="grid grid-cols-2 gap-x-3 gap-y-2">
+            <MoneyField label="투자금" value={dv.invest} onChange={(v) => setDv({ ...dv, invest: v })} chips={CHIP_ASSETS} />
+            <Slider label="배당수익률" value={dv.yield} onChange={(v) => setDv({ ...dv, yield: v })} min={1} max={10} step={0.1} suffix="%" />
+            <Slider label="기간" value={dv.years} onChange={(v) => setDv({ ...dv, years: v })} min={1} max={40} step={1} suffix="년" />
+            <Slider label="배당성장" value={dv.growth} onChange={(v) => setDv({ ...dv, growth: v })} min={0} max={10} step={0.5} suffix="%" />
+          </div>
+          <label className="mt-1 flex items-center gap-1 text-xs text-[#555]">
+            <input type="checkbox" checked={dv.reinvest} onChange={(e) => setDv({ ...dv, reinvest: e.target.checked })} />세후 배당 재투자(복리)
+          </label>
+          {ds && (
+            <>
+              <div className="mt-2 grid grid-cols-2 gap-2 text-center">
+                <div className="rounded bg-white px-2 py-1.5"><div className="text-[10px] text-[#888]">월 배당(세후)</div><div className="text-sm font-bold tabular-nums text-[#217346]">{won(ds.monthly_net)}</div></div>
+                <div className="rounded bg-white px-2 py-1.5"><div className="text-[10px] text-[#888]">연 배당(세후)</div><div className="text-sm font-bold tabular-nums text-[#217346]">{eok(ds.annual_net)}원</div></div>
+                <div className="rounded bg-white px-2 py-1.5"><div className="text-[10px] text-[#888]">{ds.years}년 후 평가액</div><div className="text-sm font-bold tabular-nums text-[#333]">{eok(ds.final_value)}원</div></div>
+                <div className="rounded bg-white px-2 py-1.5"><div className="text-[10px] text-[#888]">누적 배당(세후)</div><div className="text-sm font-bold tabular-nums text-[#2f9e44]">+{eok(ds.total_dividends_net)}원</div></div>
+              </div>
+              <div className="mt-2 rounded bg-[#eef4f0] p-2 text-[11px] text-[#245]">
+                <div className="mb-0.5 font-semibold">월 목표 소득에 필요한 투자금 (배당 {ds.yield_pct}% · 세후)</div>
+                <div className="flex flex-wrap gap-x-3 gap-y-0.5">
+                  {ds.targets.map((t) => <span key={t.monthly}>월 {eok(t.monthly)}원 → <b>{eok(t.invest)}원</b></span>)}
+                </div>
+              </div>
+              <div className="mt-2 flex flex-col gap-0.5">
+                {ds.examples.map((e) => (
+                  <div key={e.name} className="flex items-baseline justify-between text-[10px]"><span className="font-semibold text-[#444]">{e.name}</span><span className="text-[#888]">수익률 {e.yield} · {e.note}</span></div>
+                ))}
+              </div>
+              <ul className="mt-2 flex flex-col gap-0.5 rounded border border-[#f0e6c9] bg-[#fdfaf0] p-2 text-[10px] leading-relaxed text-[#7a5f10]">
+                {ds.guide.map((g, i) => <li key={i}>{g}</li>)}
+              </ul>
+            </>
+          )}
+        </div>
+
+        {/* ── 공모주 ── */}
+        <div className="rounded-lg border border-[#e6ede8] bg-[#f8faf9] p-3">
+          <div className="mb-2 text-sm font-bold text-[#c0392b]">② 공모주(IPO) — 상장 첫날 차익</div>
+          <div className="grid grid-cols-3 gap-x-3 gap-y-2">
+            <MoneyField label="공모가" value={io.price} onChange={(v) => setIo({ ...io, price: v })} />
+            <label className="text-xs text-[#555]">배정 주수
+              <input value={io.shares} onChange={(e) => setIo({ ...io, shares: e.target.value.replace(/[^\d]/g, "") })} inputMode="numeric" placeholder="10" className={inpCls} />
+            </label>
+            <MoneyField label="청약금액" value={io.sub} onChange={(v) => setIo({ ...io, sub: v })} />
+          </div>
+          {is && (
+            <>
+              <div className="mt-2 grid grid-cols-2 gap-2 text-center">
+                <div className="rounded bg-white px-2 py-1.5"><div className="text-[10px] text-[#888]">배정 원가</div><div className="text-sm font-bold tabular-nums text-[#333]">{eok(is.cost)}원</div></div>
+                <div className="rounded bg-white px-2 py-1.5"><div className="text-[10px] text-[#888]">청약 증거금(약 50%)</div><div className="text-sm font-bold tabular-nums text-[#333]">{eok(is.margin_estimate)}원</div></div>
+              </div>
+              <div className="mt-2">
+                <div className="mb-1 text-[11px] font-semibold text-[#555]">상장일 상승률별 예상 수익</div>
+                <div className="grid grid-cols-5 gap-1">
+                  {is.scenarios.map((s) => (
+                    <div key={s.gain_pct} className="rounded border border-[#eee] bg-white p-1 text-center text-[10px]">
+                      <div className="font-semibold text-[#555]">+{s.gain_pct}%{s.gain_pct === 160 ? " 따상" : ""}</div>
+                      <div className="tabular-nums font-bold" style={{ color: s.profit > 0 ? GREEN : "#888" }}>{s.profit > 0 ? "+" : ""}{eok(s.profit)}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <ul className="mt-2 flex flex-col gap-0.5 rounded border border-[#f0e6c9] bg-[#fdfaf0] p-2 text-[10px] leading-relaxed text-[#7a5f10]">
+                {is.guide.map((g, i) => <li key={i}>{g}</li>)}
+              </ul>
+              <div className="mt-1 text-[9px] leading-relaxed text-[#bbb]">{is.note}</div>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── 내 저축·상품: 지금 하고 있는 것 저장 + 혜택 + 몇 년 뒤 예상 ───────────
+function MyHoldings() {
+  const [cat, setCat] = useState<HoldingCatalogItem[]>([]);
+  const [rows, setRows] = useState<{ name: string; monthly: string; current: string }[]>([]);
+  const [horizon, setHorizon] = useState("10");
+  const [proj, setProj] = useState<HoldingsData["projection"] | null>(null);
+  const [pick, setPick] = useState("");
+  const [busy, setBusy] = useState(false);
+  const loaded = useRef(false);
+
+  useEffect(() => {
+    api.wealthHoldings().then((d) => {
+      setCat(d.catalog);
+      setRows(d.holdings.map((h) => ({ name: h.name, monthly: h.monthly ? String(h.monthly) : "", current: h.current ? String(h.current) : "" })));
+      setHorizon(String(d.horizon || 10));
+      setProj(d.projection);
+    }).catch(() => {}).finally(() => { loaded.current = true; });
+  }, []);
+
+  // 값 바꾸면 0.5초 뒤 자동 저장 + 재계산
+  useEffect(() => {
+    if (!loaded.current) return;
+    setBusy(true);
+    const t = setTimeout(() => {
+      const hs = rows.map((r) => ({ name: r.name, monthly: num(r.monthly), current: num(r.current) }));
+      api.wealthSaveHoldings(hs, Number(horizon) || 10).then((d) => setProj(d.projection)).finally(() => setBusy(false));
+    }, 500);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows, horizon]);
+
+  const add = () => { if (!pick || rows.some((r) => r.name === pick)) return; setRows([...rows, { name: pick, monthly: "", current: "" }]); setPick(""); };
+  const upd = (i: number, k: "monthly" | "current", v: string) => setRows(rows.map((r, j) => (j === i ? { ...r, [k]: v } : r)));
+  const del = (i: number) => setRows(rows.filter((_, j) => j !== i));
+  const itemOf = (name: string) => proj?.items.find((x) => x.name === name);
+  const catOf = (name: string) => cat.find((c) => c.name === name);
+
+  const s = proj?.summary;
+  const H = Number(horizon) || 10;
+  const marks = [...new Set([1, 3, 5, 10, 15, 20, 30, H])].filter((y) => y >= 1 && y <= H).sort((a, b) => a - b);
+  const maxT = Math.max(1, ...(proj?.totals_by_year.map((y) => y.total) || [1]));
+  const totalAt = (y: number) => proj?.totals_by_year.find((t) => t.year === y)?.total ?? 0;
+  const available = cat.filter((c) => !rows.some((r) => r.name === c.name));
+
+  return (
+    <div className="lg:col-span-2 overflow-hidden rounded-md border border-[#d0d0d0] bg-white shadow-sm">
+      <div className="flex items-center justify-between bg-[#217346] px-4 py-2 text-white">
+        <span className="text-sm font-semibold">내 저축·상품 — 지금 하고 있는 것 + 몇 년 뒤 예상{busy ? " · 계산 중…" : ""}</span>
+        <span className="text-[10px] text-white/80">자동 저장</span>
+      </div>
+
+      {/* 기간 + 상품 추가 */}
+      <div className="flex flex-wrap items-end gap-3 border-b border-[#eee] p-3">
+        <div className="w-48"><Slider label="예상 기간" value={horizon} onChange={setHorizon} min={1} max={40} step={1} suffix="년" /></div>
+        <label className="flex-1 text-xs text-[#555]">가입한(또는 가입할) 상품 추가
+          <div className="mt-0.5 flex gap-1">
+            <select value={pick} onChange={(e) => setPick(e.target.value)} className="flex-1 rounded border border-[#cdcdcd] px-2 py-1 text-xs outline-none focus:border-[#217346]">
+              <option value="">— 상품 선택 —</option>
+              {available.map((c) => <option key={c.name} value={c.name}>{c.name} (예상 연 {c.rate}%{c.has_bonus ? " +혜택" : ""})</option>)}
+            </select>
+            <button onClick={add} disabled={!pick} className="rounded bg-[#217346] px-3 py-1 text-xs font-semibold text-white hover:bg-[#1b5e3a] disabled:opacity-40">추가</button>
+          </div>
+        </label>
+      </div>
+
+      {rows.length === 0 ? (
+        <div className="px-4 py-8 text-center text-sm text-[#999]">위에서 지금 하고 있는 저축·상품을 추가하면, 혜택과 {H}년 뒤 예상 금액을 보여드립니다.</div>
+      ) : (
+        <div className="p-3">
+          {/* 상품별 입력 + 결과 */}
+          <div className="flex flex-col gap-2">
+            {rows.map((r, i) => {
+              const it = itemOf(r.name); const cm = catOf(r.name);
+              return (
+                <div key={r.name} className="rounded-lg border border-[#e6ede8] bg-[#f8faf9] p-2.5">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-bold text-[#1f1f1f]">{r.name}</span>
+                      <span className="rounded bg-[#eef4f0] px-1.5 py-0.5 text-[10px] font-semibold text-[#217346]">예상 연 {cm?.rate ?? it?.rate ?? "—"}%</span>
+                    </div>
+                    <button onClick={() => del(i)} className="rounded px-1.5 text-xs text-[#c92a2a] hover:bg-[#fbeaea]">삭제</button>
+                  </div>
+                  {cm?.bonus_note && <div className="mt-0.5 text-[10px] text-[#7a5f10]">혜택: {cm.bonus_note}{cm.example ? ` · ${cm.example}` : ""}</div>}
+                  <div className="mt-1.5 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                    <MoneyField label="월 납입" value={r.monthly} onChange={(v) => upd(i, "monthly", v)} placeholder="30만" />
+                    <MoneyField label="현재 잔액" value={r.current} onChange={(v) => upd(i, "current", v)} placeholder="0" />
+                    <div className="text-xs text-[#555]">낸 돈(원금)<div className="mt-0.5 rounded bg-white px-2 py-1 text-right text-sm font-bold tabular-nums text-[#333]">{it ? `${eok(it.principal)}원` : "—"}</div></div>
+                    <div className="text-xs text-[#555]">{H}년 뒤 예상<div className="mt-0.5 rounded bg-white px-2 py-1 text-right text-sm font-bold tabular-nums text-[#217346]">{it ? `${eok(it.total)}원` : "—"}</div></div>
+                  </div>
+                  {it && (it.bonus_total > 0 || it.gain > 0) && (
+                    <div className="mt-1 text-right text-[10px] text-[#888]">
+                      정부·세제 혜택 <b className="text-[#2f9e44]">+{eok(it.bonus_total)}원</b> · 투자수익 포함 불어난 돈 <b className="text-[#2f9e44]">+{eok(it.gain)}원</b>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* 합계 요약 */}
+          {s && (
+            <>
+              <div className="mt-3 grid grid-cols-2 gap-2 text-center sm:grid-cols-5">
+                <div className="rounded bg-[#fafafa] px-2 py-2"><div className="text-[10px] text-[#888]">월 저축 합계</div><div className="text-sm font-bold tabular-nums text-[#333]">{won(s.monthly_sum)}</div></div>
+                <div className="rounded bg-[#fafafa] px-2 py-2"><div className="text-[10px] text-[#888]">낸 돈(원금)</div><div className="text-sm font-bold tabular-nums text-[#333]">{eok(s.principal)}원</div></div>
+                <div className="rounded bg-[#eef7f0] px-2 py-2"><div className="text-[10px] text-[#888]">정부·세제 혜택</div><div className="text-sm font-bold tabular-nums text-[#2f9e44]">+{eok(s.bonus_total)}원</div></div>
+                <div className="rounded bg-[#eef7f0] px-2 py-2"><div className="text-[10px] text-[#888]">불어난 돈</div><div className="text-sm font-bold tabular-nums text-[#2f9e44]">+{eok(s.gain)}원</div></div>
+                <div className="rounded bg-[#217346] px-2 py-2"><div className="text-[10px] text-white/80">{H}년 뒤 총액</div><div className="text-sm font-bold tabular-nums text-white">{eok(s.total)}원</div></div>
+              </div>
+
+              {/* 연도별 성장 막대 */}
+              <div className="mt-3">
+                <div className="mb-1 text-xs font-semibold text-[#555]">시간에 따른 예상 자산</div>
+                <div className="flex flex-col gap-1">
+                  {marks.map((y) => (
+                    <div key={y} className="flex items-center gap-2 text-[11px]">
+                      <span className="w-10 shrink-0 text-right text-[#888]">{y}년</span>
+                      <div className="h-3.5 flex-1 overflow-hidden rounded bg-[#eee]">
+                        <div className="h-full rounded bg-[#2f9e44]" style={{ width: `${Math.max(2, (totalAt(y) / maxT) * 100)}%` }} />
+                      </div>
+                      <span className="w-20 shrink-0 text-right font-bold tabular-nums text-[#217346]">{eok(totalAt(y))}원</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
+          {proj?.note && <div className="mt-2 text-[10px] leading-relaxed text-[#bbb]">{proj.note}</div>}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function WealthPlan() {
   const [d, setD] = useState<WP | null>(null);
@@ -34,11 +427,30 @@ export function WealthPlan() {
   const [lf, setLf] = useState({ amount: "20000000", rate: "6", years: "5", ret: "8" });
   const [ls, setLs] = useState<LoanSim | null>(null);
   const [lbusy, setLbusy] = useState(false);
-  const runLoan = () => {
+  const [rf, setRf] = useState({ mode: "wolse", price: "300000000", own: "100000000", rate: "4.5", years: "5", appr: "3", deposit: "10000000", rent: "1000000" });
+  const [rs, setRs] = useState<RealtySim | null>(null);
+  const [rbusy, setRbusy] = useState(false);
+
+  // 값을 바꾸면 0.4초 뒤 자동 계산 (버튼 불필요)
+  useEffect(() => {
     setLbusy(true);
-    api.wealthLoanSim(num(lf.amount), Number(lf.rate) || 0, Number(lf.years) || 5, Number(lf.ret) || 0)
-      .then(setLs).finally(() => setLbusy(false));
-  };
+    const t = setTimeout(() => {
+      api.wealthLoanSim(num(lf.amount), Number(lf.rate) || 0, Number(lf.years) || 5, Number(lf.ret) || 0)
+        .then(setLs).finally(() => setLbusy(false));
+    }, 400);
+    return () => clearTimeout(t);
+  }, [lf]);
+  useEffect(() => {
+    setRbusy(true);
+    const t = setTimeout(() => {
+      api.wealthRealtySim({
+        price: num(rf.price), own_capital: num(rf.own), loan_rate: Number(rf.rate) || 0,
+        years: Number(rf.years) || 5, appreciation: Number(rf.appr) || 0, mode: rf.mode,
+        deposit: num(rf.deposit), rent_monthly: num(rf.rent),
+      }).then(setRs).finally(() => setRbusy(false));
+    }, 400);
+    return () => clearTimeout(t);
+  }, [rf]);
 
   const fill = (p: WP) => {
     setD(p);
@@ -60,17 +472,24 @@ export function WealthPlan() {
 
   useEffect(() => { api.wealthPlan().then(fill).catch(() => {}); }, []);
 
+  const payload = () => ({
+    age: num(f.age), married: f.married, homeless: f.homeless, has_child: f.has_child,
+    annual_income: num(f.annual_income), monthly_income: num(f.monthly_income),
+    monthly_saving: num(f.monthly_saving), current_assets: num(f.current_assets),
+    goal_amount: num(f.goal_amount), goal_years: num(f.goal_years) || 5,
+  });
   const save = () => {
     setBusy(true);
-    api.wealthSaveProfile({
-      age: num(f.age), married: f.married, homeless: f.homeless, has_child: f.has_child,
-      annual_income: num(f.annual_income), monthly_income: num(f.monthly_income),
-      monthly_saving: num(f.monthly_saving), current_assets: num(f.current_assets),
-      goal_amount: num(f.goal_amount), goal_years: num(f.goal_years) || 5,
-    }).then(fill).finally(() => setBusy(false));
+    api.wealthSaveProfile(payload()).then(fill).finally(() => setBusy(false));
   };
+  // 입력을 바꾸면 0.7초 뒤 자동으로 계획·시나리오·상품 갱신 (버튼 없이도 반영)
+  useEffect(() => {
+    if (num(f.goal_amount) <= 0) return;
+    const t = setTimeout(() => { api.wealthSaveProfile(payload()).then(setD).catch(() => {}); }, 700);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [f]);
 
-  const inp = "mt-0.5 block w-full rounded border border-[#cdcdcd] px-2 py-1 text-right text-sm tabular-nums outline-none focus:border-[#217346]";
   const gaugePos = d && d.required_monthly > 0
     ? Math.max(0, Math.min(100, (d.capacity_monthly / d.required_monthly) * 100)) : 0;
 
@@ -79,42 +498,28 @@ export function WealthPlan() {
       {/* ── 좌: 프로필/목표 입력 ─────────────────── */}
       <div className="overflow-hidden rounded-md border border-[#d0d0d0] bg-white shadow-sm">
         <div className="bg-[#217346] px-4 py-2 text-sm font-semibold text-white">내 정보·목표</div>
-        <div className="grid grid-cols-2 gap-3 p-4">
-          <label className="text-xs text-[#555]">나이(만)
-            <input value={f.age} onChange={(e) => setF({ ...f, age: e.target.value })} inputMode="numeric" placeholder="30" className={inp} />
-          </label>
+        <div className="grid grid-cols-2 gap-x-3 gap-y-3 p-4">
+          <Slider label="나이" value={f.age} onChange={(v) => setF({ ...f, age: v })} min={18} max={70} step={1} suffix="세" />
           <div className="flex items-end gap-3 text-xs text-[#555]">
             <label className="flex items-center gap-1"><input type="checkbox" checked={f.married} onChange={(e) => setF({ ...f, married: e.target.checked })} />결혼</label>
             <label className="flex items-center gap-1"><input type="checkbox" checked={f.homeless} onChange={(e) => setF({ ...f, homeless: e.target.checked })} />무주택</label>
             <label className="flex items-center gap-1"><input type="checkbox" checked={f.has_child} onChange={(e) => setF({ ...f, has_child: e.target.checked })} />자녀</label>
           </div>
-          <label className="text-xs text-[#555]">연봉(원)
-            <input value={f.annual_income} onChange={(e) => setF({ ...f, annual_income: e.target.value })} inputMode="numeric" placeholder="40000000" className={inp} />
-          </label>
-          <label className="text-xs text-[#555]">월 실수령(원)
-            <input value={f.monthly_income} onChange={(e) => setF({ ...f, monthly_income: e.target.value })} inputMode="numeric" placeholder="3000000" className={inp} />
-          </label>
-          <label className="text-xs text-[#555]">월 저축 여력(원)
-            <input value={f.monthly_saving} onChange={(e) => setF({ ...f, monthly_saving: e.target.value })} inputMode="numeric" placeholder="1000000" className={inp} />
-          </label>
-          <label className="text-xs text-[#555]">현재 자산(원)
-            <input value={f.current_assets} onChange={(e) => setF({ ...f, current_assets: e.target.value })} inputMode="numeric" placeholder="10000000" className={inp} />
-          </label>
-          <label className="text-xs text-[#555]">목표 금액(원)
-            <input value={f.goal_amount} onChange={(e) => setF({ ...f, goal_amount: e.target.value })} inputMode="numeric" placeholder="100000000" className={inp} />
-            {num(f.goal_amount) > 0 && <span className="mt-0.5 block text-right text-[10px] text-[#217346]">= {eok(num(f.goal_amount))}원</span>}
-          </label>
-          <label className="text-xs text-[#555]">목표 기간(년)
-            <input value={f.goal_years} onChange={(e) => setF({ ...f, goal_years: e.target.value })} inputMode="numeric" placeholder="5" className={inp} />
-          </label>
+          <MoneyField label="연봉" value={f.annual_income} onChange={(v) => setF({ ...f, annual_income: v })} chips={CHIP_INCOME} placeholder="4천만" />
+          <MoneyField label="월 실수령" value={f.monthly_income} onChange={(v) => setF({ ...f, monthly_income: v })} chips={CHIP_MONTHLY} placeholder="300만" />
+          <MoneyField label="월 저축 여력" value={f.monthly_saving} onChange={(v) => setF({ ...f, monthly_saving: v })} chips={CHIP_SAVE} placeholder="100만" />
+          <MoneyField label="현재 자산" value={f.current_assets} onChange={(v) => setF({ ...f, current_assets: v })} chips={CHIP_ASSETS} placeholder="1천만" />
+          <MoneyField label="목표 금액" value={f.goal_amount} onChange={(v) => setF({ ...f, goal_amount: v })} chips={CHIP_GOAL} placeholder="1억" />
+          <Slider label="목표 기간" value={f.goal_years} onChange={(v) => setF({ ...f, goal_years: v })} min={1} max={40} step={1} suffix="년" />
         </div>
-        <div className="border-t border-[#eee] px-4 py-2 text-right">
+        <div className="flex items-center justify-between border-t border-[#eee] px-4 py-2">
+          <span className="text-[10px] text-[#2f9e44]">입력하면 자동으로 계획에 반영됩니다</span>
           <button onClick={save} disabled={busy} className="rounded bg-[#217346] px-4 py-1.5 text-xs font-semibold text-white hover:bg-[#1b5e3a] disabled:opacity-50">
-            {busy ? "계산 중…" : "계획 계산"}
+            {busy ? "저장 중…" : "저장"}
           </button>
         </div>
         <div className="px-4 pb-3 text-[10px] leading-relaxed text-[#aaa]">
-          월수입·저축여력·현재자산은 가계부/소득·성장/포트폴리오에서 자동으로 채워집니다(수정 가능).
+          금액칸은 "4억"·"3천만"처럼 한글로 쳐도 되고, 아래 칩을 눌러 바로 넣을 수 있습니다. 월수입·저축여력·현재자산은 가계부/소득·성장/포트폴리오에서 자동으로 채워집니다.
         </div>
       </div>
 
@@ -127,7 +532,7 @@ export function WealthPlan() {
         {!d ? (
           <div className="py-16 text-center text-sm text-[#888]">불러오는 중…</div>
         ) : d.goal.amount <= 0 ? (
-          <div className="px-4 py-10 text-center text-sm text-[#999]">목표 금액과 기간을 입력하고 "계획 계산"을 누르세요.</div>
+          <div className="px-4 py-10 text-center text-sm text-[#999]">왼쪽에서 목표 금액을 입력하면 자동으로 계획이 나타납니다.</div>
         ) : (
           <div className="p-4">
             <div className="mb-2 grid grid-cols-3 gap-2 text-center">
@@ -210,23 +615,26 @@ export function WealthPlan() {
         </div>
       )}
 
+      {/* ── 내 저축·상품 (지금 하고 있는 것 + 몇 년 뒤) ── */}
+      <MyHoldings />
+
+      {/* ── 배당주·공모주 추천 (실시간) ── */}
+      <PicksBoard />
+
+      {/* ── 배당주·공모주로 소득 만들기 ── */}
+      <IncomeBuilder />
+
       {/* ── 대출 레버리지 시뮬레이터 ─────────────────── */}
       <div className="lg:col-span-2 overflow-hidden rounded-md border border-[#d0d0d0] bg-white shadow-sm">
-        <div className="bg-[#217346] px-4 py-2 text-sm font-semibold text-white">대출 레버리지 시뮬 (대출받아 투자 시)</div>
-        <div className="flex flex-wrap items-end gap-2 border-b border-[#eee] p-3 text-xs text-[#555]">
-          <label>대출금액(원)
-            <input value={lf.amount} onChange={(e) => setLf({ ...lf, amount: e.target.value })} inputMode="numeric" className={`${inp} w-32`} />
-          </label>
-          <label>대출금리(%)
-            <input value={lf.rate} onChange={(e) => setLf({ ...lf, rate: e.target.value })} inputMode="decimal" className={`${inp} w-20`} />
-          </label>
-          <label>기간(년)
-            <input value={lf.years} onChange={(e) => setLf({ ...lf, years: e.target.value })} inputMode="numeric" className={`${inp} w-16`} />
-          </label>
-          <label>기대수익률(%)
-            <input value={lf.ret} onChange={(e) => setLf({ ...lf, ret: e.target.value })} inputMode="decimal" className={`${inp} w-20`} />
-          </label>
-          <button onClick={runLoan} disabled={lbusy} className="rounded bg-[#217346] px-3 py-1.5 font-semibold text-white hover:bg-[#1b5e3a] disabled:opacity-50">계산</button>
+        <div className="flex items-center justify-between bg-[#217346] px-4 py-2 text-white">
+          <span className="text-sm font-semibold">대출 레버리지 시뮬 (대출받아 투자 시)</span>
+          <span className="text-[10px] text-white/80">{lbusy ? "계산 중…" : "자동 계산"}</span>
+        </div>
+        <div className="grid grid-cols-2 items-end gap-x-4 gap-y-3 border-b border-[#eee] p-3 text-xs text-[#555] sm:grid-cols-4">
+          <MoneyField label="대출금액" value={lf.amount} onChange={(v) => setLf({ ...lf, amount: v })} chips={CHIP_LOAN} />
+          <Slider label="대출금리" value={lf.rate} onChange={(v) => setLf({ ...lf, rate: v })} min={2} max={12} step={0.1} suffix="%" />
+          <Slider label="기간" value={lf.years} onChange={(v) => setLf({ ...lf, years: v })} min={1} max={30} step={1} suffix="년" />
+          <Slider label="기대수익률" value={lf.ret} onChange={(v) => setLf({ ...lf, ret: v })} min={0} max={20} step={0.5} suffix="%" />
         </div>
         {ls && (
           <div className="p-3">
@@ -252,6 +660,61 @@ export function WealthPlan() {
             <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-[#888]">
               {ls.loans.map((l) => <span key={l.name}>{l.name} <b className="text-[#555]">~{l.rate}%</b></span>)}
             </div>
+          </div>
+        )}
+      </div>
+
+      {/* ── 부동산 투자 시뮬레이터 ─────────────────── */}
+      <div className="lg:col-span-2 overflow-hidden rounded-md border border-[#d0d0d0] bg-white shadow-sm">
+        <div className="flex items-center justify-between bg-[#217346] px-4 py-2 text-white">
+          <span className="text-sm font-semibold">부동산 투자 시뮬 (자기자본 + 대출 → 세 놓기){rbusy ? " · 계산 중…" : ""}</span>
+          <div className="flex gap-1 text-xs">
+            <button onClick={() => setRf({ ...rf, mode: "wolse" })} className={`rounded px-2 py-0.5 ${rf.mode === "wolse" ? "bg-white text-[#217346] font-bold" : "bg-white/20"}`}>월세 수익형</button>
+            <button onClick={() => setRf({ ...rf, mode: "jeonse" })} className={`rounded px-2 py-0.5 ${rf.mode === "jeonse" ? "bg-white text-[#217346] font-bold" : "bg-white/20"}`}>전세 갭투자</button>
+          </div>
+        </div>
+        <div className="grid grid-cols-2 items-end gap-x-4 gap-y-3 border-b border-[#eee] p-3 text-xs text-[#555] sm:grid-cols-3">
+          <MoneyField label="매매가" value={rf.price} onChange={(v) => setRf({ ...rf, price: v })} chips={CHIP_PRICE} />
+          <MoneyField label="자기자본" value={rf.own} onChange={(v) => setRf({ ...rf, own: v })} chips={CHIP_OWN} />
+          <Slider label="대출금리" value={rf.rate} onChange={(v) => setRf({ ...rf, rate: v })} min={2} max={10} step={0.1} suffix="%" />
+          <Slider label="보유" value={rf.years} onChange={(v) => setRf({ ...rf, years: v })} min={1} max={30} step={1} suffix="년" />
+          <Slider label="연 집값상승" value={rf.appr} onChange={(v) => setRf({ ...rf, appr: v })} min={-5} max={10} step={0.5} suffix="%" />
+          {rf.mode === "jeonse" ? (
+            <MoneyField label="전세보증금" value={rf.deposit} onChange={(v) => setRf({ ...rf, deposit: v })} />
+          ) : (
+            <>
+              <MoneyField label="월세보증금" value={rf.deposit} onChange={(v) => setRf({ ...rf, deposit: v })} />
+              <MoneyField label="월세" value={rf.rent} onChange={(v) => setRf({ ...rf, rent: v })} />
+            </>
+          )}
+        </div>
+        {rs && (
+          <div className="p-3">
+            <div className="mb-2 grid grid-cols-2 gap-2 text-center sm:grid-cols-4">
+              <div className="rounded bg-[#fafafa] px-2 py-1.5"><div className="text-[10px] text-[#888]">필요 대출</div><div className="text-xs font-bold tabular-nums text-[#333]">{eok(rs.loan)}원</div></div>
+              <div className="rounded bg-[#fafafa] px-2 py-1.5"><div className="text-[10px] text-[#888]">월 이자</div><div className="text-xs font-bold tabular-nums" style={{ color: RED }}>{won(rs.monthly_interest)}</div></div>
+              {rs.mode === "월세 수익형" ? (
+                <div className="rounded bg-[#fafafa] px-2 py-1.5"><div className="text-[10px] text-[#888]">월 현금흐름</div><div className="text-xs font-bold tabular-nums" style={{ color: rs.monthly_cashflow >= 0 ? GREEN : RED }}>{rs.monthly_cashflow >= 0 ? "+" : ""}{won(rs.monthly_cashflow)}</div></div>
+              ) : (
+                <div className="rounded bg-[#fafafa] px-2 py-1.5"><div className="text-[10px] text-[#888]">{rs.years}년 뒤 집값</div><div className="text-xs font-bold tabular-nums text-[#333]">{eok(rs.future_price)}원</div></div>
+              )}
+              <div className="rounded bg-[#fafafa] px-2 py-1.5"><div className="text-[10px] text-[#888]">자기자본 수익률(ROE)</div><div className="text-xs font-bold tabular-nums" style={{ color: (rs.roe ?? 0) >= 0 ? GREEN : RED }}>{rs.roe != null ? `${rs.roe}%` : "—"}</div></div>
+            </div>
+            <div className="mb-2 rounded bg-[#eef4f0] px-2 py-1.5 text-[11px] text-[#245]">
+              레버리지 효과: 자기자본 대비 <b>{rs.roe}%</b> vs 무대출(전액 현금) <b>{rs.roe_no_leverage}%</b>
+              {rs.rent_yield_on_capital != null && <> · 월세 수익률(자기자본 대비) <b>{rs.rent_yield_on_capital}%</b></>}
+            </div>
+            <div className="mb-2 grid grid-cols-3 gap-2">
+              {rs.scenarios.map((s) => (
+                <div key={s.name} className="rounded border border-[#eee] p-2 text-center text-[11px]">
+                  <div className="font-semibold text-[#555]">{s.name} (연 {s.appreciation}%)</div>
+                  <div className="tabular-nums text-[10px] text-[#999]">순손익</div>
+                  <div className="tabular-nums font-bold" style={{ color: s.net_profit >= 0 ? GREEN : RED }}>{s.net_profit >= 0 ? "+" : ""}{eok(s.net_profit)}원</div>
+                  <div className="tabular-nums text-[10px]" style={{ color: (s.roe ?? 0) >= 0 ? GREEN : RED }}>ROE {s.roe}%</div>
+                </div>
+              ))}
+            </div>
+            <div className="rounded bg-[#fff8f0] px-2 py-1.5 text-[10px] leading-relaxed text-[#a33]">{rs.warning}</div>
           </div>
         )}
       </div>

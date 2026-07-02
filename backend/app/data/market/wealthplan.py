@@ -437,6 +437,258 @@ def loan_sim(loan_amount: float, loan_rate: float, loan_years: int, invest_retur
     }
 
 
+# --- 부동산 투자(자기자본+대출→임대) 시뮬레이터 ---------------------------
+def realty_sim(price: float, own: float, loan_rate: float, years: int,
+               appreciation: float, mode: str, deposit: float, rent_monthly: float) -> dict:
+    """자기자본+대출로 매입해 세(전세/월세) 놓는 부동산 투자 수익 시뮬.
+
+    전세(갭투자): 전세보증금이 매매가 대부분 커버 → 자기자본은 '갭'만, 월수입 없음.
+    월세: 대출 끼고 매입 → 월세 − 대출이자 = 월 현금흐름 + 집값 상승 차익.
+    핵심: 이자(interest-only 가정)만 내다가 매도 시 대출·보증금 상환. 레버리지로 자기자본
+    대비 수익률(ROE)이 커지지만, 집값 하락 시 손실도 자기자본 대비 크게 확대된다.
+    """
+    price = _n(price); own = _n(own); r = _n(loan_rate) / 100.0
+    Y = max(1, int(_n(years, 1))); deposit = _n(deposit); rent = _n(rent_monthly)
+    wolse = (mode == "wolse")
+
+    loan = max(0.0, price - own - deposit)      # 자기자본+보증금으로 부족한 만큼 대출
+    mo_interest = loan * r / 12.0
+    total_interest = loan * r * Y               # 이자만 상환(원금은 매도 시)
+    mo_cashflow = (rent - mo_interest) if wolse else (-mo_interest)
+    rent_yield = round(rent * 12 / own * 100, 1) if (wolse and own > 0) else None
+
+    def outcome(a_pct: float) -> dict:
+        fp = price * (1 + a_pct / 100.0) ** Y
+        gain = fp - price
+        total_rent = rent * 12 * Y if wolse else 0.0
+        net = gain + total_rent - total_interest
+        roe = round(net / own * 100, 1) if own > 0 else None
+        return {"appreciation": a_pct, "future_price": round(fp), "sale_gain": round(gain),
+                "net_profit": round(net), "roe": roe}
+
+    base = outcome(appreciation)
+    # 하락/보합/입력값 시나리오 — 레버리지 양방향 효과
+    scen = [
+        {"name": "하락", **outcome(-3.0)},
+        {"name": "보합", **outcome(0.0)},
+        {"name": f"상승", **outcome(appreciation)},
+    ]
+    # 무대출(전액 자기자본) 대비 레버리지 효과
+    roe_noleverage = round((price * (1 + appreciation / 100.0) ** Y - price) / price * 100, 1)
+
+    return {
+        "mode": "월세 수익형" if wolse else "전세 갭투자",
+        "price": round(price), "own_capital": round(own), "loan": round(loan),
+        "loan_rate": _n(loan_rate), "years": Y, "appreciation": appreciation,
+        "deposit": round(deposit), "rent_monthly": round(rent) if wolse else 0,
+        "monthly_interest": round(mo_interest), "monthly_cashflow": round(mo_cashflow),
+        "rent_yield_on_capital": rent_yield,
+        "total_interest": round(total_interest),
+        "future_price": base["future_price"], "sale_gain": base["sale_gain"],
+        "net_profit": base["net_profit"], "roe": base["roe"],
+        "roe_no_leverage": roe_noleverage,
+        "scenarios": scen,
+        "note": ("월세 − 대출이자 = 월 현금흐름. 자기자본 대비 수익률(ROE)이 집값 자체 상승률보다 큰 것이 레버리지 효과."
+                 if wolse else
+                 "전세보증금이 매매가 대부분을 충당해 소액(갭)으로 투자. 월수입은 없고 집값 상승분이 수익."),
+        "warning": "⚠ 부동산 레버리지 위험: ① 금리 상승 시 이자 급증 ② 집값 하락 시 손실이 자기자본 대비 크게 확대 "
+                   "③ 전세는 역전세(전세가 하락 시 차액 반환)·세입자 미확보 위험 ④ 월세는 공실 위험 ⑤ 취득세·중개비·양도세 등 세금 별도. "
+                   "실제 투자 전 반드시 전문가 상담과 지역·물건 분석이 필요합니다.",
+    }
+
+
+# --- 배당주·공모주로 소득 만들기 (가이드 + 계산기) -------------------------
+_DIV_TAX = 0.154  # 배당소득세 15.4% (2천만 초과분은 금융소득종합과세 별도)
+
+
+def dividend_plan(invest: float, yield_pct: float, years: int,
+                  growth_pct: float, reinvest: bool) -> dict:
+    """배당주 소득: 투자금 → 연/월 배당(세후), 배당성장·재투자 시 N년 경로 + 목표 월소득에 필요한 투자금."""
+    invest = max(0.0, _n(invest)); y0 = _n(yield_pct); years = max(1, min(40, int(_n(years, 10)) or 10))
+    g = _n(growth_pct) / 100.0
+    gross = invest * y0 / 100.0
+    net = gross * (1 - _DIV_TAX)
+
+    bal = invest
+    cum_net = 0.0
+    rows = []
+    for yr in range(1, years + 1):
+        eff_yield = (y0 / 100.0) * ((1 + g) ** (yr - 1))   # 배당 성장 반영(원가 대비 수익률↑)
+        div = bal * eff_yield
+        ndiv = div * (1 - _DIV_TAX)
+        cum_net += ndiv
+        if reinvest:
+            bal += ndiv                                     # 세후 배당 재투자(주가는 보합 가정, 보수적)
+        rows.append({"year": yr, "dividend_net": round(ndiv), "cum_net": round(cum_net), "value": round(bal)})
+
+    # 목표 월소득에 필요한 투자금 (세후 기준)
+    def need_for(mon: float) -> float:
+        denom = (y0 / 100.0) * (1 - _DIV_TAX)
+        return round(mon * 12 / denom) if denom > 0 else 0
+    targets = [{"monthly": m, "invest": need_for(m)} for m in (300_000, 500_000, 1_000_000, 2_000_000)]
+
+    return {
+        "invest": round(invest), "yield_pct": y0, "years": years,
+        "growth_pct": _n(growth_pct), "reinvest": bool(reinvest), "tax_pct": round(_DIV_TAX * 100, 1),
+        "annual_gross": round(gross), "annual_net": round(net), "monthly_net": round(net / 12),
+        "final_value": round(bal), "total_dividends_net": round(cum_net),
+        "yearly": rows, "targets": targets,
+        "examples": [
+            {"name": "고배당 리츠·인프라", "yield": "5~7%", "note": "맥쿼리인프라·리츠 등, 분배금 정기 지급"},
+            {"name": "은행·통신·정유 등 전통 배당주", "yield": "4~6%", "note": "KB·신한·SK텔레콤·기아 등(참고)"},
+            {"name": "월배당 ETF", "yield": "3~7%", "note": "커버드콜·미국배당 ETF, 매월 분배"},
+            {"name": "배당성장주", "yield": "1~3% + 성장", "note": "배당이 매년 늘어 원가 대비 수익률 상승"},
+        ],
+        "guide": [
+            "① 배당주는 '주가 차익'이 아니라 보유만 해도 나오는 '현금흐름'으로 소득을 만듭니다.",
+            "② 배당수익률 = 연 배당금 ÷ 주가. 4~6%가 흔하고, 리츠·커버드콜 ETF는 더 높지만 주가 변동·분배 삭감 위험이 있습니다.",
+            "③ 배당소득세 15.4%가 원천징수됩니다. 연 금융소득 2,000만원 초과 시 종합과세되니 ISA·연금계좌 활용이 유리합니다.",
+            "④ '배당락' 기준일(보통 분기·연말) 전에 보유해야 그 회차 배당을 받습니다.",
+            "⑤ 초기엔 세후 배당을 재투자하면 복리로 배당이 늘어납니다(위 계산의 재투자 옵션).",
+            "⑥ 배당은 실적에 따라 줄 수도 있으니, 배당성향·이익 안정성·연속 배당 이력을 확인하세요(앱의 배당·실적 탭 활용).",
+        ],
+        "note": "배당수익률·성장률은 가정치입니다. 재투자 계산은 주가 보합을 가정한 보수적 값이며 실제 주가 등락에 따라 달라집니다. 세금은 15.4% 단순 적용.",
+    }
+
+
+def ipo_plan(offer_price: float, alloc_shares: float, subscribe_amount: float) -> dict:
+    """공모주(IPO) 소득: 배정 주수·공모가 → 상장일 상승률별 수익 시나리오 + 청약 방법 가이드."""
+    op = max(0.0, _n(offer_price)); shares = max(0.0, _n(alloc_shares)); sub = max(0.0, _n(subscribe_amount))
+    cost = op * shares
+
+    def at(gain_pct: float) -> dict:
+        sell = op * (1 + gain_pct / 100.0)
+        profit = (sell - op) * shares
+        return {"gain_pct": gain_pct, "sell_price": round(sell), "profit": round(profit),
+                "roi_on_cost": round(profit / cost * 100, 1) if cost > 0 else None}
+
+    scen = [at(0), at(30), at(60), at(100), at(160)]  # 공모가·+30·+60·따블·따상 근접
+    margin = round(sub * 0.5)  # 청약 증거금 통상 50%
+
+    return {
+        "offer_price": round(op), "alloc_shares": round(shares), "cost": round(cost),
+        "subscribe_amount": round(sub), "margin_estimate": margin,
+        "scenarios": scen,
+        "guide": [
+            "① 공모주는 상장 전 '공모가'로 주식을 배정받아, 상장 첫날 오른 가격에 팔아 차익을 노리는 방법입니다.",
+            "② 증권사 계좌에서 '청약'합니다. 청약 증거금은 보통 청약금액의 50%가 필요하고, 배정 후 나머지는 환불됩니다.",
+            "③ 배정 방식: 균등배정(최소 청약하면 누구나 비슷하게 나눠 받음) + 비례배정(많이 청약할수록 더 받음). 소액이면 여러 증권사에 균등 청약이 유리.",
+            "④ 인기 공모주는 경쟁률이 높아 배정 주수가 매우 적습니다(수 주~수십 주). '따상'(시초가 2배+상한가)은 드무니 기대 수익을 보수적으로 잡으세요.",
+            "⑤ 상장일 시초가·초반 변동성이 큽니다. 목표 수익률을 정해 분할 매도하는 전략이 안전합니다.",
+            "⑥ 기관 수요예측 경쟁률·의무보유확약 비율·공모가 밴드 상·하단 여부를 확인하면 흥행 여부를 가늠할 수 있습니다.",
+            "⑦ 상장 차익은 소액주주는 양도세가 없지만(증권거래세만), 손실 위험도 있으니 여유자금으로 접근하세요.",
+        ],
+        "note": "배정 주수는 경쟁률에 따라 결정되어 예측이 어렵습니다. 위 계산은 '배정받았다고 가정한' 주수 기준 시나리오입니다. 따상은 보장되지 않습니다.",
+    }
+
+
+# --- 내 저축·상품(보유) → 혜택 + N년 뒤 예상 -------------------------------
+# 상품별 예상 연수익률(rate) + 정부매칭/세제혜택(bonus). bonus_rate = 연 납입액 대비
+# 지원 비율, bonus_cap = 연 지원 상한(원, 0이면 상한 없음). 참고값(2026 기준).
+_HOLDING_META: dict[str, dict] = {
+    "청년미래적금":              {"rate": 0.035, "bonus_rate": 0.09,  "bonus_cap": 1_080_000, "note": "정부매칭 6~12% + 이자 비과세"},
+    "청년내일저축계좌":          {"rate": 0.030, "bonus_rate": 2.00,  "bonus_cap": 3_600_000, "note": "저소득 청년 정부매칭 최대 3배"},
+    "청년 주택드림 청약통장":    {"rate": 0.040, "bonus_rate": 0.0,   "bonus_cap": 0,          "note": "우대금리 + 비과세 + 청약가점"},
+    "주택청약종합저축":          {"rate": 0.025, "bonus_rate": 0.0,   "bonus_cap": 0,          "note": "청약 자격 + 소득공제"},
+    "연금저축":                  {"rate": 0.050, "bonus_rate": 0.165, "bonus_cap": 990_000,    "note": "연 최대 99만원 세액공제 환급"},
+    "IRP(개인형퇴직연금)":       {"rate": 0.050, "bonus_rate": 0.165, "bonus_cap": 1_485_000,  "note": "연금 합산 최대 148.5만 환급"},
+    "ISA(개인종합자산관리계좌)": {"rate": 0.050, "bonus_rate": 0.0,   "bonus_cap": 0,          "note": "수익 200/400만 비과세"},
+    "정기적금·예금":             {"rate": 0.035, "bonus_rate": 0.0,   "bonus_cap": 0,          "note": "원금 보장 안전 저축"},
+    "주식·ETF 투자":             {"rate": 0.080, "bonus_rate": 0.0,   "bonus_cap": 0,          "note": "장기 복리(원금 손실 위험)"},
+    "리츠(REITs)·부동산펀드":    {"rate": 0.050, "bonus_rate": 0.0,   "bonus_cap": 0,          "note": "배당 연 4~7%"},
+    "배당주·채권·금/달러 ETF":   {"rate": 0.060, "bonus_rate": 0.0,   "bonus_cap": 0,          "note": "분산 투자·현금흐름"},
+}
+_DEFAULT_META = {"rate": 0.035, "bonus_rate": 0.0, "bonus_cap": 0, "note": "일반 저축"}
+
+
+def holdings_catalog() -> list[dict]:
+    """가입해서 저축 중이라고 고를 수 있는 상품 목록(혜택·예상수익률 포함)."""
+    info = {it["name"]: it for it in _products({})}
+    out = []
+    for name, meta in _HOLDING_META.items():
+        it = info.get(name, {})
+        out.append({
+            "name": name,
+            "category": it.get("category", "저축"),
+            "benefit": it.get("benefit", ""),
+            "example": it.get("example", ""),
+            "rate": round(meta["rate"] * 100, 1),
+            "bonus_note": meta["note"],
+            "has_bonus": meta["bonus_rate"] > 0,
+        })
+    return out
+
+
+def _project_one(h: dict, horizon: int) -> dict:
+    name = h.get("name", "저축")
+    meta = _HOLDING_META.get(name, _DEFAULT_META)
+    monthly = max(0.0, _n(h.get("monthly")))
+    current = max(0.0, _n(h.get("current")))
+    rate = meta["rate"]
+    rm = rate / 12.0
+    annual_contrib = monthly * 12.0
+    annual_bonus = annual_contrib * meta["bonus_rate"]
+    if meta["bonus_cap"] > 0:
+        annual_bonus = min(annual_bonus, meta["bonus_cap"])
+
+    bal = current
+    bonus_total = 0.0
+    yearly = []
+    for y in range(1, horizon + 1):
+        for _ in range(12):
+            bal = bal * (1 + rm) + monthly
+        bonus_total += annual_bonus
+        yearly.append({"year": y, "total": round(bal + bonus_total)})
+
+    principal = current + annual_contrib * horizon        # 낸 돈(원금)
+    invest_only = round(bal)                               # 투자성장분 포함(혜택 제외)
+    total = round(bal + bonus_total)
+    return {
+        "name": name,
+        "category": meta.get("category", h.get("category", "저축")),
+        "monthly": round(monthly),
+        "current": round(current),
+        "rate": round(rate * 100, 1),
+        "bonus_note": meta["note"],
+        "principal": round(principal),
+        "invest_value": invest_only,
+        "bonus_total": round(bonus_total),
+        "total": total,
+        "gain": round(total - principal),
+        "yearly": yearly,
+    }
+
+
+def project_holdings(holdings: list[dict], horizon: int) -> dict:
+    horizon = max(1, min(40, int(_n(horizon, 10)) or 10))
+    items = [_project_one(h, horizon) for h in (holdings or []) if _n(h.get("monthly")) > 0 or _n(h.get("current")) > 0]
+
+    # 연도별 합계 경로
+    totals_by_year = []
+    for y in range(1, horizon + 1):
+        s = sum(next((r["total"] for r in it["yearly"] if r["year"] == y), 0) for it in items)
+        totals_by_year.append({"year": y, "total": round(s)})
+
+    principal = sum(it["principal"] for it in items)
+    bonus_total = sum(it["bonus_total"] for it in items)
+    grand_total = sum(it["total"] for it in items)
+    monthly_sum = sum(it["monthly"] for it in items)
+    return {
+        "horizon": horizon,
+        "items": items,
+        "totals_by_year": totals_by_year,
+        "summary": {
+            "monthly_sum": round(monthly_sum),
+            "principal": round(principal),          # 낸 돈
+            "bonus_total": round(bonus_total),      # 정부지원·세제혜택 합
+            "gain": round(grand_total - principal), # 불어난 돈(혜택+수익)
+            "total": round(grand_total),            # N년 뒤 총액
+        },
+        "note": "예상수익률·정부지원은 2026 기준 참고 가정치입니다. 세제혜택(연금/IRP)은 환급액을 매년 현금으로 더한 보수적 계산이며, "
+                "실제 수령액은 상품·소득·시장에 따라 달라집니다.",
+    }
+
+
 # --- 저장/조회 (계정별) -----------------------------------------------------
 def _safe_user(user: str) -> str:
     return re.sub(r"[^A-Za-z0-9_.\-]", "_", user or "default")
@@ -503,3 +755,30 @@ def save_profile(user: str, profile: dict) -> dict:
         d["profile"] = {**d.get("profile", {}), **(profile or {})}
         _save(user, d)
     return get_plan(user)
+
+
+def get_holdings(user: str) -> dict:
+    d = _load(user)
+    holdings = d.get("holdings", [])
+    horizon = int(_n(d.get("holdings_horizon"), 10)) or 10
+    return {
+        "holdings": holdings,
+        "horizon": horizon,
+        "catalog": holdings_catalog(),
+        "projection": project_holdings(holdings, horizon),
+    }
+
+
+def save_holdings(user: str, holdings: list[dict], horizon: int) -> dict:
+    with _lock:
+        d = _load(user)
+        clean = []
+        for h in (holdings or []):
+            nm = str(h.get("name", "")).strip()
+            if not nm:
+                continue
+            clean.append({"name": nm, "monthly": _n(h.get("monthly")), "current": _n(h.get("current"))})
+        d["holdings"] = clean
+        d["holdings_horizon"] = max(1, min(40, int(_n(horizon, 10)) or 10))
+        _save(user, d)
+    return get_holdings(user)
