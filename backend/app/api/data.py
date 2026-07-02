@@ -32,6 +32,7 @@ from app.data.market import wealthplan
 from app.data.market import picks
 from app.data.market import market_movers
 from app.data.market import movers_archive
+from app.data.market import briefing
 from app.data.news import livepulse
 from app.data.macro import moneyflow
 from app.data.fundamentals import finnhub
@@ -670,6 +671,12 @@ def wealth_ipo_sim(offer_price: float = Query(default=30000), alloc_shares: floa
                    subscribe_amount: float = Query(default=0), user: str = Depends(require_auth)):
     """공모주(IPO) 소득 — 배정 주수·공모가→상장일 상승률별 수익 시나리오 + 청약 방법 가이드."""
     return wealthplan.ipo_plan(offer_price, alloc_shares, subscribe_amount)
+
+
+@router.get("/briefing")
+def briefing_endpoint(market: str = Query(default="auto"), user: str = Depends(require_auth)):
+    """장전 브리핑 — 전일 시장 스토리 요약 + 오늘 전망(한국/미국 자동 선택). 캐시 5분."""
+    return briefing.briefing(market)
 
 
 @router.get("/movers")

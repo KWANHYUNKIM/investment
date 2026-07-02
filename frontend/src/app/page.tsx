@@ -22,11 +22,13 @@ import { IndustryMap } from "@/components/IndustryMap";
 import { CrisisSim } from "@/components/CrisisSim";
 import { RealEstateMap } from "@/components/RealEstateMap";
 import { MarketMovers } from "@/components/MarketMovers";
+import { MarketBriefing } from "@/components/MarketBriefing";
 
-type Tab = "market" | "open" | "movers" | "score" | "watch" | "dividend" | "budget" | "wealth" | "live" | "money" | "korea" | "inst" | "future" | "report" | "industry" | "crisis" | "realestate";
+type Tab = "market" | "briefing" | "open" | "movers" | "score" | "watch" | "dividend" | "budget" | "wealth" | "live" | "money" | "korea" | "inst" | "future" | "report" | "industry" | "crisis" | "realestate";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "market", label: "전종목 분석" },
+  { id: "briefing", label: "장전 브리핑" },
   { id: "open", label: "개장 예측" },
   { id: "movers", label: "급등락 원인" },
   { id: "score", label: "투자 점수" },
@@ -117,6 +119,7 @@ function Home() {
         ) : (
           <div className="h-full overflow-y-auto bg-[#fafafa]">
             <div className="w-full px-5 py-5">
+              {tab === "briefing" && <MarketBriefing />}
               {tab === "open" && <KrOpenForecast />}
               {tab === "movers" && <MarketMovers />}
               {tab === "score" && <StockScore />}

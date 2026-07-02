@@ -784,6 +784,21 @@ export interface RealtySim {
   note: string; warning: string;
 }
 
+export interface BriefSignal { key: string; label: string; group?: string; change_pct: number | null; last?: number | null; }
+export interface BriefADR { name: string; ticker?: string; change_pct: number; }
+export interface BriefStory { topic: string; title: string; source: string | null; link: string; ts: number | null; }
+export interface BriefOutlook {
+  market: string; bias: string | null; gauge: number | null;
+  expected_gap: { low?: number; high?: number }; drivers: string[]; basis: string;
+}
+export interface BriefNarrative { headline?: string; recap?: string[]; outlook?: string; risks?: string[]; one_liner?: string; source?: string; }
+export interface Briefing {
+  generated_at: string; market: string; market_label: string;
+  signals: BriefSignal[]; adrs: BriefADR[]; extras: Record<string, { name?: string; change_pct?: number } | undefined>;
+  flow: unknown; stories: BriefStory[]; outlook: BriefOutlook; narrative: BriefNarrative;
+  ai_enabled: boolean; note: string;
+}
+
 export interface MoverNews { title: string; source: string; link: string; ts: number | null; }
 export interface Mover {
   ticker: string; name: string; sector: string; close: number; change_pct: number; value: number; news: MoverNews[];
@@ -2067,6 +2082,7 @@ export const api = {
     request<DividendSim>(`/api/data/wealth/dividend-sim?invest=${p.invest}&yield_pct=${p.yield_pct}&years=${p.years}&growth_pct=${p.growth_pct}&reinvest=${p.reinvest}`),
   wealthIpoSim: (p: { offer_price: number; alloc_shares: number; subscribe_amount: number }) =>
     request<IpoSim>(`/api/data/wealth/ipo-sim?offer_price=${p.offer_price}&alloc_shares=${p.alloc_shares}&subscribe_amount=${p.subscribe_amount}`),
+  briefing: (market: "auto" | "kr" | "us" = "auto") => request<Briefing>(`/api/data/briefing?market=${market}`),
   movers: (refresh = false) => request<Movers>(`/api/data/movers${refresh ? "?refresh=true" : ""}`),
   moversHistory: (limit = 50) => request<{ items: MoversHistoryItem[] }>(`/api/data/movers/history?limit=${limit}`),
   wealthDividendPicks: (top = 12) => request<DividendPicks>(`/api/data/wealth/dividend-picks?top=${top}`),
