@@ -34,6 +34,10 @@ class Settings(BaseSettings):
     # 한국 경제 흐름 탭의 '국내 돈 흐름' 하드데이터로 쓴다.
     ecos_api_key: str = ""
 
+    # Anthropic Claude API 키 — 'AI 주가 예측' 탭에서 Claude Fable 5로 최근 시세를 넣고
+    # 향후 주가 시나리오(강세/기준/약세) 경로를 예측한다. 없으면 예측 탭만 비활성.
+    anthropic_api_key: str = ""
+
     # Demo mode: synthesize small intraday ticks on top of the settled snapshot
     # so the live grid visibly moves without a brokerage streaming API.
     mock_ticks: bool = True
@@ -73,6 +77,11 @@ class Settings(BaseSettings):
     growth_scheduler: bool = True
     growth_scheduler_interval: float = 1800.0  # 30분마다 테마/시황 갱신
 
+    # 개장 예측 아카이브: 매 세션 예측을 저장하고, 다음 세션 실제 개장과 대조해
+    # 적중/실패를 채점한다(자동 반복). PREMARKET_ARCHIVE=false로 끔.
+    premarket_archive: bool = True
+    premarket_archive_interval: float = 1800.0  # 30분마다 기록·채점 점검
+
     @property
     def duckdb_path(self) -> Path:
         return self.data_dir / "market.duckdb"
@@ -85,10 +94,15 @@ class Settings(BaseSettings):
     def future_themes_dir(self) -> Path:
         return self.data_dir / "future_themes"
 
+    @property
+    def premarket_dir(self) -> Path:
+        return self.data_dir / "premarket"
+
     def ensure_dirs(self) -> None:
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self.reports_dir.mkdir(parents=True, exist_ok=True)
         self.future_themes_dir.mkdir(parents=True, exist_ok=True)
+        self.premarket_dir.mkdir(parents=True, exist_ok=True)
 
 
 @lru_cache

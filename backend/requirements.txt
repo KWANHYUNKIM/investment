@@ -20,3 +20,6 @@ scipy==1.15.0
 # --- Utilities ---
 python-dateutil==2.9.0.post0
 httpx==0.28.1
+
+# --- AI (개장 예측 서술 층; 키 없으면 규칙 기반만 동작) ---
+anthropic>=0.40.0

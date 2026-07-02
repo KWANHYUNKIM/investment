@@ -11,7 +11,7 @@ import {
   YAxis,
   CartesianGrid,
 } from "recharts";
-import { api, OHLC, DartFinancials, DartStatement } from "@/lib/api";
+import { api, OHLC, DartFinancials, DartStatement, TargetPrice } from "@/lib/api";
 import { Spinner, Empty } from "./ui";
 import { won, UP, DOWN, toneClass, arrow } from "@/lib/format";
 
@@ -77,6 +77,8 @@ export function StockDetail({
   const [period, setPeriod] = useState(2); // default 6개월
   const [fin, setFin] = useState<DartFinancials | null>(null);
   const [finLoading, setFinLoading] = useState(true);
+  const [tp, setTp] = useState<TargetPrice | null>(null);
+  const [tpLoading, setTpLoading] = useState(true);
 
   useEffect(() => {
     setLoading(true);
@@ -95,6 +97,16 @@ export function StockDetail({
       .then(setFin)
       .catch(() => setFin(null))
       .finally(() => setFinLoading(false));
+  }, [ticker]);
+
+  useEffect(() => {
+    setTpLoading(true);
+    setTp(null);
+    api
+      .targetPrice(ticker)
+      .then(setTp)
+      .catch(() => setTp(null))
+      .finally(() => setTpLoading(false));
   }, [ticker]);
 
   const rows: Row[] = useMemo(() => {
@@ -239,6 +251,9 @@ export function StockDetail({
             </>
           )}
 
+          {/* 목표주가 (적정주가 + 강세/기준/약세 시나리오) */}
+          <TargetPricePanel tp={tp} loading={tpLoading} />
+
           {/* DART 전체 재무제표 (전 계정·연도별) */}
           <Financials fin={fin} loading={finLoading} />
         </div>
@@ -269,6 +284,107 @@ const KEY_ACCOUNTS = new Set([
   "영업활동 현금흐름", "영업활동현금흐름", "투자활동 현금흐름", "투자활동현금흐름",
   "재무활동 현금흐름", "재무활동현금흐름",
 ]);
+
+function upsideCls(v: number | null | undefined): string {
+  if (v == null) return "text-[#999]";
+  return v > 0 ? "text-[#c92a2a]" : v < 0 ? "text-[#1971c2]" : "text-[#666]";
+}
+function upsideTxt(v: number | null | undefined): string {
+  if (v == null) return "—";
+  return `${v > 0 ? "+" : ""}${v.toFixed(1)}%`;
+}
+
+function TargetPricePanel({ tp, loading }: { tp: TargetPrice | null; loading: boolean }) {
+  return (
+    <div className="mt-5 overflow-hidden rounded-lg border border-[#e0e0e0]">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#e0e0e0] bg-[#a9d08e] px-3 py-1.5">
+        <span className="text-sm font-semibold text-[#1f4d2b]">목표주가 (밸류에이션 적정주가)</span>
+        {tp?.base != null && tp.close != null && (
+          <span className="text-xs text-[#1f4d2b]">
+            적정 <b>{won(tp.base)}</b>원 · 현재가 대비{" "}
+            <b className={upsideCls(tp.base_upside_pct)}>{upsideTxt(tp.base_upside_pct)}</b>
+          </span>
+        )}
+      </div>
+
+      {loading ? (
+        <div className="py-8 text-center text-sm text-[#888]"><Spinner /></div>
+      ) : !tp || tp.scenarios.length === 0 ? (
+        <div className="py-8 text-center text-sm text-[#999]">{tp?.note ?? "목표주가를 계산할 수 없습니다."}</div>
+      ) : (
+        <div className="p-4">
+          {/* 시나리오 3개 카드 */}
+          <div className="grid grid-cols-3 gap-2">
+            {tp.scenarios.map((s) => {
+              const strong = s.name === "강세", weak = s.name === "약세";
+              const border = strong ? "border-[#f0c9c9]" : weak ? "border-[#c9d9f0]" : "border-[#e0e0e0]";
+              const bg = s.name === "기준" ? "bg-[#fafafa]" : "bg-white";
+              return (
+                <div key={s.name} className={`rounded-lg border ${border} ${bg} p-3 text-center`}>
+                  <div className="text-xs font-semibold text-[#555]">{s.name}</div>
+                  <div className="mt-1 text-lg font-bold tabular-nums text-[#1f1f1f]">
+                    {s.target != null ? won(s.target) : "—"}
+                  </div>
+                  <div className={`text-xs font-semibold ${upsideCls(s.upside_pct)}`}>{upsideTxt(s.upside_pct)}</div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* 계산 근거 */}
+          <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 text-[11px] text-[#666] sm:grid-cols-3">
+            <span>현재가 <b className="text-[#1f1f1f]">{tp.close != null ? won(tp.close) : "—"}</b></span>
+            {tp.fundamentals?.eps != null && <span>EPS <b>{won(tp.fundamentals.eps)}</b></span>}
+            {tp.fundamentals?.bps != null && <span>BPS <b>{won(tp.fundamentals.bps)}</b></span>}
+            {tp.fundamentals?.roe != null && <span>ROE <b>{tp.fundamentals.roe}%</b></span>}
+            {tp.fundamentals?.per != null && <span>PER <b>{tp.fundamentals.per}</b></span>}
+            {tp.target_per_used != null && <span>목표PER <b>{tp.target_per_used}</b></span>}
+          </div>
+          {tp.scenarios[1]?.methods && Object.keys(tp.scenarios[1].methods).length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-[#888]">
+              {Object.entries(tp.scenarios[1].methods).map(([k, v]) => (
+                <span key={k}>{k}: <b className="text-[#555]">{won(v)}</b></span>
+              ))}
+            </div>
+          )}
+
+          {/* AI 시나리오 목표가 */}
+          {tp.ai ? (
+            <div className="mt-3 rounded-md border border-[#cfe3d6] bg-[#f2f8f4] p-3">
+              <div className="mb-1 flex items-center justify-between">
+                <span className="text-xs font-semibold text-[#217346]">
+                  AI 목표주가 · 적정 {tp.ai.fair_value != null ? `${won(tp.ai.fair_value)}원` : "—"}
+                </span>
+                <span className="text-[10px] text-[#8aa697]">{tp.ai.model} · 신뢰도 {tp.ai.confidence}</span>
+              </div>
+              {tp.ai.targets && (
+                <div className="mb-1 flex flex-wrap gap-3 text-[11px] text-[#444]">
+                  {Object.entries(tp.ai.targets).map(([k, v]) => (
+                    <span key={k}>{k} <b>{won(v)}</b></span>
+                  ))}
+                </div>
+              )}
+              <p className="whitespace-pre-line text-[12px] leading-relaxed text-[#334]">{tp.ai.rationale}</p>
+              {tp.ai.key_drivers?.length > 0 && (
+                <ul className="mt-1 list-inside list-disc text-[11px] text-[#555]">
+                  {tp.ai.key_drivers.map((d, i) => <li key={i}>{d}</li>)}
+                </ul>
+              )}
+            </div>
+          ) : tp.ai_error ? (
+            <div className="mt-3 text-[11px] text-[#aaa]">AI 목표가 비활성 — {tp.ai_error}</div>
+          ) : !tp.ai_enabled ? (
+            <div className="mt-3 text-[11px] text-[#aaa]">
+              밸류에이션 기반 목표주가입니다. AI 시나리오 목표가를 쓰려면 백엔드에 ANTHROPIC_API_KEY를 설정하세요.
+            </div>
+          ) : null}
+
+          <div className="mt-2 text-[10px] text-[#bbb]">{tp.note}</div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function Financials({ fin, loading }: { fin: DartFinancials | null; loading: boolean }) {
   const statements = fin?.statements ?? [];

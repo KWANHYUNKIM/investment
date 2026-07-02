@@ -417,6 +417,260 @@ export interface MoneyKrDay {
   individual: number | null;
   organ: number | null;
 }
+export interface PremarketSignal {
+  key: string;
+  label: string;
+  group: string;
+  unit: string;
+  weight: number;
+  direction: number;
+  value: number;
+  change_pct: number;
+  date: string;
+  impact_pct: number;
+}
+export interface PremarketAdr {
+  ticker: string;
+  name: string;
+  value: number;
+  change_pct: number;
+  date: string;
+}
+export interface PremarketAi {
+  bias: string;
+  one_liner: string;
+  narrative: string;
+  sectors: { name: string; view: string }[];
+  risks: string[];
+  confidence: string;
+  model: string;
+}
+export interface PremarketIndex {
+  key: string;
+  label: string;
+  close: number;
+  change_pct: number | null;
+  change_5d: number | null;
+  change_20d: number | null;
+  ma20: number;
+  vs_ma20_pct: number | null;
+  trend: string;
+  series: { date: string; close: number }[];
+}
+export interface Premarket {
+  generated_at: string;
+  signals: PremarketSignal[];
+  adrs: PremarketAdr[];
+  indices: PremarketIndex[];
+  bias: "강세" | "중립" | "약세";
+  tone: string;
+  weighted_pct: number;
+  gauge: number;
+  expected_gap: { low: number; high: number };
+  adr_avg: number | null;
+  drivers: string[];
+  ai: PremarketAi | null;
+  ai_error: string | null;
+  ai_enabled: boolean;
+}
+
+export interface TargetPriceScenario {
+  name: string;
+  r: number;
+  per_mult: number;
+  target: number | null;
+  upside_pct: number | null;
+  methods: Record<string, number>;
+}
+export interface TargetPriceAi {
+  fair_value: number;
+  targets: Record<string, number>;
+  rationale: string;
+  key_drivers: string[];
+  confidence: string;
+  model: string;
+}
+export interface TargetPrice {
+  ticker: string;
+  close: number | null;
+  fundamentals: Record<string, number | null>;
+  per_median?: number | null;
+  target_per_used?: number;
+  base: number | null;
+  base_upside_pct?: number | null;
+  scenarios: TargetPriceScenario[];
+  note: string;
+  ai: TargetPriceAi | null;
+  ai_error: string | null;
+  ai_enabled: boolean;
+}
+
+export interface TradeSignalItem {
+  name: string;
+  score: number;
+  view: string;
+}
+export interface TradeSignals {
+  ticker: string;
+  date?: string;
+  close?: number;
+  verdict: "매수" | "중립" | "매도" | null;
+  tone?: string;
+  score?: number;
+  rsi?: number | null;
+  ma5?: number | null;
+  ma20?: number | null;
+  ma60?: number | null;
+  ma_arrange?: string;
+  cross?: string | null;
+  macd_hist?: number | null;
+  bb_pct?: number | null;
+  vol_ratio?: number | null;
+  pos_52w?: number | null;
+  atr?: number | null;
+  risk?: {
+    stop_loss: number | null;
+    target1: number | null;
+    target2: number | null;
+    risk_reward: number | null;
+    support: number | null;
+    resistance: number | null;
+  };
+  signals: TradeSignalItem[];
+  backtest?: {
+    trades: number;
+    win_rate: number | null;
+    strat_return_pct: number | null;
+    bh_return_pct: number | null;
+    avg_trade_pct: number | null;
+    open_position: boolean;
+  } | null;
+  note?: string;
+}
+
+export interface StockScoreRow {
+  ticker: string;
+  name: string | null;
+  sector: string | null;
+  close: number | null;
+  chg_pct: number | null;
+  ret_1m: number | null;
+  per: number | null;
+  pbr: number | null;
+  roe: number | null;
+  div_yield: number | null;
+  value_score: number | null;
+  momentum_score: number | null;
+  flow_score: number | null;
+  total_score: number | null;
+}
+export interface StockScoreBoard {
+  generated_at: string;
+  count: number;
+  weights: Record<string, number>;
+  rows: StockScoreRow[];
+  note: string;
+}
+
+export interface WatchRow {
+  ticker: string;
+  name: string | null;
+  sector: string | null;
+  close: number | null;
+  chg_pct: number | null;
+  verdict: string | null;
+  score: number | null;
+  target: number | null;
+  upside_pct: number | null;
+}
+export interface Watchlist {
+  tickers: string[];
+  rows: WatchRow[];
+}
+
+export interface HoldingRow extends WatchRow {
+  qty: number;
+  avg: number;
+  value: number;
+  cost: number;
+  pnl: number;
+  pnl_pct: number | null;
+  weight: number | null;
+}
+export interface Portfolio {
+  holdings: HoldingRow[];
+  summary: {
+    total_value: number;
+    total_cost: number;
+    total_pnl: number;
+    total_pnl_pct: number | null;
+    max_weight: number;
+    sectors: { sector: string; weight: number }[];
+    count: number;
+  };
+  diagnosis: string[];
+}
+
+export interface DividendRow {
+  ticker: string;
+  name: string | null;
+  sector: string | null;
+  close: number | null;
+  div_yield: number;
+  per: number | null;
+  roe: number | null;
+}
+export interface EarningRow {
+  ticker: string;
+  name: string | null;
+  sector: string | null;
+  close: number | null;
+  period: string;
+  op_yoy: number;
+  op_margin: number | null;
+  op_profit: number | null;
+}
+export interface DividendsBoard {
+  generated_at: string;
+  dividends: DividendRow[];
+  earnings: EarningRow[];
+  note: string;
+}
+
+export interface PremarketRecord {
+  based_on: string;
+  made_at: string;
+  prediction: {
+    bias: string;
+    weighted_pct: number;
+    gauge: number;
+    expected_gap: { low: number; high: number };
+    adr_avg: number | null;
+    drivers: string[];
+    ai_one_liner: string | null;
+  };
+  graded: boolean;
+  hit?: boolean;
+  reason?: string;
+  actual: {
+    open_date: string;
+    kospi_gap: number;
+    kosdaq_gap: number | null;
+    direction: string;
+  } | null;
+}
+export interface PremarketHistory {
+  accuracy: {
+    total: number;
+    hits: number;
+    rate: number | null;
+    recent10_hits: number;
+    recent10_total: number;
+    pending: number;
+  };
+  records: PremarketRecord[];
+}
+
 export interface GlobalMoneyFlow {
   as_of: string;
   verdict: {
@@ -1484,6 +1738,18 @@ export const api = {
   marketReport: () => request<MarketReport>(`/api/data/market-report`),
   livePulse: () => request<LivePulse>(`/api/data/live-pulse`),
   moneyFlow: () => request<GlobalMoneyFlow>(`/api/data/money-flow`),
+  premarket: () => request<Premarket>(`/api/data/premarket`),
+  premarketHistory: (limit = 60) => request<PremarketHistory>(`/api/data/premarket/history?limit=${limit}`),
+  targetPrice: (ticker: string) => request<TargetPrice>(`/api/data/target-price?ticker=${ticker}`),
+  signals: (ticker: string) => request<TradeSignals>(`/api/data/signals?ticker=${ticker}`),
+  stockScore: () => request<StockScoreBoard>(`/api/data/stock-score`),
+  watchlist: () => request<Watchlist>(`/api/data/watchlist`),
+  watchlistAdd: (ticker: string) => request<Watchlist>(`/api/data/watchlist/add?ticker=${ticker}`, { method: "POST" }),
+  watchlistRemove: (ticker: string) => request<Watchlist>(`/api/data/watchlist/remove?ticker=${ticker}`, { method: "POST" }),
+  portfolioDiag: () => request<Portfolio>(`/api/data/portfolio`),
+  portfolioSave: (holdings: { ticker: string; qty: number; avg: number }[]) =>
+    request<Portfolio>(`/api/data/portfolio`, { method: "POST", body: JSON.stringify(holdings) }),
+  dividends: () => request<DividendsBoard>(`/api/data/dividends`),
   koreaFlow: () => request<KoreaFlow>(`/api/data/korea-flow`),
   realestateTrades: () => request<RealEstateTrades>(`/api/data/realestate-trades`),
   realestateRent: () => request<RealEstateRent>(`/api/data/realestate-rent`),

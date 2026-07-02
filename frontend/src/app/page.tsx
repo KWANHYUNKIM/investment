@@ -3,6 +3,10 @@
 import { useEffect, useState } from "react";
 import { api, Coverage } from "@/lib/api";
 import { MarketView } from "@/components/MarketView";
+import { KrOpenForecast } from "@/components/KrOpenForecast";
+import { StockScore } from "@/components/StockScore";
+import { WatchPortfolio } from "@/components/WatchPortfolio";
+import { DividendsBoard } from "@/components/DividendsBoard";
 import { MarketReport } from "@/components/MarketReport";
 import { LivePulse } from "@/components/LivePulse";
 import { FutureTheme } from "@/components/FutureTheme";
@@ -14,10 +18,14 @@ import { IndustryMap } from "@/components/IndustryMap";
 import { CrisisSim } from "@/components/CrisisSim";
 import { RealEstateMap } from "@/components/RealEstateMap";
 
-type Tab = "market" | "live" | "money" | "korea" | "inst" | "future" | "report" | "industry" | "crisis" | "realestate";
+type Tab = "market" | "open" | "score" | "watch" | "dividend" | "live" | "money" | "korea" | "inst" | "future" | "report" | "industry" | "crisis" | "realestate";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "market", label: "전종목 분석" },
+  { id: "open", label: "개장 예측" },
+  { id: "score", label: "투자 점수" },
+  { id: "watch", label: "관심·보유" },
+  { id: "dividend", label: "배당·실적" },
   { id: "live", label: "실시간 시황" },
   { id: "money", label: "자금 흐름" },
   { id: "korea", label: "한국 경제 흐름" },
@@ -93,6 +101,10 @@ export default function Home() {
         ) : (
           <div className="h-full overflow-y-auto bg-[#fafafa]">
             <div className="w-full px-5 py-5">
+              {tab === "open" && <KrOpenForecast />}
+              {tab === "score" && <StockScore />}
+              {tab === "watch" && <WatchPortfolio />}
+              {tab === "dividend" && <DividendsBoard />}
               {tab === "live" && <LivePulse />}
               {tab === "money" && <MoneyFlow />}
               {tab === "korea" && <KoreaFlow />}

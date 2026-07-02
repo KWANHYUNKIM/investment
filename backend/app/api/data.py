@@ -5,7 +5,7 @@ import math
 import threading
 import time
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Body, HTTPException, Query
 
 from app.data.market import asset_detail
 from app.data.macro import crossasset
@@ -17,6 +17,13 @@ from app.data.fundamentals import financials
 from app.data.intel import futuretheme
 from app.data.schedulers import growth_scheduler
 from app.data.market import institutional
+from app.data.market import premarket
+from app.data.market import premarket_archive
+from app.data.market import target_price as target_price_mod
+from app.data.market import signals as signals_mod
+from app.data.market import stock_score
+from app.data.market import watchlist
+from app.data.market import dividends
 from app.data.news import livepulse
 from app.data.macro import moneyflow
 from app.data.fundamentals import finnhub
@@ -421,6 +428,70 @@ def institutional_endpoint():
 def money_flow_endpoint():
     """글로벌 자금 흐름 — 유동성 레짐(완화/긴축)·한국 외국인 vs 국내 수급·크로스에셋·자산군별 자금 뉴스."""
     return moneyflow.pulse()
+
+
+@router.get("/premarket")
+def premarket_endpoint():
+    """개장 예측 — 간밤 글로벌·연동 지표 + 한국 ADR + 코스피/코스닥 추세로 개장 방향 점수화(+선택적 Claude 서술)."""
+    return premarket.forecast()
+
+
+@router.get("/premarket/history")
+def premarket_history_endpoint(limit: int = Query(default=60, ge=1, le=200)):
+    """개장 예측 성적표 — 과거 예측 vs 실제 개장 적중/실패·이유 + 누적 적중률."""
+    return premarket_archive.history(limit=limit)
+
+
+@router.get("/target-price")
+def target_price_endpoint(ticker: str = Query(..., description="single ticker")):
+    """종목 목표주가 — 정당PBR(ROE)·EPS×목표PER 적정주가 + 강세/기준/약세 시나리오(+선택 Claude)."""
+    return target_price_mod.target_price(ticker)
+
+
+@router.get("/signals")
+def signals_endpoint(ticker: str = Query(..., description="single ticker")):
+    """매매 신호 — RSI·이평·MACD·볼린저·거래량 종합 매수/중립/매도 + ATR 손절·목표가·손익비 + 신호 백테스트."""
+    return signals_mod.signals(ticker)
+
+
+@router.get("/stock-score")
+def stock_score_endpoint():
+    """종합 투자 점수 — 전 종목 가치·모멘텀·수급 백분위 종합 랭킹(TOP)."""
+    return stock_score.screen()
+
+
+@router.get("/watchlist")
+def watchlist_get():
+    """관심종목 — 현재가·매매신호·목표가 상승여력 포함."""
+    return watchlist.get_watch()
+
+
+@router.post("/watchlist/add")
+def watchlist_add(ticker: str = Query(...)):
+    return watchlist.add_watch(ticker)
+
+
+@router.post("/watchlist/remove")
+def watchlist_remove(ticker: str = Query(...)):
+    return watchlist.remove_watch(ticker)
+
+
+@router.get("/portfolio")
+def portfolio_get():
+    """보유 포트폴리오 진단 — 손익·비중·집중도·신호."""
+    return watchlist.diagnose()
+
+
+@router.post("/portfolio")
+def portfolio_set(holdings: list[dict] = Body(...)):
+    """보유 종목 전체 교체 [{ticker, qty, avg}] → 진단 반환."""
+    return watchlist.set_holdings(holdings)
+
+
+@router.get("/dividends")
+def dividends_endpoint():
+    """배당·실적 — 고배당 랭킹 + 영업이익 YoY 실적개선 랭킹."""
+    return dividends.board()
 
 
 @router.get("/korea-flow")

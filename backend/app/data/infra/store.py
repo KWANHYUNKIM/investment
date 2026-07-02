@@ -435,6 +435,29 @@ def company_profiles() -> pd.DataFrame:
         return conn.execute("SELECT * FROM company_profile").df()
 
 
+def sector_map() -> dict[str, str]:
+    """ticker -> 실제 업종(WICS 우선, 없으면 KSIC industry).
+
+    securities.sector 에는 시장명(KOSPI/KOSDAQ)이 들어 있어 업종 분석엔 부적합하다.
+    company_profile 의 wics_sector/industry 로 진짜 업종을 돌려준다.
+    """
+    with connection() as conn:
+        try:
+            df = conn.execute(
+                "SELECT ticker, wics_sector, industry FROM company_profile"
+            ).df()
+        except Exception:
+            return {}
+    out: dict[str, str] = {}
+    for r in df.to_dict("records"):
+        w = r.get("wics_sector")
+        i = r.get("industry")
+        v = (w if isinstance(w, str) and w.strip() else None) or (i if isinstance(i, str) and i.strip() else None)
+        if v:
+            out[r["ticker"]] = v
+    return out
+
+
 def company_profile_count() -> int:
     with connection() as conn:
         v = conn.execute("SELECT COUNT(*) FROM company_profile").fetchone()

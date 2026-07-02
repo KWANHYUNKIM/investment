@@ -13,6 +13,7 @@ from app.core.config import get_settings
 from app.data.fundamentals import fundamentals_crawler
 from app.data.schedulers import growth_scheduler
 from app.data.schedulers import industry_scheduler
+from app.data.schedulers import premarket_scheduler
 from app.data.schedulers import price_scheduler
 from app.data.schedulers import report_scheduler
 from app.data.infra import store
@@ -56,6 +57,8 @@ def _startup() -> None:
     # 금융위기 시뮬레이터: 필요한 FRED 시계열을 백그라운드에서 천천히 받아 디스크 캐시에
     # 저장(throttle 회피). 이후 /api/crisis/sim 은 캐시에서 즉시 응답한다.
     crisis_data.start()
+    # 개장 예측 스케줄러: 매 세션 예측을 저장하고 다음 세션 실제 개장과 대조해 채점(반복).
+    premarket_scheduler.start()
 
 
 @app.get("/api/health", tags=["meta"])
