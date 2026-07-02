@@ -306,6 +306,23 @@ def fundamentals_latest_map() -> dict[str, dict]:
     return {r["ticker"]: r for r in df.to_dict("records")}
 
 
+def fundamentals_rich_map() -> dict[str, dict]:
+    """ticker -> latest {per, pbr, roe, div_yield, eps, bps, market_cap, foreign_ratio}."""
+    with connection() as conn:
+        df = conn.execute(
+            """
+            WITH ranked AS (
+                SELECT ticker, per, pbr, roe, div_yield, eps, bps, market_cap, foreign_ratio,
+                       ROW_NUMBER() OVER (PARTITION BY ticker ORDER BY date DESC) AS rn
+                FROM fundamentals
+            )
+            SELECT ticker, per, pbr, roe, div_yield, eps, bps, market_cap, foreign_ratio
+            FROM ranked WHERE rn = 1
+            """
+        ).df()
+    return {r["ticker"]: r for r in df.to_dict("records")}
+
+
 def upsert_investor_flow(df: pd.DataFrame) -> int:
     """Accumulate daily investor net-buy (dedup by date → new days pile up,
     existing days refresh). Builds long-term history beyond Naver's ~10-day window."""

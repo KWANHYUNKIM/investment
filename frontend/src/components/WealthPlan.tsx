@@ -94,82 +94,136 @@ const CHIP_OWN = [{ label: "5천만", value: 50000000 }, { label: "1억", value:
 const CHIP_LOAN = [{ label: "1천만", value: 10000000 }, { label: "3천만", value: 30000000 }, { label: "5천만", value: 50000000 }, { label: "1억", value: 100000000 }];
 
 // ── 배당주·공모주 추천 (실시간 갱신) ────────────────────────────────────
+const gradeColor = (g: string) => (g === "A" ? "#2f9e44" : g === "B" ? "#1c7ed6" : g === "C" ? "#e8890c" : "#adb5bd");
+
 function PicksBoard() {
   const [dp, setDp] = useState<DividendPicks | null>(null);
   const [ip, setIp] = useState<IpoSchedule | null>(null);
   const [busy, setBusy] = useState(false);
+  const [openDiv, setOpenDiv] = useState<string | null>(null);
+  const [openIpo, setOpenIpo] = useState<number | null>(null);
+  const [showGuide, setShowGuide] = useState(false);
 
   const load = () => {
     setBusy(true);
     Promise.all([
-      api.wealthDividendPicks(12).then(setDp).catch(() => {}),
+      api.wealthDividendPicks(15).then(setDp).catch(() => {}),
       api.wealthIpoSchedule().then(setIp).catch(() => {}),
     ]).finally(() => setBusy(false));
   };
   useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
 
   const statusColor = (s: string) => (s === "청약중" ? "#c92a2a" : s === "예정" ? "#2f9e44" : "#aaa");
+  const needFor = (mon: number, dy: number) => (dy > 0 ? Math.round((mon * 12) / (dy / 100 * (1 - 0.154))) : 0);
 
   return (
     <div className="lg:col-span-2 overflow-hidden rounded-md border border-[#d0d0d0] bg-white shadow-sm">
       <div className="flex items-center justify-between bg-[#217346] px-4 py-2 text-white">
         <span className="text-sm font-semibold">배당주·공모주 추천 (계속 바뀜 · 실시간 갱신)</span>
-        <button onClick={load} disabled={busy} className="rounded bg-white/20 px-2 py-0.5 text-[11px] hover:bg-white/30 disabled:opacity-50">
-          {busy ? "갱신 중…" : "↻ 새로고침"}
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={() => setShowGuide((v) => !v)} className="rounded bg-white/20 px-2 py-0.5 text-[11px] hover:bg-white/30">{showGuide ? "가이드 닫기" : "매수 가이드"}</button>
+          <button onClick={load} disabled={busy} className="rounded bg-white/20 px-2 py-0.5 text-[11px] hover:bg-white/30 disabled:opacity-50">{busy ? "갱신 중…" : "↻ 새로고침"}</button>
+        </div>
       </div>
+
+      {showGuide && (dp || ip) && (
+        <div className="grid grid-cols-1 gap-2 border-b border-[#eee] bg-[#fdfaf0] p-3 sm:grid-cols-2">
+          <div>
+            <div className="mb-1 text-xs font-bold text-[#7a5f10]">배당주 매수 가이드</div>
+            <ul className="flex flex-col gap-0.5 text-[10px] leading-relaxed text-[#7a5f10]">{dp?.guide?.map((g, i) => <li key={i}>{g}</li>)}</ul>
+          </div>
+          <div>
+            <div className="mb-1 text-xs font-bold text-[#7a5f10]">공모주 청약 가이드</div>
+            <ul className="flex flex-col gap-0.5 text-[10px] leading-relaxed text-[#7a5f10]">{ip?.guide?.map((g, i) => <li key={i}>{g}</li>)}</ul>
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 gap-3 p-3 lg:grid-cols-2">
-        {/* 배당주 추천 */}
+        {/* ── 배당주 추천 ── */}
         <div className="rounded-lg border border-[#e6ede8] bg-[#f8faf9] p-3">
           <div className="mb-2 flex items-baseline justify-between">
-            <span className="text-sm font-bold text-[#217346]">고배당주 추천 TOP</span>
-            <span className="text-[10px] text-[#888]">1천만 투자 시 세후 월배당 기준</span>
+            <span className="text-sm font-bold text-[#217346]">고배당주 추천 TOP <span className="text-[10px] font-normal text-[#888]">(종목 클릭 = 상세)</span></span>
+            <span className="text-[10px] text-[#888]">점수순 · 1천만당 세후 월배당</span>
           </div>
           {!dp ? <div className="py-6 text-center text-xs text-[#999]">불러오는 중…</div> : (
-            <div className="overflow-hidden rounded border border-[#eee]">
-              <table className="w-full text-[11px]">
-                <thead><tr className="bg-[#eef4f0] text-[#555]">
-                  <th className="px-2 py-1 text-left">종목</th><th className="px-2 py-1 text-right">배당률</th>
-                  <th className="px-2 py-1 text-right">1천만당 월</th><th className="px-2 py-1 text-left">업종</th>
-                </tr></thead>
-                <tbody>
-                  {dp.picks.map((p, i) => (
-                    <tr key={p.ticker} className={i % 2 ? "bg-[#fafcfb]" : "bg-white"}>
-                      <td className="px-2 py-1 font-semibold text-[#1f1f1f]">{p.name}</td>
-                      <td className="px-2 py-1 text-right font-bold tabular-nums text-[#c0392b]">{p.div_yield}%</td>
-                      <td className="px-2 py-1 text-right tabular-nums text-[#217346]">{won(p.monthly_per_10m)}</td>
-                      <td className="px-2 py-1 text-[10px] text-[#888]">{p.sector || "—"}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="overflow-hidden rounded border border-[#eee] bg-white">
+              <div className="grid grid-cols-[auto_1fr_auto_auto] gap-x-2 bg-[#eef4f0] px-2 py-1 text-[10px] font-semibold text-[#555]">
+                <span>등급</span><span>종목</span><span className="text-right">배당률</span><span className="text-right">1천만/월</span>
+              </div>
+              {dp.picks.map((p) => (
+                <div key={p.ticker} className="border-t border-[#f0f0f0]">
+                  <button onClick={() => setOpenDiv(openDiv === p.ticker ? null : p.ticker)} className="grid w-full grid-cols-[auto_1fr_auto_auto] items-center gap-x-2 px-2 py-1 text-left text-[11px] hover:bg-[#f5faf7]">
+                    <span className="rounded px-1.5 py-0.5 text-[9px] font-bold text-white" style={{ background: gradeColor(p.grade) }}>{p.grade}{p.score}</span>
+                    <span className="truncate font-semibold text-[#1f1f1f]">{p.name} <span className="text-[9px] font-normal text-[#aaa]">{p.sector}</span></span>
+                    <span className="text-right font-bold tabular-nums text-[#c0392b]">{p.div_yield}%</span>
+                    <span className="text-right tabular-nums text-[#217346]">{won(p.monthly_per_10m)}</span>
+                  </button>
+                  {openDiv === p.ticker && (
+                    <div className="bg-[#f7faf8] px-2.5 py-2 text-[10px] leading-relaxed">
+                      <div className="mb-1 flex flex-wrap gap-1">
+                        {p.reasons.map((r, i) => <span key={i} className="rounded bg-[#eef4f0] px-1.5 py-0.5 text-[#245]">{r}</span>)}
+                      </div>
+                      <div className="grid grid-cols-3 gap-1 text-center text-[#555]">
+                        <div className="rounded bg-white px-1 py-1">PER <b>{p.per ?? "—"}</b></div>
+                        <div className="rounded bg-white px-1 py-1">PBR <b>{p.pbr ?? "—"}</b></div>
+                        <div className="rounded bg-white px-1 py-1">ROE <b>{p.roe ?? "—"}%</b></div>
+                        <div className="rounded bg-white px-1 py-1">시총 <b>{p.market_cap ? eok(p.market_cap) : "—"}</b></div>
+                        <div className="rounded bg-white px-1 py-1">외국인 <b>{p.foreign_ratio != null ? `${p.foreign_ratio}%` : "—"}</b></div>
+                        <div className="rounded bg-white px-1 py-1">안정성 <b style={{ color: p.stability === "높음" ? GREEN : p.stability === "낮음" ? RED : "#e8890c" }}>{p.stability}</b></div>
+                      </div>
+                      <div className="mt-1 text-[#666]">배당주기: {p.cycle} · 현재가 {won(p.close)}</div>
+                      <div className="mt-1 rounded bg-[#eef4f0] px-2 py-1 text-[#245]">
+                        월 50만 목표 → <b>{eok(needFor(500000, p.div_yield))}원</b> · 월 100만 → <b>{eok(needFor(1000000, p.div_yield))}원</b> 투자
+                      </div>
+                      <a href={p.naver_url} target="_blank" rel="noreferrer" className="mt-1 inline-block text-[10px] text-[#1971c2] hover:underline">네이버 증권에서 보기 →</a>
+                    </div>
+                  )}
+                </div>
+              ))}
             </div>
           )}
           {dp?.note && <div className="mt-1.5 text-[9px] leading-relaxed text-[#bbb]">{dp.note}</div>}
         </div>
 
-        {/* 공모주 청약일정 */}
+        {/* ── 공모주 청약일정 ── */}
         <div className="rounded-lg border border-[#e6ede8] bg-[#f8faf9] p-3">
           <div className="mb-2 flex items-baseline justify-between">
-            <span className="text-sm font-bold text-[#c0392b]">공모주 청약일정</span>
-            {ip && <span className="text-[10px] text-[#888]">청약중·예정 {ip.upcoming_count}건 · {ip.source}</span>}
+            <span className="text-sm font-bold text-[#c0392b]">공모주 청약일정 <span className="text-[10px] font-normal text-[#888]">(종목 클릭 = 상세)</span></span>
+            {ip && <span className="text-[10px] text-[#888]">청약중·예정 {ip.upcoming_count}건</span>}
           </div>
           {!ip ? <div className="py-6 text-center text-xs text-[#999]">불러오는 중…</div> :
             ip.error || ip.items.length === 0 ? <div className="py-6 text-center text-xs text-[#999]">{ip.error ? "일정 소스 접속 실패 — 잠시 후 새로고침" : "표시할 공모 일정이 없습니다."}</div> : (
             <div className="flex flex-col gap-1">
               {ip.items.map((x, i) => (
-                <div key={i} className="rounded border border-[#eee] bg-white p-1.5">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-1.5">
-                      {x.status && <span className="rounded px-1.5 py-0.5 text-[9px] font-bold text-white" style={{ background: statusColor(x.status) }}>{x.status}</span>}
-                      <span className="text-xs font-semibold text-[#1f1f1f]">{x.name}</span>
+                <div key={i} className="overflow-hidden rounded border border-[#eee] bg-white">
+                  <button onClick={() => setOpenIpo(openIpo === i ? null : i)} className="w-full px-1.5 py-1 text-left hover:bg-[#fafcfb]">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5">
+                        {x.status && <span className="rounded px-1.5 py-0.5 text-[9px] font-bold text-white" style={{ background: statusColor(x.status) }}>{x.status}</span>}
+                        <span className="text-xs font-semibold text-[#1f1f1f]">{x.name}</span>
+                      </div>
+                      <span className="text-[10px] tabular-nums text-[#555]">{x.subscribe}</span>
                     </div>
-                    <span className="text-[10px] tabular-nums text-[#555]">{x.subscribe}</span>
-                  </div>
-                  <div className="mt-0.5 flex items-center justify-between text-[10px] text-[#888]">
-                    <span>공모가 {x.price_confirmed ? <b className="text-[#217346]">{x.price_confirmed}원(확정)</b> : `${x.price_band}원(밴드)`}</span>
-                    <span className="truncate pl-2">{x.underwriter}</span>
-                  </div>
+                    <div className="mt-0.5 flex items-center justify-between text-[10px] text-[#888]">
+                      <span>공모가 {x.price_confirmed ? <b className="text-[#217346]">{x.price_confirmed}원(확정)</b> : `${x.price_band}원(밴드)`}</span>
+                      <span className="truncate pl-2">{x.underwriter}</span>
+                    </div>
+                  </button>
+                  {openIpo === i && (
+                    <div className="border-t border-[#f0f0f0] bg-[#f7faf8] px-2.5 py-2 text-[10px] leading-relaxed text-[#555]">
+                      <div className="grid grid-cols-2 gap-1">
+                        <div className="rounded bg-white px-2 py-1">시장 <b>{x.market || "—"}</b></div>
+                        <div className="rounded bg-white px-2 py-1">상장예정일 <b>{x.listing_date || "미정"}</b></div>
+                        <div className="rounded bg-white px-2 py-1">공모금액 <b>{x.offer_amount_won ? eok(x.offer_amount_won) + "원" : (x.offer_amount_text || "—")}</b></div>
+                        <div className="rounded bg-white px-2 py-1">총공모주식수 <b>{x.shares || "—"}</b></div>
+                        <div className="rounded bg-white px-2 py-1">수요예측 경쟁률 <b style={{ color: x.demand_competition ? RED : "#aaa" }}>{x.demand_competition || "수요예측 전"}</b></div>
+                        <div className="rounded bg-white px-2 py-1">의무보유확약 <b>{x.lockup || "미정"}</b></div>
+                      </div>
+                      <div className="mt-1 text-[#666]">주간사(청약 계좌 필요): <b>{x.underwriter}</b></div>
+                      {x.detail_url && <a href={x.detail_url} target="_blank" rel="noreferrer" className="mt-1 inline-block text-[10px] text-[#1971c2] hover:underline">38커뮤니케이션 상세 →</a>}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

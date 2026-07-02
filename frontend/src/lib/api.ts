@@ -821,14 +821,19 @@ export interface IpoSim {
 
 export interface DividendPick {
   ticker: string; name: string; sector: string | null; close: number | null;
-  div_yield: number; per: number | null; roe: number | null; monthly_per_10m: number;
+  div_yield: number; per: number | null; pbr: number | null; roe: number | null;
+  market_cap: number | null; foreign_ratio: number | null; op_yoy: number | null;
+  score: number; grade: string; reasons: string[]; stability: string; cycle: string;
+  monthly_per_10m: number; naver_url: string;
 }
-export interface DividendPicks { generated_at: string; picks: DividendPick[]; note: string; }
+export interface DividendPicks { generated_at: string; picks: DividendPick[]; guide: string[]; note: string; }
 export interface IpoScheduleItem {
-  name: string; subscribe: string; status: string; price_confirmed: string | null; price_band: string; underwriter: string;
+  no?: string; name: string; subscribe: string; status: string; price_confirmed: string | null; price_band: string; underwriter: string;
+  market?: string; shares?: string; offer_amount_text?: string; offer_amount_won?: number | null;
+  listing_date?: string; demand_competition?: string; lockup?: string; detail_url?: string;
 }
 export interface IpoSchedule {
-  items: IpoScheduleItem[]; upcoming_count: number; source: string; generated_at: string; error?: string; note: string;
+  items: IpoScheduleItem[]; upcoming_count: number; source: string; generated_at: string; error?: string; guide?: string[]; note: string;
 }
 
 export interface PayslipParse {
