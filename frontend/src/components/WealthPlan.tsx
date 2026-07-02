@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { api, WealthPlan as WP, LoanSim, RealtySim, HoldingCatalogItem, HoldingsData, DividendSim, IpoSim, DividendPicks, IpoSchedule } from "@/lib/api";
+import { api, WealthPlan as WP, LoanSim, RealtySim, RealtyLoans, HoldingCatalogItem, HoldingsData, DividendSim, IpoSim, DividendPicks, IpoSchedule } from "@/lib/api";
 
 const GREEN = "#2f9e44";
 const RED = "#c92a2a";
@@ -484,6 +484,7 @@ export function WealthPlan() {
   const [rf, setRf] = useState({ mode: "wolse", price: "300000000", own: "100000000", rate: "4.5", years: "5", appr: "3", deposit: "10000000", rent: "1000000" });
   const [rs, setRs] = useState<RealtySim | null>(null);
   const [rbusy, setRbusy] = useState(false);
+  const [rl, setRl] = useState<RealtyLoans | null>(null);
 
   // 값을 바꾸면 0.4초 뒤 자동 계산 (버튼 불필요)
   useEffect(() => {
@@ -505,6 +506,17 @@ export function WealthPlan() {
     }, 400);
     return () => clearTimeout(t);
   }, [rf]);
+  // 부동산 대출 종류·한도 (매매가·보증금·모드 + 프로필 소득/나이/자격)
+  useEffect(() => {
+    const t = setTimeout(() => {
+      api.wealthRealtyLoans({
+        price: num(rf.price), annual_income: num(f.annual_income), age: Number(f.age) || 0,
+        married: f.married, homeless: f.homeless, has_child: f.has_child,
+        deposit: num(rf.deposit), mode: rf.mode,
+      }).then(setRl).catch(() => {});
+    }, 400);
+    return () => clearTimeout(t);
+  }, [rf.price, rf.deposit, rf.mode, f.annual_income, f.age, f.married, f.homeless, f.has_child]);
 
   const fill = (p: WP) => {
     setD(p);
@@ -769,6 +781,36 @@ export function WealthPlan() {
               ))}
             </div>
             <div className="rounded bg-[#fff8f0] px-2 py-1.5 text-[10px] leading-relaxed text-[#a33]">{rs.warning}</div>
+          </div>
+        )}
+
+        {/* 받을 수 있는 대출·한도 */}
+        {rl && (
+          <div className="border-t border-[#eee] p-3">
+            <div className="mb-1.5 flex items-baseline justify-between">
+              <span className="text-xs font-bold text-[#217346]">받을 수 있는 대출·한도 <span className="font-normal text-[#888]">({rl.mode} 기준 · 자격 {rl.eligible_count}개)</span></span>
+              <span className="text-[10px] text-[#c0392b]">최대 한도 {eok(rl.max_limit)}원</span>
+            </div>
+            <div className="mb-1.5 rounded bg-[#eef4f0] px-2 py-1 text-[10px] leading-relaxed text-[#245]">{rl.dsr_note}</div>
+            <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+              {[...rl.loans].sort((a, b) => Number(b.eligible) - Number(a.eligible)).map((l) => (
+                <div key={l.name} className={`rounded-lg border p-2 ${l.eligible ? "border-[#cfe3d6] bg-[#f7faf8]" : "border-[#eee] bg-[#fafafa] opacity-70"}`}>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-[#1f1f1f]">{l.name}</span>
+                    {l.eligible
+                      ? <span className="rounded bg-[#2f9e44] px-1.5 py-0.5 text-[9px] font-bold text-white">가능</span>
+                      : <span className="rounded bg-[#bbb] px-1.5 py-0.5 text-[9px] font-bold text-white">해당X</span>}
+                  </div>
+                  <div className="mt-0.5 flex items-center justify-between text-[10px]">
+                    <span className="text-[#888]">{l.kind} · 금리 ~{l.rate}%</span>
+                    <span className="font-bold tabular-nums text-[#217346]">한도 {l.limit ? `${eok(l.limit)}원` : "—"}</span>
+                  </div>
+                  <div className="mt-0.5 text-[9px] leading-relaxed text-[#999]">{l.cond}</div>
+                  <div className="text-[9px] leading-relaxed text-[#7a5f10]">{l.note}</div>
+                </div>
+              ))}
+            </div>
+            <div className="mt-1.5 text-[9px] leading-relaxed text-[#bbb]">{rl.note}</div>
           </div>
         )}
       </div>

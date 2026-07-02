@@ -784,6 +784,14 @@ export interface RealtySim {
   note: string; warning: string;
 }
 
+export interface RealtyLoan {
+  name: string; kind: string; rate: number; limit: number | null; eligible: boolean; cond: string; note: string;
+}
+export interface RealtyLoans {
+  price: number; annual_income: number; mode: string; ltv_pct: number;
+  loans: RealtyLoan[]; eligible_count: number; max_limit: number; dsr_note: string; note: string;
+}
+
 export interface HoldingCatalogItem {
   name: string; category: string; benefit: string; example: string; rate: number; bonus_note: string; has_bonus: boolean;
 }
@@ -2029,6 +2037,8 @@ export const api = {
     request<LoanSim>(`/api/data/wealth/loan-sim?loan_amount=${loanAmount}&loan_rate=${loanRate}&loan_years=${loanYears}&invest_return=${investReturn}`),
   wealthRealtySim: (p: { price: number; own_capital: number; loan_rate: number; years: number; appreciation: number; mode: string; deposit: number; rent_monthly: number }) =>
     request<RealtySim>(`/api/data/wealth/realty-sim?price=${p.price}&own_capital=${p.own_capital}&loan_rate=${p.loan_rate}&years=${p.years}&appreciation=${p.appreciation}&mode=${p.mode}&deposit=${p.deposit}&rent_monthly=${p.rent_monthly}`),
+  wealthRealtyLoans: (p: { price: number; annual_income: number; age: number; married: boolean; homeless: boolean; has_child: boolean; deposit: number; mode: string }) =>
+    request<RealtyLoans>(`/api/data/wealth/realty-loans?price=${p.price}&annual_income=${p.annual_income}&age=${p.age}&married=${p.married}&homeless=${p.homeless}&has_child=${p.has_child}&deposit=${p.deposit}&mode=${p.mode}`),
   wealthHoldings: () => request<HoldingsData>(`/api/data/wealth/holdings`),
   wealthSaveHoldings: (holdings: { name: string; monthly: number; current: number }[], horizon: number) =>
     request<HoldingsData>(`/api/data/wealth/holdings`, { method: "POST", body: JSON.stringify({ holdings, horizon }) }),

@@ -497,6 +497,103 @@ def realty_sim(price: float, own: float, loan_rate: float, years: int,
     }
 
 
+# --- 부동산 대출 종류·한도 (구입자금·전세자금·정책) -------------------------
+def _dsr_limit(annual_income: float, rate_pct: float, years: int = 30, dsr: float = 0.40) -> float:
+    """DSR 40% 기준 최대 대출원금(원리금균등, years년). 소득 없으면 0."""
+    if annual_income <= 0:
+        return 0.0
+    monthly_cap = annual_income * dsr / 12.0
+    r = rate_pct / 100.0 / 12.0
+    n = years * 12
+    if r > 0:
+        return monthly_cap * ((1 + r) ** n - 1) / (r * (1 + r) ** n)
+    return monthly_cap * n
+
+
+def realty_loans(price: float, annual_income: float, age: float, married: bool,
+                 homeless: bool, has_child: bool, deposit: float, mode: str) -> dict:
+    """매매가·소득·자격으로 받을 수 있는 부동산 대출 종류와 한도(LTV·DSR·정책 상한)를 정리."""
+    price = _n(price); inc = _n(annual_income); age = _n(age); deposit = _n(deposit)
+    married = bool(married); homeless = bool(homeless); has_child = bool(has_child)
+    jeonse = (mode == "jeonse")
+
+    loans = []
+
+    def add(name, kind, rate, cap, eligible, cond, note, limit=None):
+        # limit 미지정 시 cap과 DSR 중 작은 값(정책 저리는 DSR 완화되나 보수적으로 표기)
+        lim = cap if limit is None else limit
+        loans.append({
+            "name": name, "kind": kind, "rate": rate,
+            "limit": round(max(0, lim)) if lim is not None else None,
+            "eligible": bool(eligible), "cond": cond, "note": note,
+        })
+
+    # --- 구입자금(주택담보) : 매입/월세임대 시 ---
+    ltv = 0.70  # 무주택 서민 기준(비규제 가정). 규제지역·다주택은 축소
+    dsr_gen = _dsr_limit(inc, 4.5)
+    ltv_amt = price * ltv
+    gen_limit = min(ltv_amt, dsr_gen) if inc > 0 else ltv_amt
+    add("주택담보대출(일반)", "구입", 4.5, ltv_amt,
+        not jeonse and price > 0,
+        f"무주택 LTV {int(ltv*100)}% 가정(규제지역·다주택 축소) · DSR 40%",
+        f"LTV 한도 {round(ltv_amt):,}원" + (f", DSR 한도 {round(dsr_gen):,}원 중 작은 값" if inc > 0 else " (소득 입력 시 DSR 반영)"),
+        limit=gen_limit)
+
+    # 디딤돌(내집마련) — 저리 정책
+    ddd_cap = 400_000_000 if married else 250_000_000
+    ddd_inc_ok = inc <= (85_000_000 if married else 60_000_000)
+    add("디딤돌 대출(구입)", "정책·구입", 3.3, ddd_cap,
+        not jeonse and homeless and ddd_inc_ok and price <= 500_000_000,
+        f"무주택 · 부부합산소득 {'8,500' if married else '6,000'}만↓ · 주택 5억↓",
+        f"최대 {'4억(신혼)' if married else '2.5억'} · 연 2~3%대 저리")
+
+    # 보금자리론
+    add("보금자리론", "정책·구입", 4.0, 360_000_000,
+        not jeonse and inc <= (85_000_000 if married else 70_000_000) and price <= 600_000_000,
+        f"소득 {'8,500' if married else '7,000'}만↓ · 주택 6억↓",
+        "최대 3.6억 · 고정금리")
+
+    # 신생아 특례 디딤돌
+    add("신생아 특례 디딤돌", "정책·구입", 2.5, 500_000_000,
+        not jeonse and has_child and inc <= 200_000_000 and price <= 900_000_000,
+        "2년내 출산·입양 · 부부합산 2억↓ · 주택 9억↓",
+        "최대 5억 · 최저 연 1.6~3.3% 특례")
+
+    # --- 전세자금 : 전세/갭투자 맥락 ---
+    jeonse_amt = deposit * 0.8 if deposit > 0 else 0
+    add("전세자금대출(일반)", "전세", 4.0, 400_000_000,
+        deposit > 0,
+        "전세보증금의 최대 80% (HUG/서울보증 보증)",
+        f"보증금 {round(deposit):,}원의 80% ≈ {round(jeonse_amt):,}원" if deposit > 0 else "보증금 입력 시 한도 계산",
+        limit=min(400_000_000, jeonse_amt) if deposit > 0 else 400_000_000)
+
+    add("청년 버팀목 전세대출", "정책·전세", 2.2, 200_000_000,
+        19 <= age <= 34 and homeless,
+        "만19~34 · 무주택 · 보증금 3억↓ · 소득요건",
+        "최대 2억 · 초저금리")
+
+    add("신혼부부 버팀목 전세", "정책·전세", 2.4, 300_000_000,
+        married and homeless,
+        "신혼 · 무주택 · 보증금 수도권 4억↓ · 소득요건",
+        "최대 3억(수도권) · 저금리")
+
+    eligible = [x for x in loans if x["eligible"]]
+    best = max((x["limit"] or 0 for x in eligible), default=0)
+    return {
+        "price": round(price), "annual_income": round(inc), "mode": "전세 갭투자" if jeonse else "월세/매입",
+        "ltv_pct": int(ltv * 100),
+        "loans": loans,
+        "eligible_count": len(eligible),
+        "max_limit": best,
+        "dsr_note": (f"연소득 {round(inc):,}원 기준 DSR 40%면 연 원리금 {round(inc*0.4):,}원까지 "
+                     f"(30년·4.5% 가정 시 약 {round(_dsr_limit(inc,4.5)):,}원 대출 여력)." if inc > 0
+                     else "연소득을 입력하면 DSR 40% 기준 대출 여력을 계산합니다."),
+        "note": "한도·금리·소득요건은 2026 참고 가정치입니다. LTV는 무주택 서민·비규제지역 70% 가정이며 규제지역·다주택·주택가격대별로 달라집니다. "
+                "DSR(총부채원리금상환비율)은 모든 대출 합산 40%가 규제 상한입니다. 갭투자(전세 낀 매입)는 세입자 보증금이 선순위라 담보대출 한도가 크게 제한됩니다. "
+                "정확한 한도는 은행·주택도시기금에서 확인하세요.",
+    }
+
+
 # --- 배당주·공모주로 소득 만들기 (가이드 + 계산기) -------------------------
 _DIV_TAX = 0.154  # 배당소득세 15.4% (2천만 초과분은 금융소득종합과세 별도)
 

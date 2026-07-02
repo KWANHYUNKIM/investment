@@ -670,6 +670,16 @@ def wealth_ipo_sim(offer_price: float = Query(default=30000), alloc_shares: floa
     return wealthplan.ipo_plan(offer_price, alloc_shares, subscribe_amount)
 
 
+@router.get("/wealth/realty-loans")
+def wealth_realty_loans(price: float = Query(...), annual_income: float = Query(default=0),
+                        age: float = Query(default=0), married: bool = Query(default=False),
+                        homeless: bool = Query(default=True), has_child: bool = Query(default=False),
+                        deposit: float = Query(default=0), mode: str = Query(default="wolse"),
+                        user: str = Depends(require_auth)):
+    """부동산 대출 종류·한도 — 매매가·소득·자격으로 주담대(LTV·DSR)·디딤돌·보금자리·신생아특례·전세자금 한도."""
+    return wealthplan.realty_loans(price, annual_income, age, married, homeless, has_child, deposit, mode)
+
+
 @router.get("/wealth/dividend-picks")
 def wealth_dividend_picks(top: int = Query(default=12, ge=1, le=40), user: str = Depends(require_auth)):
     """배당주 추천 — 고배당 상위(유동성 필터·2~15% 밴드) + 1천만 투자 시 세후 월배당. 실시간 스냅샷."""
