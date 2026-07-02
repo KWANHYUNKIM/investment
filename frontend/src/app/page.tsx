@@ -7,6 +7,9 @@ import { KrOpenForecast } from "@/components/KrOpenForecast";
 import { StockScore } from "@/components/StockScore";
 import { WatchPortfolio } from "@/components/WatchPortfolio";
 import { DividendsBoard } from "@/components/DividendsBoard";
+import { BudgetManager } from "@/components/BudgetManager";
+import { IncomeGrowth } from "@/components/IncomeGrowth";
+import { LoginGate } from "@/components/LoginGate";
 import { MarketReport } from "@/components/MarketReport";
 import { LivePulse } from "@/components/LivePulse";
 import { FutureTheme } from "@/components/FutureTheme";
@@ -18,7 +21,7 @@ import { IndustryMap } from "@/components/IndustryMap";
 import { CrisisSim } from "@/components/CrisisSim";
 import { RealEstateMap } from "@/components/RealEstateMap";
 
-type Tab = "market" | "open" | "score" | "watch" | "dividend" | "live" | "money" | "korea" | "inst" | "future" | "report" | "industry" | "crisis" | "realestate";
+type Tab = "market" | "open" | "score" | "watch" | "dividend" | "budget" | "income" | "live" | "money" | "korea" | "inst" | "future" | "report" | "industry" | "crisis" | "realestate";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "market", label: "전종목 분석" },
@@ -26,6 +29,8 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "score", label: "투자 점수" },
   { id: "watch", label: "관심·보유" },
   { id: "dividend", label: "배당·실적" },
+  { id: "budget", label: "가계부" },
+  { id: "income", label: "소득·성장" },
   { id: "live", label: "실시간 시황" },
   { id: "money", label: "자금 흐름" },
   { id: "korea", label: "한국 경제 흐름" },
@@ -37,7 +42,15 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "realestate", label: "부동산 지도" },
 ];
 
-export default function Home() {
+export default function Page() {
+  return (
+    <LoginGate>
+      <Home />
+    </LoginGate>
+  );
+}
+
+function Home() {
   const [tab, setTab] = useState<Tab>("market");
   const [online, setOnline] = useState<boolean | null>(null);
   const [coverage, setCoverage] = useState<Coverage[]>([]);
@@ -105,6 +118,8 @@ export default function Home() {
               {tab === "score" && <StockScore />}
               {tab === "watch" && <WatchPortfolio />}
               {tab === "dividend" && <DividendsBoard />}
+              {tab === "budget" && <BudgetManager />}
+              {tab === "income" && <IncomeGrowth />}
               {tab === "live" && <LivePulse />}
               {tab === "money" && <MoneyFlow />}
               {tab === "korea" && <KoreaFlow />}

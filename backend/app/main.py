@@ -5,10 +5,11 @@ Run from the backend/ directory:
 """
 from __future__ import annotations
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import backtest, crisis, data, portfolio, screening
+from app.api import auth, backtest, crisis, data, portfolio, screening
+from app.core.auth import require_auth
 from app.core.config import get_settings
 from app.data.fundamentals import fundamentals_crawler
 from app.data.schedulers import growth_scheduler
@@ -66,8 +67,13 @@ def health():
     return {"status": "ok", "data_dir": str(settings.data_dir.resolve())}
 
 
-app.include_router(data.router)
-app.include_router(crisis.router)
-app.include_router(screening.router)
-app.include_router(backtest.router)
-app.include_router(portfolio.router)
+# 인증 라우터는 공개(로그인 전 접근). /api/health(@app.get)도 공개.
+app.include_router(auth.router)
+
+# 나머지 데이터 API는 전부 로그인 필요(외부망 노출 대비).
+_protected = [Depends(require_auth)]
+app.include_router(data.router, dependencies=_protected)
+app.include_router(crisis.router, dependencies=_protected)
+app.include_router(screening.router, dependencies=_protected)
+app.include_router(backtest.router, dependencies=_protected)
+app.include_router(portfolio.router, dependencies=_protected)

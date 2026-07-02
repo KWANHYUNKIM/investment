@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import threading
 
 from app.core.config import get_settings
@@ -18,12 +19,16 @@ from app.data.market import target_price as tp_mod
 _lock = threading.Lock()
 
 
-def _path() -> str:
-    return str(get_settings().data_dir / "watchlist.json")
+def _safe_user(user: str) -> str:
+    return re.sub(r"[^A-Za-z0-9_.\-]", "_", user or "default")
 
 
-def _load() -> dict:
-    p = _path()
+def _path(user: str) -> str:
+    return str(get_settings().data_dir / f"watchlist_{_safe_user(user)}.json")
+
+
+def _load(user: str) -> dict:
+    p = _path(user)
     if not os.path.exists(p):
         return {"watch": [], "holdings": []}
     try:
@@ -36,8 +41,8 @@ def _load() -> dict:
         return {"watch": [], "holdings": []}
 
 
-def _save(d: dict) -> None:
-    p = _path()
+def _save(user: str, d: dict) -> None:
+    p = _path(user)
     tmp = f"{p}.tmp"
     with open(tmp, "w", encoding="utf-8") as fh:
         json.dump(d, fh, ensure_ascii=False, separators=(",", ":"))
@@ -86,33 +91,33 @@ def _enrich(ticker: str, qm: dict) -> dict:
 
 
 # --- 관심종목 --------------------------------------------------------------
-def get_watch() -> dict:
+def get_watch(user: str) -> dict:
     with _lock:
-        d = _load()
+        d = _load(user)
     qm = _quote_map()
     rows = [_enrich(t, qm) for t in d["watch"]]
     return {"tickers": d["watch"], "rows": rows}
 
 
-def add_watch(ticker: str) -> dict:
+def add_watch(user: str, ticker: str) -> dict:
     with _lock:
-        d = _load()
+        d = _load(user)
         if ticker not in d["watch"]:
             d["watch"].append(ticker)
-            _save(d)
-    return get_watch()
+            _save(user, d)
+    return get_watch(user)
 
 
-def remove_watch(ticker: str) -> dict:
+def remove_watch(user: str, ticker: str) -> dict:
     with _lock:
-        d = _load()
+        d = _load(user)
         d["watch"] = [t for t in d["watch"] if t != ticker]
-        _save(d)
-    return get_watch()
+        _save(user, d)
+    return get_watch(user)
 
 
 # --- 보유(포트폴리오) -------------------------------------------------------
-def set_holdings(holdings: list[dict]) -> dict:
+def set_holdings(user: str, holdings: list[dict]) -> dict:
     """holdings = [{ticker, qty, avg}] 전체 교체."""
     clean = []
     for h in holdings or []:
@@ -126,15 +131,15 @@ def set_holdings(holdings: list[dict]) -> dict:
             continue
         clean.append({"ticker": t, "qty": qty, "avg": avg})
     with _lock:
-        d = _load()
+        d = _load(user)
         d["holdings"] = clean
-        _save(d)
-    return diagnose()
+        _save(user, d)
+    return diagnose(user)
 
 
-def diagnose() -> dict:
+def diagnose(user: str) -> dict:
     with _lock:
-        d = _load()
+        d = _load(user)
     holdings = d["holdings"]
     qm = _quote_map()
 

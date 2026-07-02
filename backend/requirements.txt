@@ -23,3 +23,8 @@ httpx==0.28.1
 
 # --- AI (개장 예측 서술 층; 키 없으면 규칙 기반만 동작) ---
 anthropic>=0.40.0
+
+# --- 가계부: 급여명세서 파싱(엑셀/PDF) + 파일 업로드 ---
+openpyxl==3.1.5          # .xlsx 읽기 (pandas 엔진)
+pypdf==6.14.2            # PDF 텍스트 추출
+python-multipart==0.0.32 # FastAPI 파일 업로드

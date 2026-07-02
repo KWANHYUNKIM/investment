@@ -7,12 +7,30 @@
 export const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE ?? "http://127.0.0.1:8000";
 
+const TOKEN_KEY = "auth_token";
+export function getToken(): string | null {
+  return typeof window !== "undefined" ? localStorage.getItem(TOKEN_KEY) : null;
+}
+export function setToken(t: string | null) {
+  if (typeof window === "undefined") return;
+  if (t) localStorage.setItem(TOKEN_KEY, t);
+  else localStorage.removeItem(TOKEN_KEY);
+}
+export function authHeader(): Record<string, string> {
+  const t = getToken();
+  return t ? { Authorization: `Bearer ${t}` } : {};
+}
+function on401() {
+  setToken(null);
+  if (typeof window !== "undefined") window.dispatchEvent(new Event("auth-expired"));
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let res: Response;
   try {
     res = await fetch(`${API_BASE}${path}`, {
       ...init,
-      headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
+      headers: { "Content-Type": "application/json", ...authHeader(), ...(init?.headers ?? {}) },
     });
   } catch {
     throw new ApiError(
@@ -21,6 +39,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     );
   }
   if (!res.ok) {
+    if (res.status === 401) on401();
     let detail = `${res.status} ${res.statusText}`;
     try {
       const body = await res.json();
@@ -634,6 +653,90 @@ export interface DividendsBoard {
   generated_at: string;
   dividends: DividendRow[];
   earnings: EarningRow[];
+  note: string;
+}
+
+export interface BudgetIncome {
+  monthly_net: number;
+  extra: number;
+  memo: string;
+}
+export interface BudgetTx {
+  id: number;
+  date: string;
+  merchant: string;
+  amount: number;
+  category: string;
+}
+export interface BudgetSummary {
+  month: string;
+  months: string[];
+  income: BudgetIncome;
+  income_total: number;
+  spent: number;
+  refund: number;
+  savings_possible: number;
+  savings_rate: number | null;
+  by_category: { category: string; amount: number; pct: number }[];
+  categories: string[];
+  count: number;
+  transactions: BudgetTx[];
+}
+export interface BudgetPlan {
+  income_total: number;
+  avg_spend: number;
+  surplus: number;
+  savings_rate: number | null;
+  emergency_months: number;
+  emergency_target: number;
+  invest_ratio: number;
+  monthly_save: number;
+  monthly_invest: number;
+  stock_value: number;
+  allocation: { name: string; monthly: number }[];
+  steps: string[];
+  note: string;
+}
+
+export interface SalaryItem { label: string; amount: number }
+export interface SalaryComputed {
+  earnings: SalaryItem[];
+  deductions: SalaryItem[];
+  memo: string;
+  gross: number;
+  deduction: number;
+  net: number;
+  annual_net: number;
+  annual_gross: number;
+  updated: string | null;
+}
+export interface SalaryHistory { date: string; gross: number; net: number; annual_net: number }
+export interface RaiseSim {
+  base_net: number; new_net: number; monthly_increase: number; annual_increase: number;
+  years: number; invest_ratio: number; annual_return: number;
+  invest_monthly: number; contributed: number; future_value: number; investment_gain: number; note: string;
+}
+export interface SideRow { id: number; date: string; source: string; amount: number; memo: string }
+export interface SideList {
+  month: string | null; months: string[]; rows: SideRow[];
+  month_total: number; total: number; sources: { source: string; amount: number }[];
+}
+export interface IncomeOverview {
+  salary: SalaryComputed | null;
+  side: { this_month: number; total: number; count: number };
+  investment: { value: number; pnl: number; pnl_pct: number | null };
+  total_month_income: number;
+  annual_est: number;
+  tips: string[];
+}
+
+export interface PayslipParse {
+  filename: string;
+  net: number | null;
+  gross: number | null;
+  deduction: number | null;
+  guessed: boolean;
+  candidates: { label: string; amount: number }[];
   note: string;
 }
 
@@ -1722,6 +1825,16 @@ export interface PortfolioResponse {
 
 export const api = {
   health: () => request<Health>("/api/health"),
+  authLogin: (username: string, password: string) =>
+    request<{ token: string; username: string }>("/api/auth/login", { method: "POST", body: JSON.stringify({ username, password }) }),
+  authSendCode: (email: string) =>
+    request<{ sent: boolean; email_configured: boolean; dev_code?: string }>("/api/auth/send-code", { method: "POST", body: JSON.stringify({ email }) }),
+  authRegister: (username: string, password: string, email: string, name: string, code: string) =>
+    request<{ token: string; username: string }>("/api/auth/register", { method: "POST", body: JSON.stringify({ username, password, email, name, code }) }),
+  authFindId: (email: string) =>
+    request<{ usernames: string[] }>("/api/auth/find-id", { method: "POST", body: JSON.stringify({ email }) }),
+  authResetPassword: (username: string, email: string, new_password: string, code: string) =>
+    request<{ ok: boolean }>("/api/auth/reset-password", { method: "POST", body: JSON.stringify({ username, email, new_password, code }) }),
   coverage: () => request<Coverage[]>("/api/data/coverage"),
   securities: (market?: string) =>
     request<Security[]>(`/api/data/securities${market ? `?market=${market}` : ""}`),
@@ -1750,6 +1863,59 @@ export const api = {
   portfolioSave: (holdings: { ticker: string; qty: number; avg: number }[]) =>
     request<Portfolio>(`/api/data/portfolio`, { method: "POST", body: JSON.stringify(holdings) }),
   dividends: () => request<DividendsBoard>(`/api/data/dividends`),
+  budgetSummary: (month?: string) => request<BudgetSummary>(`/api/data/budget/summary${month ? `?month=${month}` : ""}`),
+  budgetSetIncome: (monthly_net: number, extra = 0, memo = "") =>
+    request<BudgetIncome>(`/api/data/budget/income`, { method: "POST", body: JSON.stringify({ monthly_net, extra, memo }) }),
+  budgetParsePayslip: async (file: File): Promise<PayslipParse> => {
+    const fd = new FormData();
+    fd.append("file", file);
+    let res: Response;
+    try {
+      res = await fetch(`${API_BASE}/api/data/budget/income/parse`, { method: "POST", body: fd, headers: { ...authHeader() } });
+    } catch {
+      throw new ApiError(0, `백엔드에 연결할 수 없습니다 (${API_BASE}).`);
+    }
+    if (!res.ok) throw new ApiError(res.status, `${res.status} ${res.statusText}`);
+    return res.json() as Promise<PayslipParse>;
+  },
+  budgetImportFile: async (file: File): Promise<{ parsed: number; sample: BudgetTx[] }> => {
+    const fd = new FormData();
+    fd.append("file", file);
+    let res: Response;
+    try {
+      res = await fetch(`${API_BASE}/api/data/budget/import-file`, { method: "POST", body: fd, headers: { ...authHeader() } });
+    } catch {
+      throw new ApiError(0, `백엔드에 연결할 수 없습니다 (${API_BASE}).`);
+    }
+    if (!res.ok) throw new ApiError(res.status, `${res.status} ${res.statusText}`);
+    return res.json();
+  },
+  budgetImport: (text: string) =>
+    request<{ parsed: number; sample: BudgetTx[] }>(`/api/data/budget/import`, { method: "POST", body: JSON.stringify({ text }) }),
+  budgetAdd: (items: { date: string; merchant: string; amount: number; category?: string }[]) =>
+    request<{ added: number }>(`/api/data/budget/add`, { method: "POST", body: JSON.stringify(items) }),
+  budgetDelete: (txId: number) => request<{ ok: boolean }>(`/api/data/budget/delete?tx_id=${txId}`, { method: "POST" }),
+  budgetSetCategory: (txId: number, category: string, applyAll = true) =>
+    request<{ ok: boolean }>(`/api/data/budget/category?tx_id=${txId}&category=${encodeURIComponent(category)}&apply_all=${applyAll}`, { method: "POST" }),
+  budgetPlan: (emergencyMonths = 3, investRatio = 0.5) =>
+    request<BudgetPlan>(`/api/data/budget/plan?emergency_months=${emergencyMonths}&invest_ratio=${investRatio}`),
+  incomeOverview: () => request<IncomeOverview>(`/api/data/income/overview`),
+  incomeSalaryGet: () => request<{ salary: SalaryComputed | null; history: SalaryHistory[] }>(`/api/data/income/salary`),
+  incomeSalarySet: (earnings: SalaryItem[], deductions: SalaryItem[], memo = "") =>
+    request<SalaryComputed>(`/api/data/income/salary`, { method: "POST", body: JSON.stringify({ earnings, deductions, memo }) }),
+  incomeRaiseSim: (p: { raise_pct?: number; raise_amount?: number; years?: number; invest_ratio?: number; annual_return?: number }) => {
+    const q = new URLSearchParams();
+    if (p.raise_pct != null) q.set("raise_pct", String(p.raise_pct));
+    if (p.raise_amount != null) q.set("raise_amount", String(p.raise_amount));
+    if (p.years != null) q.set("years", String(p.years));
+    if (p.invest_ratio != null) q.set("invest_ratio", String(p.invest_ratio));
+    if (p.annual_return != null) q.set("annual_return", String(p.annual_return));
+    return request<RaiseSim>(`/api/data/income/raise-sim?${q.toString()}`);
+  },
+  incomeSideList: (month?: string) => request<SideList>(`/api/data/income/side${month ? `?month=${month}` : ""}`),
+  incomeSideAdd: (items: { date: string; source: string; amount: number; memo?: string }[]) =>
+    request<{ added: number }>(`/api/data/income/side`, { method: "POST", body: JSON.stringify(items) }),
+  incomeSideDelete: (sid: number) => request<{ ok: boolean }>(`/api/data/income/side/delete?sid=${sid}`, { method: "POST" }),
   koreaFlow: () => request<KoreaFlow>(`/api/data/korea-flow`),
   realestateTrades: () => request<RealEstateTrades>(`/api/data/realestate-trades`),
   realestateRent: () => request<RealEstateRent>(`/api/data/realestate-rent`),

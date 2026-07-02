@@ -5,7 +5,9 @@ import math
 import threading
 import time
 
-from fastapi import APIRouter, Body, HTTPException, Query
+from fastapi import APIRouter, Body, Depends, File, HTTPException, Query, UploadFile
+
+from app.core.auth import require_auth
 
 from app.data.market import asset_detail
 from app.data.macro import crossasset
@@ -24,6 +26,8 @@ from app.data.market import signals as signals_mod
 from app.data.market import stock_score
 from app.data.market import watchlist
 from app.data.market import dividends
+from app.data.market import budget
+from app.data.market import income
 from app.data.news import livepulse
 from app.data.macro import moneyflow
 from app.data.fundamentals import finnhub
@@ -461,37 +465,147 @@ def stock_score_endpoint():
 
 
 @router.get("/watchlist")
-def watchlist_get():
+def watchlist_get(user: str = Depends(require_auth)):
     """관심종목 — 현재가·매매신호·목표가 상승여력 포함."""
-    return watchlist.get_watch()
+    return watchlist.get_watch(user)
 
 
 @router.post("/watchlist/add")
-def watchlist_add(ticker: str = Query(...)):
-    return watchlist.add_watch(ticker)
+def watchlist_add(ticker: str = Query(...), user: str = Depends(require_auth)):
+    return watchlist.add_watch(user, ticker)
 
 
 @router.post("/watchlist/remove")
-def watchlist_remove(ticker: str = Query(...)):
-    return watchlist.remove_watch(ticker)
+def watchlist_remove(ticker: str = Query(...), user: str = Depends(require_auth)):
+    return watchlist.remove_watch(user, ticker)
 
 
 @router.get("/portfolio")
-def portfolio_get():
+def portfolio_get(user: str = Depends(require_auth)):
     """보유 포트폴리오 진단 — 손익·비중·집중도·신호."""
-    return watchlist.diagnose()
+    return watchlist.diagnose(user)
 
 
 @router.post("/portfolio")
-def portfolio_set(holdings: list[dict] = Body(...)):
+def portfolio_set(holdings: list[dict] = Body(...), user: str = Depends(require_auth)):
     """보유 종목 전체 교체 [{ticker, qty, avg}] → 진단 반환."""
-    return watchlist.set_holdings(holdings)
+    return watchlist.set_holdings(user, holdings)
 
 
 @router.get("/dividends")
 def dividends_endpoint():
     """배당·실적 — 고배당 랭킹 + 영업이익 YoY 실적개선 랭킹."""
     return dividends.board()
+
+
+# --- 가계부 (급여·카드내역·저축계획) ------------------------------------------
+@router.get("/budget/summary")
+def budget_summary(month: str | None = Query(default=None), user: str = Depends(require_auth)):
+    """월별 지출 요약 + 카테고리 분류 + 저축 가능액."""
+    return budget.summary(user, month)
+
+
+@router.post("/budget/income")
+def budget_income(monthly_net: float = Body(...), extra: float = Body(default=0),
+                  memo: str = Body(default=""), user: str = Depends(require_auth)):
+    """월 급여(실수령액) 등 수입 설정."""
+    return budget.set_income(user, monthly_net, extra, memo)
+
+
+@router.post("/budget/income/parse")
+async def budget_income_parse(file: UploadFile = File(...), user: str = Depends(require_auth)):
+    """급여명세서(엑셀/PDF/CSV) 업로드 → 실수령액·지급·공제 추출(저장 아님, 확인용)."""
+    data = await file.read()
+    return budget.parse_payslip(file.filename or "", data)
+
+
+@router.post("/budget/import")
+def budget_import(text: str = Body(..., embed=True), user: str = Depends(require_auth)):
+    """카드사 CSV/표 텍스트를 붙여넣어 거래내역 일괄 등록(자동 카테고리)."""
+    return budget.import_csv(user, text)
+
+
+@router.post("/budget/import-file")
+async def budget_import_file(file: UploadFile = File(...), user: str = Depends(require_auth)):
+    """카드사 엑셀(.xlsx/.xls)/CSV 파일 업로드 → 헤더 인식 파싱 후 거래내역 등록."""
+    data = await file.read()
+    return budget.import_file(user, file.filename or "", data)
+
+
+@router.post("/budget/add")
+def budget_add(items: list[dict] = Body(...), user: str = Depends(require_auth)):
+    """거래내역 수동 추가 [{date, merchant, amount, category?}]."""
+    return budget.add_transactions(user, items)
+
+
+@router.post("/budget/delete")
+def budget_delete(tx_id: int = Query(...), user: str = Depends(require_auth)):
+    return budget.delete_transaction(user, tx_id)
+
+
+@router.post("/budget/category")
+def budget_category(tx_id: int = Query(...), category: str = Query(...),
+                    apply_all: bool = Query(default=True), user: str = Depends(require_auth)):
+    """거래 분류 변경(같은 가맹점은 규칙으로 기억·재분류)."""
+    return budget.set_category(user, tx_id, category, apply_all)
+
+
+@router.post("/budget/clear-month")
+def budget_clear_month(month: str = Query(...), user: str = Depends(require_auth)):
+    return budget.clear_month(user, month)
+
+
+@router.get("/budget/plan")
+def budget_plan(emergency_months: int = Query(default=3, ge=1, le=12),
+                invest_ratio: float = Query(default=0.5, ge=0.0, le=1.0),
+                user: str = Depends(require_auth)):
+    """저축·투자 계획 — 수입−평균지출 여유로 비상금·저축·투자(주식 자산 포함) 배분."""
+    return budget.plan(user, emergency_months, invest_ratio)
+
+
+# --- 소득·성장 (급여 상세·인상 시뮬·부업·투자수익) ---------------------------
+@router.get("/income/overview")
+def income_overview(user: str = Depends(require_auth)):
+    """소득 종합 — 급여·부업·투자수익 + 월 총소득 + 조언."""
+    return income.overview(user)
+
+
+@router.get("/income/salary")
+def income_salary_get(user: str = Depends(require_auth)):
+    return income.get_salary(user)
+
+
+@router.post("/income/salary")
+def income_salary_set(earnings: list[dict] = Body(...), deductions: list[dict] = Body(default=[]),
+                      memo: str = Body(default=""), user: str = Depends(require_auth)):
+    """지급/공제 항목별 급여 저장(월 기준). [{label, amount}]"""
+    return income.set_salary(user, earnings, deductions, memo)
+
+
+@router.get("/income/raise-sim")
+def income_raise_sim(raise_pct: float = Query(default=0), raise_amount: float = Query(default=0),
+                     years: int = Query(default=5, ge=1, le=40),
+                     invest_ratio: float = Query(default=0.5, ge=0.0, le=1.0),
+                     annual_return: float = Query(default=6.0, ge=0.0, le=30.0),
+                     user: str = Depends(require_auth)):
+    """급여 인상 시나리오 + 인상분 적립투자 복리 미래가치."""
+    return income.raise_sim(user, raise_pct, raise_amount, years, invest_ratio, annual_return)
+
+
+@router.get("/income/side")
+def income_side_list(month: str | None = Query(default=None), user: str = Depends(require_auth)):
+    return income.list_side(user, month)
+
+
+@router.post("/income/side")
+def income_side_add(items: list[dict] = Body(...), user: str = Depends(require_auth)):
+    """부업 소득 추가 [{date, source, amount, memo}]."""
+    return income.add_side(user, items)
+
+
+@router.post("/income/side/delete")
+def income_side_delete(sid: int = Query(...), user: str = Depends(require_auth)):
+    return income.delete_side(user, sid)
 
 
 @router.get("/korea-flow")

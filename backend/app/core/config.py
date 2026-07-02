@@ -38,6 +38,14 @@ class Settings(BaseSettings):
     # 향후 주가 시나리오(강세/기준/약세) 경로를 예측한다. 없으면 예측 탭만 비활성.
     anthropic_api_key: str = ""
 
+    # 이메일 인증(회원가입·비밀번호 찾기) 발송용 SMTP. 미설정이면 개발모드로
+    # 코드를 응답에 노출(테스트용) — 외부 배포 전 반드시 설정할 것.
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = ""
+    smtp_from: str = ""   # 미설정 시 smtp_user 사용
+
     # Demo mode: synthesize small intraday ticks on top of the settled snapshot
     # so the live grid visibly moves without a brokerage streaming API.
     mock_ticks: bool = True
