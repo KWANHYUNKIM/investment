@@ -28,6 +28,7 @@ from app.data.market import watchlist
 from app.data.market import dividends
 from app.data.market import budget
 from app.data.market import income
+from app.data.market import wealthplan
 from app.data.news import livepulse
 from app.data.macro import moneyflow
 from app.data.fundamentals import finnhub
@@ -606,6 +607,28 @@ def income_side_add(items: list[dict] = Body(...), user: str = Depends(require_a
 @router.post("/income/side/delete")
 def income_side_delete(sid: int = Query(...), user: str = Depends(require_auth)):
     return income.delete_side(user, sid)
+
+
+# --- 재테크 로드맵 (목표금액 → 달성계획 + 자격조건별 상품추천) ----------------
+@router.get("/wealth/plan")
+def wealth_plan(user: str = Depends(require_auth)):
+    """목표 달성 계획 + 자격 상품 추천 + 로드맵."""
+    return wealthplan.get_plan(user)
+
+
+@router.post("/wealth/profile")
+def wealth_profile(profile: dict = Body(...), user: str = Depends(require_auth)):
+    """프로필/목표 저장(나이·연봉·월수입·월저축·현재자산·결혼·무주택·자녀·목표금액·기간) → 계획 반환."""
+    return wealthplan.save_profile(user, profile)
+
+
+@router.get("/wealth/loan-sim")
+def wealth_loan_sim(loan_amount: float = Query(...), loan_rate: float = Query(default=6.0),
+                    loan_years: int = Query(default=5, ge=1, le=40),
+                    invest_return: float = Query(default=8.0),
+                    user: str = Depends(require_auth)):
+    """대출 레버리지 시뮬 — 월 상환액·총이자·투자 예상가치·순손익·손익분기 수익률·위험 경고."""
+    return wealthplan.loan_sim(loan_amount, loan_rate, loan_years, invest_return)
 
 
 @router.get("/korea-flow")

@@ -730,6 +730,51 @@ export interface IncomeOverview {
   tips: string[];
 }
 
+export interface WealthProduct {
+  name: string;
+  category: string;
+  eligible: boolean;
+  cond: string;
+  benefit: string;
+  cap: number;
+  priority: number;
+  link: string;
+  example: string;
+}
+export interface WealthPlan {
+  profile: Record<string, unknown>;
+  goal: { amount: number; years: number };
+  required_monthly: number;
+  capacity_monthly: number;
+  feasible: boolean | null;
+  shortfall: number;
+  reach_years: number | null;
+  assumed_return: number;
+  scenarios: {
+    key: string; name: string; desc: string; safety: string; risk: string;
+    return_mid: number; return_low: number; return_high: number;
+    balance_at_goal_years: number; balance_low: number; balance_high: number;
+    reach_years: number | null; reach_years_low: number | null; reach_years_high: number | null;
+    time_saved_vs_safe: number | null; recommended: boolean;
+  }[];
+  projection: { year: number; balance: number }[];
+  products: WealthProduct[];
+  eligible_count: number;
+  allocation: { name: string; monthly: number; category: string; why: string }[];
+  steps: string[];
+  note: string;
+}
+
+export interface LoanSim {
+  loan_amount: number; loan_rate: number; loan_years: number; invest_return: number;
+  monthly_payment: number; total_repay: number; total_interest: number;
+  invest_value: number; net_profit: number; worthwhile: boolean;
+  breakeven_return: number | null;
+  scenarios: { name: string; return: number; invest_value: number; net_profit: number; worthwhile: boolean }[];
+  loans: { name: string; rate: number; note: string }[];
+  verdict: string; warning: string;
+}
+
 export interface PayslipParse {
   filename: string;
   net: number | null;
@@ -1916,6 +1961,11 @@ export const api = {
   incomeSideAdd: (items: { date: string; source: string; amount: number; memo?: string }[]) =>
     request<{ added: number }>(`/api/data/income/side`, { method: "POST", body: JSON.stringify(items) }),
   incomeSideDelete: (sid: number) => request<{ ok: boolean }>(`/api/data/income/side/delete?sid=${sid}`, { method: "POST" }),
+  wealthPlan: () => request<WealthPlan>(`/api/data/wealth/plan`),
+  wealthSaveProfile: (profile: Record<string, unknown>) =>
+    request<WealthPlan>(`/api/data/wealth/profile`, { method: "POST", body: JSON.stringify(profile) }),
+  wealthLoanSim: (loanAmount: number, loanRate: number, loanYears: number, investReturn: number) =>
+    request<LoanSim>(`/api/data/wealth/loan-sim?loan_amount=${loanAmount}&loan_rate=${loanRate}&loan_years=${loanYears}&invest_return=${investReturn}`),
   koreaFlow: () => request<KoreaFlow>(`/api/data/korea-flow`),
   realestateTrades: () => request<RealEstateTrades>(`/api/data/realestate-trades`),
   realestateRent: () => request<RealEstateRent>(`/api/data/realestate-rent`),

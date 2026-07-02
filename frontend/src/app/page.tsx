@@ -9,6 +9,7 @@ import { WatchPortfolio } from "@/components/WatchPortfolio";
 import { DividendsBoard } from "@/components/DividendsBoard";
 import { BudgetManager } from "@/components/BudgetManager";
 import { IncomeGrowth } from "@/components/IncomeGrowth";
+import { WealthPlan } from "@/components/WealthPlan";
 import { LoginGate } from "@/components/LoginGate";
 import { MarketReport } from "@/components/MarketReport";
 import { LivePulse } from "@/components/LivePulse";
@@ -21,7 +22,7 @@ import { IndustryMap } from "@/components/IndustryMap";
 import { CrisisSim } from "@/components/CrisisSim";
 import { RealEstateMap } from "@/components/RealEstateMap";
 
-type Tab = "market" | "open" | "score" | "watch" | "dividend" | "budget" | "income" | "live" | "money" | "korea" | "inst" | "future" | "report" | "industry" | "crisis" | "realestate";
+type Tab = "market" | "open" | "score" | "watch" | "dividend" | "budget" | "wealth" | "live" | "money" | "korea" | "inst" | "future" | "report" | "industry" | "crisis" | "realestate";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "market", label: "전종목 분석" },
@@ -30,7 +31,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "watch", label: "관심·보유" },
   { id: "dividend", label: "배당·실적" },
   { id: "budget", label: "가계부" },
-  { id: "income", label: "소득·성장" },
+  { id: "wealth", label: "재테크 로드맵" },
   { id: "live", label: "실시간 시황" },
   { id: "money", label: "자금 흐름" },
   { id: "korea", label: "한국 경제 흐름" },
@@ -119,7 +120,18 @@ function Home() {
               {tab === "watch" && <WatchPortfolio />}
               {tab === "dividend" && <DividendsBoard />}
               {tab === "budget" && <BudgetManager />}
-              {tab === "income" && <IncomeGrowth />}
+              {tab === "wealth" && (
+                <div className="flex flex-col gap-5">
+                  <div>
+                    <div className="mb-2 border-l-4 border-[#217346] pl-2 text-sm font-bold text-[#217346]">1. 소득 파악 — 급여·부업·투자 수익</div>
+                    <IncomeGrowth />
+                  </div>
+                  <div>
+                    <div className="mb-2 border-l-4 border-[#217346] pl-2 text-sm font-bold text-[#217346]">2. 목표·재테크 로드맵 — 상품 추천·위험도 시나리오·대출 레버리지</div>
+                    <WealthPlan />
+                  </div>
+                </div>
+              )}
               {tab === "live" && <LivePulse />}
               {tab === "money" && <MoneyFlow />}
               {tab === "korea" && <KoreaFlow />}
