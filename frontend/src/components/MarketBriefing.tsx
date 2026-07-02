@@ -80,7 +80,6 @@ export function MarketBriefing() {
             {n?.risks && n.risks.length > 0 && (
               <div className="mt-2 flex flex-wrap gap-1">{n.risks.map((r, i) => <span key={i} className="rounded bg-[#fdf3f3] px-1.5 py-0.5 text-[10px] text-[#a33]">⚠ {r}</span>)}</div>
             )}
-            {!d.ai_enabled && <div className="mt-2 text-[10px] text-[#7a8a7f]">AI 서술을 켜려면 백엔드 <code className="rounded bg-white px-1">ANTHROPIC_API_KEY</code>를 설정하세요(현재는 규칙 기반 서술).</div>}
           </div>
 
           {/* 전일 지표 요약 */}

@@ -108,26 +108,95 @@ def _outlook(market: str, fc: dict, signals_by: dict) -> dict:
     }
 
 
-def _rule_narrative(market: str, signals_by: dict, adrs: list, stories: list, outlook: dict) -> dict:
-    def mv(k):
-        v = signals_by.get(k, {}).get("change_pct")
+def _rule_narrative(market: str, signals_by: dict, adrs: list, stories: list, outlook: dict, extras: dict) -> dict:
+    def g(k):
+        return signals_by.get(k, {}).get("change_pct")
+
+    def f(v):
         return f"{v:+.1f}%" if v is not None else "—"
-    recap = [
-        f"미국 증시: S&P {mv('sp500')} · 나스닥 {mv('nasdaq')} · 반도체(SOX) {mv('sox')}.",
-        f"변동성·환율·유가: VIX {mv('vix')} · 원달러 {mv('usdkrw')} · WTI {mv('wti')}.",
-    ]
-    if adrs:
-        top = adrs[0]
-        recap.append(f"한국 ADR: 평균 흐름 참고 (예: {top.get('name')} {top.get('change_pct'):+.1f}%).")
+
+    sp, ndq, sox, vix, fx, wti = g("sp500"), g("nasdaq"), g("sox"), g("vix"), g("usdkrw"), g("wti")
+    gold = (extras.get("gold") or {}).get("change_pct")
+    btc = (extras.get("btc") or {}).get("change_pct")
+    adr_vals = [a["change_pct"] for a in adrs if a.get("change_pct") is not None]
+    adr_avg = sum(adr_vals) / len(adr_vals) if adr_vals else None
+
+    # 위험선호 톤 판정
+    if (ndq is not None and ndq > 0.3) and (vix is None or vix < 0):
+        tone = "위험 선호(리스크온)"
+    elif (ndq is not None and ndq < -0.3) or (vix is not None and vix > 3):
+        tone = "위험 회피(리스크오프)"
+    else:
+        tone = "혼조"
+
+    # --- 전일 요약 ---
+    recap = [f"미국 증시는 S&P {f(sp)}, 나스닥 {f(ndq)}로 마감({tone})."]
+    if sox is not None:
+        semis = "급락" if sox <= -3 else ("약세" if sox < 0 else ("강세" if sox > 1 else "보합권"))
+        recap.append(f"필라델피아 반도체지수(SOX) {f(sox)}로 {semis} — 삼성전자·SK하이닉스 등 국내 반도체 대형주에 직접 영향.")
+    if vix is not None:
+        vtxt = "변동성 확대(경계)" if vix > 3 else ("변동성 진정" if vix < -3 else "변동성 보통")
+        recap.append(f"VIX(공포지수) {f(vix)} — {vtxt}.")
+    macro = []
+    if fx is not None:
+        fxt = "원화 약세→외국인 수급 부담" if fx > 0.2 else ("원화 강세→수급 우호" if fx < -0.2 else "환율 안정")
+        macro.append(f"원/달러 {f(fx)}({fxt})")
+    if wti is not None:
+        macro.append(f"WTI {f(wti)}")
+    if gold is not None:
+        macro.append(f"금 {f(gold)}")
+    if btc is not None:
+        macro.append(f"비트코인 {f(btc)}")
+    if macro:
+        recap.append(" · ".join(macro) + ".")
+    if adr_avg is not None:
+        recap.append(f"한국 ADR 평균 {f(adr_avg)} — 간밤 뉴욕서 거래된 한국물 흐름은 개장 방향의 가장 직접적 신호.")
     if stories:
-        recap.append(f"주요 뉴스: {stories[0]['title']}")
-    lead = outlook.get("bias") or "중립"
+        recap.append("전일 주요 이슈: " + "; ".join(s["title"] for s in stories[:3]) + ".")
+
+    # --- 오늘 전망(근거 제시) ---
+    bias = outlook.get("bias") or "중립"
+    reasons = []
+    if market == "kr":
+        if sox is not None and sox < -2:
+            reasons.append("반도체 급락")
+        elif sox is not None and sox > 1:
+            reasons.append("반도체 강세")
+        if adr_avg is not None and adr_avg < -1:
+            reasons.append("한국 ADR 약세")
+        elif adr_avg is not None and adr_avg > 1:
+            reasons.append("한국 ADR 강세")
+        if fx is not None and fx > 0.3:
+            reasons.append("환율 상승(원화 약세)")
+        if vix is not None and vix > 3:
+            reasons.append("변동성 확대")
+        if ndq is not None and ndq > 0.5:
+            reasons.append("미 기술주 강세")
+        if not reasons:
+            reasons.append("뚜렷한 방향성 재료 부족")
+        gap = outlook.get("expected_gap") or {}
+        gap_txt = f"예상 시가 갭 {gap.get('low')}%~{gap.get('high')}%. " if gap.get("low") is not None else ""
+        outlook_txt = (f"오늘 한국장은 '{bias}' 출발이 예상됩니다. 근거: {', '.join(reasons)}. {gap_txt}"
+                       "개장 직후 반도체 대형주 움직임·외국인 수급·원달러 방향을 먼저 확인하세요.")
+    else:
+        outlook_txt = (f"오늘 미국장은 전일 마감·변동성 흐름상 '{bias}'가 우세합니다. "
+                       "장중에는 기술주(나스닥)·반도체와 발표 경제지표·연준 인사 발언에 민감할 수 있습니다. "
+                       "(선물·아시아 실시간은 제한적이라 참고용입니다.)")
+
+    risks = ["뉴스·지표는 상관관계일 뿐 인과·미래를 보장하지 않습니다.",
+             "지표는 전일 마감 기준으로 장중 실시간과 다를 수 있습니다."]
+    if market == "kr" and fx is not None and fx > 0.3:
+        risks.append("원화 약세가 이어지면 외국인 매도 압력 확대 주의.")
+    if sox is not None and sox < -3:
+        risks.append("반도체 투매가 지속되면 지수 하방 압력 확대.")
+
+    key_reasons = ", ".join(reasons[:2]) if market == "kr" else "기술주·지표 주목"
     return {
-        "headline": f"{outlook['market']} 개장 전 브리핑 — 전일 흐름 요약",
+        "headline": f"{outlook['market']} 장전 브리핑 — {tone}, 오늘 {bias} 예상",
         "recap": recap,
-        "outlook": f"오늘 {outlook['market']}은 '{lead}'로 출발할 가능성. {outlook.get('basis','')}",
-        "risks": ["뉴스는 상관관계일 뿐 인과를 보장하지 않습니다.", "지표는 전일 마감 기준이라 장중 변동될 수 있습니다."],
-        "one_liner": f"전일 흐름상 {outlook['market']} {lead} 예상(참고).",
+        "outlook": outlook_txt,
+        "risks": risks,
+        "one_liner": f"전일 {tone}. 오늘 {outlook['market']} {bias} 예상 — {key_reasons}.",
         "source": "rule",
     }
 
@@ -208,7 +277,7 @@ def briefing(market: str = "auto") -> dict:
     outlook = _outlook(target, fc, signals_by)
 
     ai = _ai_narrative(target, signals_by, adrs, stories, outlook)
-    narrative = ai or _rule_narrative(target, signals_by, adrs, stories, outlook)
+    narrative = ai or _rule_narrative(target, signals_by, adrs, stories, outlook, extras)
 
     out = {
         "generated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
