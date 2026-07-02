@@ -30,6 +30,8 @@ from app.data.market import budget
 from app.data.market import income
 from app.data.market import wealthplan
 from app.data.market import picks
+from app.data.market import market_movers
+from app.data.market import movers_archive
 from app.data.news import livepulse
 from app.data.macro import moneyflow
 from app.data.fundamentals import finnhub
@@ -668,6 +670,18 @@ def wealth_ipo_sim(offer_price: float = Query(default=30000), alloc_shares: floa
                    subscribe_amount: float = Query(default=0), user: str = Depends(require_auth)):
     """공모주(IPO) 소득 — 배정 주수·공모가→상장일 상승률별 수익 시나리오 + 청약 방법 가이드."""
     return wealthplan.ipo_plan(offer_price, alloc_shares, subscribe_amount)
+
+
+@router.get("/movers")
+def movers_endpoint(refresh: bool = Query(default=False), user: str = Depends(require_auth)):
+    """급등락 원인 규명 — 급등/급락 종목·업종 자동 감지 + 관련 뉴스(+선택 AI) 원인. 캐시 5분."""
+    return market_movers.snapshot(force=refresh)
+
+
+@router.get("/movers/history")
+def movers_history_endpoint(limit: int = Query(default=50, ge=1, le=400), user: str = Depends(require_auth)):
+    """급등락 원인 이력 — 스케줄러가 주기적으로 기록한 급등락+원인 요약(시간 역순)."""
+    return {"items": movers_archive.recent(limit)}
 
 
 @router.get("/wealth/realty-loans")

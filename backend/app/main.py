@@ -15,6 +15,7 @@ from app.data.fundamentals import fundamentals_crawler
 from app.data.schedulers import growth_scheduler
 from app.data.schedulers import industry_scheduler
 from app.data.schedulers import premarket_scheduler
+from app.data.schedulers import movers_scheduler
 from app.data.schedulers import price_scheduler
 from app.data.schedulers import report_scheduler
 from app.data.infra import store
@@ -60,6 +61,9 @@ def _startup() -> None:
     crisis_data.start()
     # 개장 예측 스케줄러: 매 세션 예측을 저장하고 다음 세션 실제 개장과 대조해 채점(반복).
     premarket_scheduler.start()
+    # 급등락 원인 규명 스케줄러: 급등/급락 종목·업종을 감지하고 뉴스(+선택 AI)로 원인을
+    # 규명해 이력에 기록(자동 반복).
+    movers_scheduler.start()
 
 
 @app.get("/api/health", tags=["meta"])

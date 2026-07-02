@@ -784,6 +784,27 @@ export interface RealtySim {
   note: string; warning: string;
 }
 
+export interface MoverNews { title: string; source: string; link: string; ts: number | null; }
+export interface Mover {
+  ticker: string; name: string; sector: string; close: number; change_pct: number; value: number; news: MoverNews[];
+}
+export interface MoverSector {
+  sector: string; avg_change_pct: number; count: number; advancers: number; decliners: number;
+  leaders: { name: string; ticker: string; change_pct: number }[];
+}
+export interface MoversAI { overall?: string; losers_cause?: string; gainers_cause?: string; drivers?: string[]; model?: string; }
+export interface Movers {
+  generated_at: string; count: number; breadth?: { advancers: number; decliners: number }; threshold?: number;
+  gainers: Mover[]; losers: Mover[]; sectors_up: MoverSector[]; sectors_down: MoverSector[];
+  ai: MoversAI | null; ai_enabled: boolean; note: string;
+}
+export interface MoversHistoryItem {
+  generated_at: string; breadth?: { advancers: number; decliners: number };
+  gainers: { name: string; change_pct: number }[]; losers: { name: string; change_pct: number }[];
+  sector_up: string | null; sector_down: string | null;
+  overall?: string | null; losers_cause?: string | null; gainers_cause?: string | null;
+}
+
 export interface RealtyLoan {
   name: string; kind: string; rate: number; limit: number | null; eligible: boolean; cond: string; note: string;
 }
@@ -2046,6 +2067,8 @@ export const api = {
     request<DividendSim>(`/api/data/wealth/dividend-sim?invest=${p.invest}&yield_pct=${p.yield_pct}&years=${p.years}&growth_pct=${p.growth_pct}&reinvest=${p.reinvest}`),
   wealthIpoSim: (p: { offer_price: number; alloc_shares: number; subscribe_amount: number }) =>
     request<IpoSim>(`/api/data/wealth/ipo-sim?offer_price=${p.offer_price}&alloc_shares=${p.alloc_shares}&subscribe_amount=${p.subscribe_amount}`),
+  movers: (refresh = false) => request<Movers>(`/api/data/movers${refresh ? "?refresh=true" : ""}`),
+  moversHistory: (limit = 50) => request<{ items: MoversHistoryItem[] }>(`/api/data/movers/history?limit=${limit}`),
   wealthDividendPicks: (top = 12) => request<DividendPicks>(`/api/data/wealth/dividend-picks?top=${top}`),
   wealthIpoSchedule: () => request<IpoSchedule>(`/api/data/wealth/ipo-schedule`),
   koreaFlow: () => request<KoreaFlow>(`/api/data/korea-flow`),

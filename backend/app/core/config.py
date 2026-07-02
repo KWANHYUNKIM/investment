@@ -90,6 +90,13 @@ class Settings(BaseSettings):
     premarket_archive: bool = True
     premarket_archive_interval: float = 1800.0  # 30분마다 기록·채점 점검
 
+    # 급등락 원인 규명: 급등/급락 종목·업종을 감지하고 관련 뉴스(+선택 AI)로 원인을 찾아
+    # 스냅샷을 주기적으로 기록(자동 반복). MOVERS=false로 끔.
+    movers: bool = True
+    movers_interval: float = 900.0        # 15분마다 감지·원인 규명·기록
+    movers_threshold: float = 5.0         # |등락률| 이 % 이상이면 급등락으로 간주
+    movers_top_n: int = 8                 # 원인(뉴스) 규명할 상위 급등·급락 종목 수
+
     @property
     def duckdb_path(self) -> Path:
         return self.data_dir / "market.duckdb"
@@ -101,6 +108,10 @@ class Settings(BaseSettings):
     @property
     def future_themes_dir(self) -> Path:
         return self.data_dir / "future_themes"
+
+    @property
+    def movers_dir(self) -> Path:
+        return self.data_dir / "movers"
 
     @property
     def premarket_dir(self) -> Path:
