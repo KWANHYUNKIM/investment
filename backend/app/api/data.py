@@ -503,6 +503,12 @@ def dividends_endpoint():
     return dividends.board()
 
 
+@router.get("/dividend-universe")
+def dividend_universe_endpoint():
+    """종목 단위 배당 계산기 — 검색 가능한 전 종목 + 배당수익률·추정 주당배당금(DPS)."""
+    return dividends.stock_universe()
+
+
 # --- 가계부 (급여·카드내역·저축계획) ------------------------------------------
 @router.get("/budget/summary")
 def budget_summary(month: str | None = Query(default=None), user: str = Depends(require_auth)):

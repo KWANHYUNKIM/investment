@@ -100,3 +100,57 @@ def board() -> dict:
         _cache["ts"] = time.time()
         _cache["data"] = out
     return out
+
+
+# ── 종목 단위 배당 계산기용: 전 종목 검색 유니버스 ──────────────────────────
+_uni_lock = threading.Lock()
+_uni_cache: dict = {"ts": 0.0, "data": None}
+
+
+def _build_universe() -> dict:
+    """검색 가능한 KR 전 종목 + 배당수익률/추정 주당배당금(DPS).
+
+    무료 데이터로 확정 DPS 를 종목별로 신뢰성 있게 확보하기 어려워, 재무 스냅샷의
+    배당수익률(div_yield %)과 현재가로 DPS ≈ 현재가 × 배당수익률/100 을 추정한다.
+    """
+    meta = _meta_map()
+    funds = store.fundamentals_latest_map()
+    rows = []
+    for t, m in meta.items():
+        close = m.get("close")
+        if not close or close <= 0:
+            continue
+        name = m.get("name")
+        if not name:
+            continue
+        f = funds.get(t, {})
+        dy = _num(f.get("div_yield"))
+        # 배당수익률 20% 초과는 데이터 이상치(특별배당·구주가)로 배제, 음수는 0 처리
+        if dy is not None and (dy < 0 or dy > 20):
+            dy = None
+        dps = round(close * dy / 100) if dy else None
+        rows.append({
+            "ticker": t, "name": name, "sector": m.get("sector"),
+            "close": round(close), "div_yield": round(dy, 2) if dy else None,
+            "dps": dps,
+        })
+    # 배당 있는 종목 먼저, 그 안에서는 거래대금(유동성) 큰 순 → 검색 상위 노출
+    rows.sort(key=lambda r: (r["div_yield"] is None, -(meta.get(r["ticker"], {}).get("volume") or 0)))
+    return {
+        "generated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "count": len(rows),
+        "stocks": rows,
+        "note": "주당배당금(DPS)은 최근 배당수익률 × 현재가로 추정한 값입니다. "
+                "실제 확정 배당금·배당락과 다를 수 있어 참고용입니다.",
+    }
+
+
+def stock_universe() -> dict:
+    with _uni_lock:
+        if _uni_cache["data"] and (time.time() - _uni_cache["ts"] < TTL):
+            return _uni_cache["data"]
+    out = _build_universe()
+    with _uni_lock:
+        _uni_cache["ts"] = time.time()
+        _uni_cache["data"] = out
+    return out

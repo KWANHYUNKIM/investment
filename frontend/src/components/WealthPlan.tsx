@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { api, WealthPlan as WP, LoanSim, RealtySim, RealtyLoans, HoldingCatalogItem, HoldingsData, DividendSim, IpoSim, DividendPicks, IpoSchedule } from "@/lib/api";
+import { api, WealthPlan as WP, LoanSim, RealtySim, RealtyLoans, HoldingCatalogItem, HoldingsData, DividendSim, IpoSim, DividendPicks, IpoSchedule, DividendStock } from "@/lib/api";
 
 const GREEN = "#2f9e44";
 const RED = "#c92a2a";
@@ -331,6 +331,130 @@ function IncomeBuilder() {
             </>
           )}
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ── 종목 단위 배당 계산기 — 종목 검색 → 보유 주수로 실수령 배당 ───────────
+const TAX = 0.154; // 배당소득세 15.4%
+
+function StockDividendCalc() {
+  const [uni, setUni] = useState<DividendStock[]>([]);
+  const [q, setQ] = useState("");
+  const [sel, setSel] = useState<DividendStock | null>(null);
+  const [open, setOpen] = useState(false);
+  const [mode, setMode] = useState<"shares" | "amount">("shares");
+  const [shares, setShares] = useState("100");
+  const [amount, setAmount] = useState("10000000");
+
+  useEffect(() => { api.dividendUniverse().then((d) => setUni(d.stocks)).catch(() => {}); }, []);
+
+  const matches = (() => {
+    const s = q.trim().toLowerCase();
+    if (!s) return [];
+    return uni.filter((x) => x.name.toLowerCase().includes(s) || x.ticker.includes(s)).slice(0, 12);
+  })();
+
+  const pick = (x: DividendStock) => { setSel(x); setQ(x.name); setOpen(false); };
+
+  // 보유 주수 산정: 주수 모드면 직접, 금액 모드면 금액÷현재가
+  const nShares = sel ? (mode === "shares" ? (Number(shares.replace(/,/g, "")) || 0) : Math.floor(num(amount) / sel.close)) : 0;
+  const dps = sel?.dps ?? 0;
+  const value = sel ? sel.close * nShares : 0;      // 평가금액
+  const annualGross = dps * nShares;                 // 연 배당(세전)
+  const annualNet = annualGross * (1 - TAX);         // 세후
+  const monthlyNet = annualNet / 12;
+  const dy = sel?.div_yield ?? 0;
+  // 월 목표 소득에 필요한 투자금/주수 (세후)
+  const needInvest = (mon: number) => (dy > 0 ? Math.round((mon * 12) / (dy / 100 * (1 - TAX))) : 0);
+  const needShares = (mon: number) => (dps > 0 && sel ? Math.ceil(needInvest(mon) / sel.close) : 0);
+
+  return (
+    <div className="lg:col-span-2 overflow-hidden rounded-md border border-[#d0d0d0] bg-white shadow-sm">
+      <div className="flex items-center justify-between bg-[#217346] px-4 py-2 text-white">
+        <span className="text-sm font-semibold">종목 배당 계산기 — 종목 검색 → 내 주수로 실수령 배당</span>
+        <span className="text-[10px] text-white/80">세후(배당소득세 15.4%)</span>
+      </div>
+      <div className="p-3">
+        {/* 종목 검색 */}
+        <div className="relative">
+          <label className="text-xs text-[#555]">종목 검색 <span className="text-[10px] text-[#aaa]">(이름 또는 종목코드 · {uni.length ? `${uni.length.toLocaleString("ko-KR")}개` : "불러오는 중…"})</span>
+            <input
+              value={q}
+              onChange={(e) => { setQ(e.target.value); setOpen(true); if (sel) setSel(null); }}
+              onFocus={() => setOpen(true)}
+              placeholder="예: 삼성전자, 맥쿼리, 005930"
+              className="mt-0.5 block w-full rounded border border-[#cdcdcd] px-2 py-1.5 text-sm outline-none focus:border-[#217346]"
+            />
+          </label>
+          {open && matches.length > 0 && (
+            <div className="absolute z-10 mt-1 max-h-64 w-full overflow-y-auto rounded border border-[#d0d0d0] bg-white shadow-lg">
+              {matches.map((x) => (
+                <button key={x.ticker} onClick={() => pick(x)} className="grid w-full grid-cols-[1fr_auto_auto] items-center gap-x-2 border-b border-[#f2f2f2] px-2.5 py-1.5 text-left text-[12px] hover:bg-[#f5faf7]">
+                  <span className="truncate font-semibold text-[#1f1f1f]">{x.name} <span className="text-[9px] font-normal text-[#aaa]">{x.ticker}{x.sector ? ` · ${x.sector}` : ""}</span></span>
+                  <span className="text-right tabular-nums text-[#555]">{won(x.close)}</span>
+                  <span className="w-14 text-right font-bold tabular-nums" style={{ color: x.div_yield ? "#c0392b" : "#bbb" }}>{x.div_yield ? `${x.div_yield}%` : "배당無"}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {sel && (
+          <>
+            {/* 선택 종목 요약 */}
+            <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 rounded bg-[#f8faf9] px-3 py-2 text-[11px]">
+              <span className="text-sm font-bold text-[#1f1f1f]">{sel.name}</span>
+              <span className="text-[#888]">현재가 <b className="tabular-nums text-[#333]">{won(sel.close)}</b></span>
+              <span className="text-[#888]">배당수익률 <b className="tabular-nums text-[#c0392b]">{sel.div_yield ? `${sel.div_yield}%` : "—"}</b></span>
+              <span className="text-[#888]">주당배당(추정) <b className="tabular-nums text-[#217346]">{sel.dps ? won(sel.dps) : "—"}</b></span>
+            </div>
+
+            {!sel.div_yield && (
+              <div className="mt-1.5 rounded bg-[#fdf3f3] px-2.5 py-1.5 text-[10px] text-[#c0392b]">이 종목은 배당 데이터가 없거나 무배당입니다. 배당이 있는 종목을 검색해 보세요.</div>
+            )}
+
+            {/* 입력: 주수 / 금액 토글 */}
+            <div className="mt-2 flex items-center gap-2">
+              <div className="flex overflow-hidden rounded border border-[#cdcdcd] text-[11px]">
+                {(["shares", "amount"] as const).map((m) => (
+                  <button key={m} onClick={() => setMode(m)} className={`px-2.5 py-1 ${mode === m ? "bg-[#217346] font-semibold text-white" : "bg-white text-[#555]"}`}>{m === "shares" ? "주수로" : "금액으로"}</button>
+                ))}
+              </div>
+              {mode === "shares" ? (
+                <label className="flex-1 text-xs text-[#555]">보유 주수
+                  <input value={shares} onChange={(e) => setShares(e.target.value.replace(/[^\d]/g, ""))} inputMode="numeric" placeholder="100" className={inpCls} />
+                  <div className="mt-0.5 flex gap-1">{[10, 50, 100, 500, 1000].map((n) => <button key={n} onClick={() => setShares(String(n))} className="rounded bg-[#eef4f0] px-1.5 py-0.5 text-[10px] text-[#217346] hover:bg-[#d7e8dd]">{n}주</button>)}</div>
+                </label>
+              ) : (
+                <div className="flex-1"><MoneyField label="투자금액" value={amount} onChange={setAmount} chips={CHIP_ASSETS} /></div>
+              )}
+            </div>
+            {mode === "amount" && <div className="mt-1 text-[10px] text-[#888]">≈ <b className="text-[#217346]">{nShares.toLocaleString("ko-KR")}주</b> 매수 (현재가 {won(sel.close)} 기준)</div>}
+
+            {/* 결과 */}
+            <div className="mt-2 grid grid-cols-2 gap-2 text-center sm:grid-cols-4">
+              <div className="rounded bg-white px-2 py-1.5 ring-1 ring-[#eee]"><div className="text-[10px] text-[#888]">평가금액</div><div className="text-sm font-bold tabular-nums text-[#333]">{eok(value)}원</div></div>
+              <div className="rounded bg-white px-2 py-1.5 ring-1 ring-[#eee]"><div className="text-[10px] text-[#888]">연 배당(세전)</div><div className="text-sm font-bold tabular-nums text-[#555]">{won(annualGross)}</div></div>
+              <div className="rounded bg-[#eef7f0] px-2 py-1.5"><div className="text-[10px] text-[#888]">연 배당(세후)</div><div className="text-sm font-bold tabular-nums text-[#217346]">{won(annualNet)}</div></div>
+              <div className="rounded bg-[#217346] px-2 py-1.5"><div className="text-[10px] text-white/80">월 평균(세후)</div><div className="text-sm font-bold tabular-nums text-white">{won(monthlyNet)}</div></div>
+            </div>
+
+            {/* 목표 월소득 역산 */}
+            {dy > 0 && (
+              <div className="mt-2 rounded bg-[#eef4f0] p-2 text-[11px] text-[#245]">
+                <div className="mb-0.5 font-semibold">이 종목만으로 월 배당 목표 달성하려면 (세후 {dy}%)</div>
+                <div className="flex flex-wrap gap-x-3 gap-y-0.5">
+                  {[300000, 500000, 1000000].map((mon) => (
+                    <span key={mon}>월 {eok(mon)}원 → <b>{needShares(mon).toLocaleString("ko-KR")}주</b> ({eok(needInvest(mon))}원)</span>
+                  ))}
+                </div>
+              </div>
+            )}
+            <div className="mt-1.5 text-[9px] leading-relaxed text-[#bbb]">주당배당금은 최근 배당수익률×현재가로 추정한 값이라 실제 확정 배당과 다를 수 있습니다. 배당소득세 15.4%(지방세 포함)를 일괄 적용했고, 금융소득 2천만원 초과 시 종합과세는 별도입니다.</div>
+          </>
+        )}
       </div>
     </div>
   );
@@ -686,6 +810,9 @@ export function WealthPlan() {
 
       {/* ── 배당주·공모주 추천 (실시간) ── */}
       <PicksBoard />
+
+      {/* ── 종목 단위 배당 계산기 (추천 옆) ── */}
+      <StockDividendCalc />
 
       {/* ── 배당주·공모주로 소득 만들기 ── */}
       <IncomeBuilder />

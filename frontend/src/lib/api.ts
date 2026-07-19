@@ -655,6 +655,20 @@ export interface DividendsBoard {
   earnings: EarningRow[];
   note: string;
 }
+export interface DividendStock {
+  ticker: string;
+  name: string;
+  sector: string | null;
+  close: number;
+  div_yield: number | null;
+  dps: number | null;
+}
+export interface DividendUniverse {
+  generated_at: string;
+  count: number;
+  stocks: DividendStock[];
+  note: string;
+}
 
 export interface BudgetIncome {
   monthly_net: number;
@@ -2013,6 +2027,7 @@ export const api = {
   portfolioSave: (holdings: { ticker: string; qty: number; avg: number }[]) =>
     request<Portfolio>(`/api/data/portfolio`, { method: "POST", body: JSON.stringify(holdings) }),
   dividends: () => request<DividendsBoard>(`/api/data/dividends`),
+  dividendUniverse: () => request<DividendUniverse>(`/api/data/dividend-universe`),
   budgetSummary: (month?: string) => request<BudgetSummary>(`/api/data/budget/summary${month ? `?month=${month}` : ""}`),
   budgetSetIncome: (monthly_net: number, extra = 0, memo = "") =>
     request<BudgetIncome>(`/api/data/budget/income`, { method: "POST", body: JSON.stringify({ monthly_net, extra, memo }) }),
