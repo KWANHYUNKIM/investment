@@ -6,7 +6,7 @@ import { api, RealEstateMapData, RealEstateRegion, RealEstateApartments, RealEst
 import { Card, Spinner } from "@/components/ui";
 import { RealEstateAptDetail } from "@/components/RealEstateAptDetail";
 
-// 지도는 브라우저 전용(leaflet) → SSR 비활성으로 동적 로드
+// 지도는 브라우저 전용(네이버 지도 JS) → SSR 비활성으로 동적 로드
 const MapInner = dynamic(() => import("@/components/RealEstateMapInner"), {
   ssr: false,
   loading: () => (

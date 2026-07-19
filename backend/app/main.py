@@ -17,6 +17,7 @@ from app.data.schedulers import industry_scheduler
 from app.data.schedulers import premarket_scheduler
 from app.data.schedulers import movers_scheduler
 from app.data.schedulers import price_scheduler
+from app.data.schedulers import realestate_scheduler
 from app.data.schedulers import report_scheduler
 from app.data.infra import store
 from app.data.market import crisis as crisis_data
@@ -64,6 +65,9 @@ def _startup() -> None:
     # 급등락 원인 규명 스케줄러: 급등/급락 종목·업종을 감지하고 뉴스(+선택 AI)로 원인을
     # 규명해 이력에 기록(자동 반복).
     movers_scheduler.start()
+    # 부동산 지도 프리워밍: 국토부 실거래(최신월)+시군구 좌표를 서버 시작 시 미리 받아
+    # 디스크 캐시에 채워둔다. 이후 부동산 지도 탭은 캐시에서 즉시 렌더(수집 대기 사라짐).
+    realestate_scheduler.start()
 
 
 @app.get("/api/health", tags=["meta"])

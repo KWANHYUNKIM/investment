@@ -102,6 +102,12 @@ class Settings(BaseSettings):
     movers_threshold: float = 5.0         # |등락률| 이 % 이상이면 급등락으로 간주
     movers_top_n: int = 8                 # 원인(뉴스) 규명할 상위 급등·급락 종목 수
 
+    # 부동산 실거래 지도 프리워밍: 서버가 켜지면 백그라운드로 국토부 실거래(최신월)를
+    # 미리 받아 디스크 캐시에 채워둔다. 그러면 사용자가 탭 여는 순간 캐시에서 즉시 렌더.
+    # DATA_GO_KR_KEY 가 있어야 동작. REALESTATE_WARM=false 로 끔.
+    realestate_warm: bool = True
+    realestate_warm_interval: float = 6 * 3600.0  # 6시간마다 갱신(캐시 TTL 12h보다 짧게)
+
     @property
     def duckdb_path(self) -> Path:
         return self.data_dir / "market.duckdb"
