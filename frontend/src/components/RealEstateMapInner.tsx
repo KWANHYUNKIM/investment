@@ -14,17 +14,12 @@ declare global {
   }
 }
 
-// 평균 거래가(억)별 색
-function priceColor(avg: number | null) {
-  if (avg == null) return "#9aa0a6";
-  if (avg >= 25) return "#7a0c0c";
-  if (avg >= 15) return "#c92a2a";
-  if (avg >= 10) return "#e8590c";
-  if (avg >= 6) return "#f08c00";
-  return "#2f9e44";
-}
-function radius(count: number) {
-  return Math.min(30, 5 + Math.sqrt(count) * 1.4);
+// 거래가(억)별 텍스트 색 (흰 알약 위 가독성)
+function priceColor(eok: number | null) {
+  if (eok == null) return "#555";
+  if (eok >= 15) return "#c0392b";
+  if (eok >= 8) return "#e8590c";
+  return "#217346";
 }
 
 // 네이버 지도 스크립트를 한 번만 로드 (SSR 없음 — 이 컴포넌트는 dynamic ssr:false)
@@ -45,41 +40,37 @@ function loadNaver(): Promise<void> {
   return _loadPromise;
 }
 
-// 단지 가격박스(호갱노노 스타일) HTML — 네이버 Marker icon.content 로 사용
+// 단지 실거래 알약(네이버 부동산 스타일) — 흰 알약 + 하단 꼭짓점, 좌표에 바닥이 닿음
 function aptBoxHtml(a: RealEstateApartment): string {
   const eok = a.recent_eok;
-  const txtColor = eok >= 15 ? "#fca5a5" : eok >= 8 ? "#fcd34d" : "#86efac";
-  const box = "#1f2937";
   const area = a.recent_area ? `${a.recent_area}㎡` : "";
   return `
     <div style="position:relative;transform:translate(-50%,-100%);cursor:pointer;">
-      <div style="background:${box};color:#fff;border-radius:7px;padding:2px 7px 3px;
-                  font-size:11px;line-height:1.15;white-space:nowrap;text-align:center;
-                  box-shadow:0 1px 4px rgba(0,0,0,.45);border:1px solid rgba(255,255,255,.15);">
-        ${area ? `<div style="font-size:9px;color:#cbd5e1;font-weight:600;">${area}</div>` : ""}
-        <div style="font-weight:800;color:${txtColor};">실 ${eok}억</div>
+      <div style="background:#fff;border:1px solid #e2e2e2;border-radius:9px;padding:3px 9px 4px;
+                  font-family:inherit;line-height:1.15;white-space:nowrap;text-align:center;
+                  box-shadow:0 2px 6px rgba(0,0,0,.18);">
+        ${area ? `<div style="font-size:10px;color:#8a8a8a;font-weight:600;">${area}</div>` : ""}
+        <div style="font-size:13px;font-weight:800;color:${priceColor(eok)};">실 ${eok}억</div>
       </div>
-      <div style="position:absolute;left:50%;top:100%;transform:translateX(-50%);width:0;height:0;
-                  border-left:5px solid transparent;border-right:5px solid transparent;
-                  border-top:6px solid ${box};"></div>
+      <div style="position:absolute;left:50%;top:100%;margin-top:-1px;transform:translateX(-50%);width:0;height:0;
+                  border-left:6px solid transparent;border-right:6px solid transparent;
+                  border-top:7px solid #fff;filter:drop-shadow(0 2px 1px rgba(0,0,0,.12));"></div>
     </div>`;
 }
 
-// 시군구 클러스터 원(픽셀 크기 고정) HTML
+// 시군구 집계 알약(네이버 부동산 동 마커 스타일) — 흰 알약, 지역명 + 거래건수 + 평균가
 function regionBubbleHtml(r: RealEstateRegion, selected: boolean, dim: boolean): string {
-  const rad = radius(r.count);
-  const d = rad * 2;
-  const color = priceColor(r.avg_eok);
-  const fillOpacity = dim ? (selected ? 0.12 : 0.18) : r.approx ? 0.35 : 0.6;
-  const opacity = dim && !selected ? 0.35 : 1;
+  const opacity = dim && !selected ? 0.5 : 1;
   const title = `${r.sido} ${r.region}${r.approx ? " (근사)" : ""} · 거래 ${r.count}건 · 평균 ${r.avg_eok ?? "—"}억 · 합계 ${r.amount_eok}억`;
   return `
     <div title="${title.replace(/"/g, "&quot;")}"
-         style="width:${d}px;height:${d}px;border-radius:50%;transform:translate(-50%,-50%);
-                background:${color};opacity:${opacity};cursor:pointer;
-                border:${selected ? "3px solid #111" : `1px solid ${color}`};
-                box-shadow:0 0 0 9999px rgba(0,0,0,0);">
-      <div style="width:100%;height:100%;border-radius:50%;background:${color};opacity:${fillOpacity};"></div>
+         style="transform:translate(-50%,-50%);opacity:${opacity};cursor:pointer;
+                background:#fff;border:${selected ? "2px solid #2f6fed" : "1px solid #e2e2e2"};
+                border-radius:10px;padding:3px 9px 4px;font-family:inherit;line-height:1.2;
+                white-space:nowrap;text-align:center;box-shadow:0 2px 6px rgba(0,0,0,.16);">
+      <div style="font-size:11px;font-weight:800;color:#2a2a2a;">${r.region}</div>
+      <div style="font-size:10px;font-weight:700;color:#1f9d55;">거래 ${r.count}건</div>
+      <div style="font-size:10px;color:#8a8a8a;">평균 ${r.avg_eok ?? "—"}억</div>
     </div>`;
 }
 
