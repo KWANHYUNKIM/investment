@@ -46,6 +46,11 @@ class Settings(BaseSettings):
     smtp_password: str = ""
     smtp_from: str = ""   # 미설정 시 smtp_user 사용
 
+    # 인증코드를 HTTP 응답에 노출할지(=SMTP 미설정 시 dev_code). 기본 False.
+    # True 로 켜면 이메일 인증이 무력화되므로 로컬 개발에서만, 절대 공개 배포에선 금지.
+    # (공개 URL 노출 시 누구나 send-code→reset-password 로 계정 탈취 가능)
+    auth_expose_dev_code: bool = False
+
     # Demo mode: synthesize small intraday ticks on top of the settled snapshot
     # so the live grid visibly moves without a brokerage streaming API.
     mock_ticks: bool = True

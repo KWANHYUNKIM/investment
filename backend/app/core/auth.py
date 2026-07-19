@@ -17,6 +17,7 @@ import json
 import os
 import re
 import secrets
+import threading
 import time
 
 from fastapi import Header, HTTPException
@@ -28,6 +29,32 @@ _TTL = 7 * 24 * 3600
 _USERNAME_RE = re.compile(r"^[A-Za-z0-9_.\-]{3,20}$")
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 _CODE_TTL = 600  # 인증코드 유효 10분
+
+
+# --- 무차별 대입/남용 방지 rate limit (in-memory sliding window) --------------
+# 공개 URL 노출 시 인증 계열(코드발송·로그인·재설정) 엔드포인트를 무제한 호출하지
+# 못하게 막는다. 프록시 뒤라 IP가 신뢰불가라 식별자(이메일/아이디)와 전역 버킷 기준.
+_rate_lock = threading.Lock()
+_rate_hits: dict[str, list[float]] = {}
+
+
+def rate_limit(bucket: str, max_hits: int, window: int) -> None:
+    """bucket 키로 window(초) 안에 max_hits 회를 넘으면 429를 던진다."""
+    now = time.time()
+    with _rate_lock:
+        hits = [t for t in _rate_hits.get(bucket, []) if now - t < window]
+        if len(hits) >= max_hits:
+            retry = int(window - (now - hits[0])) + 1
+            raise HTTPException(429, f"요청이 너무 많습니다. 약 {retry}초 후 다시 시도하세요.")
+        hits.append(now)
+        _rate_hits[bucket] = hits
+        if len(_rate_hits) > 5000:  # 메모리 누수 방지: 만료된 버킷 청소
+            for k in list(_rate_hits):
+                fresh = [t for t in _rate_hits[k] if now - t < window]
+                if fresh:
+                    _rate_hits[k] = fresh
+                else:
+                    del _rate_hits[k]
 
 
 def _path() -> str:
@@ -112,8 +139,10 @@ def send_code(email: str) -> dict:
         raise HTTPException(502, f"이메일 발송 실패: {str(e)[:120]}")
     s = get_settings()
     out = {"sent": bool(sent), "email_configured": bool(s.smtp_host and s.smtp_password)}
-    if not sent:
-        out["dev_code"] = code  # SMTP(앱 비밀번호) 미설정 시 테스트용 노출
+    # dev_code 는 명시적으로 켠 로컬 개발에서만 노출. 공개 배포에서 노출하면
+    # 이메일 인증이 무력화되어 send-code→reset-password 로 계정 탈취가 가능하다.
+    if not sent and s.auth_expose_dev_code:
+        out["dev_code"] = code
     return out
 
 
