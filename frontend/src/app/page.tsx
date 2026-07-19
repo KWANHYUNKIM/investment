@@ -26,26 +26,45 @@ import { MarketBriefing } from "@/components/MarketBriefing";
 
 type Tab = "market" | "briefing" | "open" | "movers" | "score" | "watch" | "dividend" | "budget" | "wealth" | "live" | "money" | "korea" | "inst" | "future" | "report" | "industry" | "crisis" | "realestate";
 
-const TABS: { id: Tab; label: string }[] = [
-  { id: "market", label: "전종목 분석" },
-  { id: "briefing", label: "장전 브리핑" },
-  { id: "open", label: "개장 예측" },
-  { id: "movers", label: "급등락 원인" },
-  { id: "score", label: "투자 점수" },
-  { id: "watch", label: "관심·보유" },
-  { id: "dividend", label: "배당·실적" },
-  { id: "budget", label: "가계부" },
-  { id: "wealth", label: "재테크 로드맵" },
-  { id: "live", label: "실시간 시황" },
-  { id: "money", label: "자금 흐름" },
-  { id: "korea", label: "한국 경제 흐름" },
-  { id: "inst", label: "기관 추적" },
-  { id: "future", label: "미래 성장테마" },
-  { id: "report", label: "데일리 리포트" },
-  { id: "industry", label: "산업 지도" },
-  { id: "crisis", label: "위기 시뮬레이터" },
-  { id: "realestate", label: "부동산 지도" },
+// ── ERP식 좌측 사이드바: 18개 기능을 6개 모듈로 그룹핑 ────────────────────
+const NAV: { group: string; icon: string; items: { id: Tab; label: string }[] }[] = [
+  { group: "시장·종목", icon: "📊", items: [
+    { id: "market", label: "전종목 분석" },
+    { id: "score", label: "투자 점수" },
+    { id: "movers", label: "급등락 원인" },
+    { id: "watch", label: "관심·보유" },
+    { id: "dividend", label: "배당·실적" },
+  ] },
+  { group: "시황·브리핑", icon: "📰", items: [
+    { id: "briefing", label: "장전 브리핑" },
+    { id: "open", label: "개장 예측" },
+    { id: "live", label: "실시간 시황" },
+    { id: "report", label: "데일리 리포트" },
+  ] },
+  { group: "자금·경제 흐름", icon: "💰", items: [
+    { id: "money", label: "자금 흐름" },
+    { id: "korea", label: "한국 경제 흐름" },
+    { id: "inst", label: "기관 추적" },
+  ] },
+  { group: "산업·테마", icon: "🏭", items: [
+    { id: "future", label: "미래 성장테마" },
+    { id: "industry", label: "산업 지도" },
+  ] },
+  { group: "내 자산·재테크", icon: "🧮", items: [
+    { id: "budget", label: "가계부" },
+    { id: "wealth", label: "재테크 로드맵" },
+    { id: "crisis", label: "위기 시뮬레이터" },
+  ] },
+  { group: "부동산", icon: "🏠", items: [
+    { id: "realestate", label: "부동산 지도" },
+  ] },
 ];
+const TAB_LABEL: Record<Tab, string> = Object.fromEntries(
+  NAV.flatMap((g) => g.items.map((it) => [it.id, it.label])),
+) as Record<Tab, string>;
+const GROUP_OF: Record<Tab, string> = Object.fromEntries(
+  NAV.flatMap((g) => g.items.map((it) => [it.id, g.group])),
+) as Record<Tab, string>;
 
 export default function Page() {
   return (
@@ -55,8 +74,67 @@ export default function Page() {
   );
 }
 
+function Sidebar({ tab, setTab, collapsed }: { tab: Tab; setTab: (t: Tab) => void; collapsed: boolean }) {
+  // 아코디언: 기본은 모든 그룹 펼침. 접혀도 현재 탭의 그룹은 항상 펼침 유지.
+  const [closed, setClosed] = useState<Record<string, boolean>>({});
+  const toggle = (g: string) => setClosed((s) => ({ ...s, [g]: !s[g] }));
+
+  if (collapsed) {
+    // 아이콘 레일: 그룹 아이콘만. 클릭 시 그 그룹의 첫 화면으로 이동.
+    return (
+      <aside className="flex w-12 shrink-0 flex-col items-center gap-1 border-r border-[#d7ddd9] bg-[#f3f5f4] py-2">
+        {NAV.map((g) => {
+          const active = GROUP_OF[tab] === g.group;
+          return (
+            <button key={g.group} title={g.group} onClick={() => setTab(g.items[0].id)}
+              className={`flex h-9 w-9 items-center justify-center rounded text-base transition ${active ? "bg-[#217346] text-white" : "hover:bg-[#e3e9e5]"}`}>
+              {g.icon}
+            </button>
+          );
+        })}
+      </aside>
+    );
+  }
+
+  return (
+    <aside className="flex w-52 shrink-0 flex-col overflow-y-auto border-r border-[#d7ddd9] bg-[#f3f5f4] py-1.5">
+      {NAV.map((g) => {
+        const isClosed = closed[g.group] && GROUP_OF[tab] !== g.group;
+        return (
+          <div key={g.group} className="mb-0.5">
+            <button onClick={() => toggle(g.group)}
+              className="flex w-full items-center gap-1.5 px-3 py-1.5 text-left text-[11px] font-bold text-[#5a6b60] hover:text-[#217346]">
+              <span className="text-xs">{g.icon}</span>
+              <span className="flex-1">{g.group}</span>
+              <span className="text-[9px] text-[#aab4ae]">{isClosed ? "▸" : "▾"}</span>
+            </button>
+            {!isClosed && (
+              <div className="flex flex-col">
+                {g.items.map((it) => {
+                  const active = tab === it.id;
+                  return (
+                    <button key={it.id} onClick={() => setTab(it.id)}
+                      className={`flex items-center border-l-[3px] py-1.5 pl-6 pr-3 text-left text-[13px] transition ${
+                        active
+                          ? "border-[#217346] bg-white font-semibold text-[#217346]"
+                          : "border-transparent text-[#4a4a4a] hover:bg-[#e9efeb]"
+                      }`}>
+                      {it.label}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </aside>
+  );
+}
+
 function Home() {
   const [tab, setTab] = useState<Tab>("market");
+  const [navCollapsed, setNavCollapsed] = useState(false);
   const [online, setOnline] = useState<boolean | null>(null);
   const [coverage, setCoverage] = useState<Coverage[]>([]);
 
@@ -83,8 +161,10 @@ function Home() {
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-[#fafafa]">
-      {/* ── Excel title bar (green) ───────────────────────────── */}
-      <div className="flex h-9 shrink-0 items-center gap-2 bg-[#217346] px-4 text-white">
+      {/* ── 상단바 (초록 브랜드 + 현재 위치 브레드크럼) ─────────────── */}
+      <div className="flex h-9 shrink-0 items-center gap-2 bg-[#217346] px-3 text-white">
+        <button onClick={() => setNavCollapsed((v) => !v)} title={navCollapsed ? "메뉴 펼치기" : "메뉴 접기"}
+          className="flex h-6 w-6 items-center justify-center rounded text-base hover:bg-white/20">☰</button>
         <svg viewBox="0 0 32 32" className="h-5 w-5" aria-hidden>
           <rect x="2" y="2" width="28" height="28" rx="4" fill="#ffffff" />
           <path
@@ -92,12 +172,15 @@ function Home() {
             fill="#217346"
           />
         </svg>
-        <span className="text-sm font-semibold tracking-tight">매출분석_2026_상반기.xlsx</span>
-        <span className="text-xs text-white/70">— Excel</span>
+        <span className="text-sm font-semibold tracking-tight">인베스트</span>
+        <span className="text-white/50">›</span>
+        <span className="text-xs text-white/70">{GROUP_OF[tab]}</span>
+        <span className="text-white/50">›</span>
+        <span className="text-xs font-medium text-white">{TAB_LABEL[tab]}</span>
         <div className="ml-auto flex items-center gap-4 text-xs">
           {kr && (
             <span className="hidden text-white/80 md:inline">
-              {kr.tickers.toLocaleString("ko-KR")}행 · {kr.rows.toLocaleString("ko-KR")}건
+              {kr.tickers.toLocaleString("ko-KR")}종목 · {kr.rows.toLocaleString("ko-KR")}건
             </span>
           )}
         </div>
@@ -112,73 +195,47 @@ function Home() {
         </div>
       )}
 
-      {/* main fills the rest of the viewport */}
-      <main className="min-h-0 flex-1">
-        {tab === "market" ? (
-          <MarketView />
-        ) : (
-          <div className="h-full overflow-y-auto bg-[#fafafa]">
-            <div className="w-full px-5 py-5">
-              {tab === "briefing" && <MarketBriefing />}
-              {tab === "open" && <KrOpenForecast />}
-              {tab === "movers" && <MarketMovers />}
-              {tab === "score" && <StockScore />}
-              {tab === "watch" && <WatchPortfolio />}
-              {tab === "dividend" && <DividendsBoard />}
-              {tab === "budget" && <BudgetManager />}
-              {tab === "wealth" && (
-                <div className="flex flex-col gap-5">
-                  <div>
-                    <div className="mb-2 border-l-4 border-[#217346] pl-2 text-sm font-bold text-[#217346]">1. 소득 파악 — 급여·부업·투자 수익</div>
-                    <IncomeGrowth />
+      {/* ── 본문: 좌측 사이드바 + 콘텐츠 ─────────────────────────── */}
+      <div className="flex min-h-0 flex-1">
+        <Sidebar tab={tab} setTab={setTab} collapsed={navCollapsed} />
+        <main className="min-h-0 flex-1">
+          {tab === "market" ? (
+            <MarketView />
+          ) : (
+            <div className="h-full overflow-y-auto bg-[#fafafa]">
+              <div className="w-full px-5 py-5">
+                {tab === "briefing" && <MarketBriefing />}
+                {tab === "open" && <KrOpenForecast />}
+                {tab === "movers" && <MarketMovers />}
+                {tab === "score" && <StockScore />}
+                {tab === "watch" && <WatchPortfolio />}
+                {tab === "dividend" && <DividendsBoard />}
+                {tab === "budget" && <BudgetManager />}
+                {tab === "wealth" && (
+                  <div className="flex flex-col gap-5">
+                    <div>
+                      <div className="mb-2 border-l-4 border-[#217346] pl-2 text-sm font-bold text-[#217346]">1. 소득 파악 — 급여·부업·투자 수익</div>
+                      <IncomeGrowth />
+                    </div>
+                    <div>
+                      <div className="mb-2 border-l-4 border-[#217346] pl-2 text-sm font-bold text-[#217346]">2. 목표·재테크 로드맵 — 상품 추천·위험도 시나리오·대출 레버리지</div>
+                      <WealthPlan />
+                    </div>
                   </div>
-                  <div>
-                    <div className="mb-2 border-l-4 border-[#217346] pl-2 text-sm font-bold text-[#217346]">2. 목표·재테크 로드맵 — 상품 추천·위험도 시나리오·대출 레버리지</div>
-                    <WealthPlan />
-                  </div>
-                </div>
-              )}
-              {tab === "live" && <LivePulse />}
-              {tab === "money" && <MoneyFlow />}
-              {tab === "korea" && <KoreaFlow />}
-              {tab === "inst" && <InstitutionalFlow />}
-              {tab === "future" && <FutureTheme />}
-              {tab === "report" && <MarketReport />}
-              {tab === "industry" && <IndustryMap />}
-              {tab === "crisis" && <CrisisSim />}
-              {tab === "realestate" && <RealEstateMap />}
+                )}
+                {tab === "live" && <LivePulse />}
+                {tab === "money" && <MoneyFlow />}
+                {tab === "korea" && <KoreaFlow />}
+                {tab === "inst" && <InstitutionalFlow />}
+                {tab === "future" && <FutureTheme />}
+                {tab === "report" && <MarketReport />}
+                {tab === "industry" && <IndustryMap />}
+                {tab === "crisis" && <CrisisSim />}
+                {tab === "realestate" && <RealEstateMap />}
+              </div>
             </div>
-          </div>
-        )}
-      </main>
-
-      {/* ── Excel worksheet tabs (bottom workbook navigation) ──── */}
-      <div className="flex h-9 shrink-0 items-stretch border-t border-[#d0d0d0] bg-[#f3f2f1] text-xs">
-        <div className="flex select-none items-center gap-2 px-2.5 text-[#9a9a9a]">
-          <span>⏮</span>
-          <span>◀</span>
-          <span>▶</span>
-          <span>⏭</span>
-        </div>
-        <div className="flex items-stretch gap-0.5 pt-1">
-          {TABS.map((t) => {
-            const active = tab === t.id;
-            return (
-              <button
-                key={t.id}
-                onClick={() => setTab(t.id)}
-                className={`border border-b-0 px-4 py-1 transition ${
-                  active
-                    ? "border-[#d0d0d0] bg-white font-semibold text-[#217346]"
-                    : "border-transparent text-[#666] hover:bg-[#e8e8e8]"
-                }`}
-              >
-                {t.label}
-              </button>
-            );
-          })}
-        </div>
-        <div className="flex select-none items-center px-2 text-base leading-none text-[#bbb]">＋</div>
+          )}
+        </main>
       </div>
     </div>
   );
