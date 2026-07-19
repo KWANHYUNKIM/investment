@@ -33,3 +33,6 @@ frontend/.env.local
 Thumbs.db
 .idea/
 .vscode/
+
+# 운영 스크립트 런타임 로그(공개 URL·요청 로그 포함) — 커밋 금지
+ops/logs/
