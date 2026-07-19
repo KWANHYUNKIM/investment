@@ -11,6 +11,7 @@
 """
 from __future__ import annotations
 
+import datetime as _dt
 import json
 import os
 import threading
@@ -25,6 +26,24 @@ _lock = threading.Lock()
 
 # 중립 판정 임계치: 개장 갭 절대값이 이보다 작으면 '중립(보합)'으로 본다.
 _FLAT = 0.15
+
+# 예측을 기록하는 KST '프리마켓' 시간창: 미 증시 마감(≈05:00 KST) 이후 ~ 한국장
+# 개장(09:00) 직전. 이 창에서만 기록해야 based_on 이 마지막 '마감된' 세션이 되고,
+# 예측 대상 = 오늘 '아직 열리지 않은' 개장 → 간밤 미국 신호와 세션이 정합한다.
+# 장중/장후에 기록하면 based_on 이 오늘(장중) 바로 밀려 '다음날' 개장과 대조되어
+# 신호와 채점 대상이 한 세션씩 어긋난다(맞은 예측도 '실패'로 오채점됨).
+_PREOPEN_START_MIN = 5 * 60 + 30   # 05:30
+_PREOPEN_END_MIN = 8 * 60 + 50     # 08:50
+
+
+def _kst_now() -> _dt.datetime:
+    return _dt.datetime.utcnow() + _dt.timedelta(hours=9)
+
+
+def _in_preopen_window() -> bool:
+    now = _kst_now()
+    minutes = now.hour * 60 + now.minute
+    return _PREOPEN_START_MIN <= minutes <= _PREOPEN_END_MIN
 
 
 def _path(based_on: str) -> str:
@@ -116,6 +135,14 @@ def record(force: bool = False) -> dict:
         if not rows:
             return {"status": "no-index"}
         based_on = rows[-1][0]
+        # 프리마켓 창에서만 기록(force=수동 요청은 예외). based_on 이 오늘이면 이미
+        # 장이 열려 오늘 개장은 지나갔고(신호와 어긋남), 창을 벗어난 시각도 마찬가지.
+        if not force:
+            today_kst = _kst_now().strftime("%Y-%m-%d")
+            if based_on >= today_kst:
+                return {"status": "market-open-skip", "based_on": based_on}
+            if not _in_preopen_window():
+                return {"status": "off-window", "based_on": based_on}
         if exists(based_on) and not force:
             return {"status": "exists", "based_on": based_on}
 
