@@ -509,6 +509,13 @@ def dividend_universe_endpoint():
     return dividends.stock_universe()
 
 
+@router.get("/kospi-earnings")
+def kospi_earnings_endpoint():
+    """전체 기업 실적 — 매출·영업이익·순이익·영업이익률·전년比 + PER/PBR/ROE/시총(전 종목)."""
+    from app.data.market import earnings
+    return earnings.board()
+
+
 # --- 가계부 (급여·카드내역·저축계획) ------------------------------------------
 @router.get("/budget/summary")
 def budget_summary(month: str | None = Query(default=None), user: str = Depends(require_auth)):
@@ -723,6 +730,13 @@ def wealth_ipo_schedule(user: str = Depends(require_auth)):
 def korea_flow_endpoint():
     """한국 경제 흐름 — 부동산/리츠 ETF·국채 ETF 자금 신호 + 부동산·국채 뉴스 동향. 키 불필요."""
     return korea_flow.snapshot()
+
+
+@router.get("/korea-diagnosis")
+def korea_diagnosis_endpoint():
+    """한국경제 종합 진단 — GDP·물가·경상·유동성·금리·심리 축별 평가 + 종합 국면(ECOS 실측)."""
+    from app.data.macro import korea_diagnosis
+    return korea_diagnosis.diagnosis()
 
 
 @router.get("/realestate-trades")

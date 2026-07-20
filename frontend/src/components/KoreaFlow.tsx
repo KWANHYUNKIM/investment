@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid, ReferenceLine, Legend } from "recharts";
 import { api, KoreaFlow as KF, KoreaFlowItem, KoreaFlowNews, RealEstateTrades, RealEstateRent, EcosIndicator, EcosMacro, MoneySupply, MoneyCountry, MoneyCrisis, MoneyAnalysis, StructuralCountry, AssetLinkItem, Regime, RealRate, RealEconomy, WorldIndicator } from "@/lib/api";
+import { MortgageForecast } from "@/components/MortgageForecast";
+import { KoreaDiagnosis } from "@/components/KoreaDiagnosis";
 
 const RED = "#c92a2a";
 const BLUE = "#1971c2";
@@ -70,6 +72,9 @@ export function KoreaFlow() {
 
   return (
     <div className="space-y-5">
+      {/* 한국경제 종합 진단 — 지금 어느 국면인가 (ECOS 실측) */}
+      <KoreaDiagnosis />
+
       {/* 종합 판정 */}
       <section className="rounded border border-[#d0d0d0] bg-white p-4 shadow-sm">
         <div className="flex flex-wrap items-center gap-2">
@@ -86,6 +91,9 @@ export function KoreaFlow() {
         <p className="mt-3 text-sm font-medium text-[#333]">{v.narrative}</p>
         <p className="mt-1 text-[11px] text-[#aaa]">{d.note}</p>
       </section>
+
+      {/* 모기지(주담대) 금리 시나리오 예측 */}
+      <MortgageForecast />
 
       {/* 국내 거시지표 — 한국은행 ECOS (M2·가계신용·주택가격) */}
       <EcosMacroSection />

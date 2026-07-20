@@ -184,61 +184,67 @@ export function RealEstateMap() {
             )}
           </div>
 
-          {/* 사이드 패널: 선택 시군구 단지 실거래 */}
-          <div className="h-[600px] overflow-y-auto rounded border border-[#e6e6e6] bg-white p-3">
+          {/* 사이드 패널: 선택 시군구 실거래 목록 (네이버 부동산 카드 스타일) */}
+          <div className="flex h-[600px] flex-col overflow-hidden rounded border border-[#e6e6e6] bg-white">
             {!sel ? (
               <div className="flex h-full items-center justify-center px-4 text-center text-xs text-[#999]">
-                지도에서 지역(원)을 클릭하면<br />그 시군구로 확대되며<br />단지별 실거래가 지도에 표시됩니다.
+                지도에서 지역을 클릭하면<br />그 시군구로 확대되며<br />단지별 실거래 목록이 여기에 표시됩니다.
               </div>
             ) : (
               <>
-                <div className="mb-2 border-b border-[#eee] pb-2">
-                  <div className="text-sm font-bold text-[#333]">{sel.sido} {sel.region}</div>
-                  <div className="text-[11px] text-[#888]">
-                    {data.latest_label} · 거래 {sel.count}건 · 평균 {sel.avg_eok ?? "—"}억
-                    {apts && (
-                      <> · 단지 {apts.count}곳
-                        {apts.geocoding && <span className="text-[#8a6d1a]"> · 위치 보정 중…</span>}
-                      </>
-                    )}
+                {/* 헤더 (지역명 + 닫기) */}
+                <div className="flex items-start justify-between border-b border-[#eee] px-3.5 py-2.5">
+                  <div>
+                    <div className="text-[15px] font-bold text-[#222]">{sel.sido} {sel.region}</div>
+                    <div className="mt-0.5 text-[11px] text-[#888]">
+                      {data.latest_label} 실거래 · 거래 {sel.count}건 · 평균 {sel.avg_eok ?? "—"}억
+                      {apts && <> · 단지 {apts.count}곳{apts.geocoding && <span className="text-[#8a6d1a]"> · 위치 보정 중…</span>}</>}
+                    </div>
                   </div>
+                  <button onClick={() => { setSel(null); setApts(null); }} title="닫기"
+                    className="ml-2 shrink-0 rounded p-1 text-lg leading-none text-[#999] hover:bg-[#f2f2f2] hover:text-[#555]">×</button>
                 </div>
-                {aptsLoading && !apts ? (
-                  <div className="flex items-center gap-2 py-6 text-xs text-[#888]"><Spinner /> 단지 실거래 불러오는 중…</div>
-                ) : !apts || apts.apartments.length === 0 ? (
-                  <div className="py-6 text-center text-xs text-[#999]">실거래 내역이 없습니다.</div>
-                ) : (
-                  <table className="w-full text-[11px]">
-                    <thead>
-                      <tr className="border-b border-[#eee] text-[#999]">
-                        <th className="py-1 text-left font-semibold">단지 / 동</th>
-                        <th className="py-1 text-right font-semibold">전용</th>
-                        <th className="py-1 text-right font-semibold">실거래</th>
-                        <th className="py-1 text-right font-semibold">건수</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {apts.apartments.map((a, i) => (
-                        <tr
-                          key={i}
-                          className="cursor-pointer border-b border-[#f4f4f4] hover:bg-[#eef6f0]"
-                          title="클릭 → 단지 시세/실거래 상세"
-                          onClick={() => { setFlyTarget({ lat: a.lat, lng: a.lng, zoom: 16 }); openDetail(a); }}
-                        >
-                          <td className="py-1 text-left">
-                            <span className="font-semibold text-[#217346] underline-offset-2 hover:underline">{a.apt}</span>
-                            <span className="ml-1 text-[#aaa]">{a.dong}</span>
-                          </td>
-                          <td className="py-1 text-right tabular-nums text-[#666]">{a.recent_area ? `${a.recent_area}㎡` : "—"}</td>
-                          <td className="py-1 text-right font-bold tabular-nums text-[#217346]">
-                            {a.min_eok === a.max_eok ? `${a.recent_eok}억` : `${a.min_eok}~${a.max_eok}억`}
-                          </td>
-                          <td className="py-1 text-right tabular-nums text-[#999]">{a.count}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                )}
+                {/* 탭 (실거래 목록) */}
+                <div className="flex border-b border-[#eee] px-3.5 text-[13px]">
+                  <span className="border-b-2 border-[#217346] py-2 font-bold text-[#217346]">실거래 목록</span>
+                </div>
+                {/* 카드 리스트 */}
+                <div className="min-h-0 flex-1 overflow-y-auto bg-[#f7f8f9] p-2.5">
+                  {aptsLoading && !apts ? (
+                    <div className="flex items-center gap-2 py-6 text-xs text-[#888]"><Spinner /> 단지 실거래 불러오는 중…</div>
+                  ) : !apts || apts.apartments.length === 0 ? (
+                    <div className="py-6 text-center text-xs text-[#999]">실거래 내역이 없습니다.</div>
+                  ) : (
+                    <div className="flex flex-col gap-2">
+                      {apts.apartments.map((a, i) => {
+                        const priceLabel = a.min_eok === a.max_eok ? `${a.recent_eok}억` : `${a.min_eok}~${a.max_eok}억`;
+                        return (
+                          <button
+                            key={i}
+                            onClick={() => { setFlyTarget({ lat: a.lat, lng: a.lng, zoom: 16 }); openDetail(a); }}
+                            className="rounded-lg border border-[#e5e7eb] bg-white px-3 py-2.5 text-left shadow-sm transition hover:border-[#217346] hover:shadow"
+                          >
+                            <div className="flex items-baseline justify-between gap-2">
+                              <span className="truncate text-[13px] font-bold text-[#222]">{a.apt}</span>
+                              {a.build_year ? <span className="shrink-0 text-[10px] text-[#aaa]">{a.build_year}년</span> : null}
+                            </div>
+                            <div className="mt-0.5 text-[15px] font-extrabold tabular-nums text-[#217346]">실거래 {priceLabel}</div>
+                            <div className="mt-1 text-[11px] text-[#666]">
+                              아파트
+                              {a.recent_area ? ` · 전용 ${a.recent_area}㎡` : ""}
+                              {a.recent_floor ? ` · ${a.recent_floor}층` : ""}
+                              {a.dong ? ` · ${a.dong}` : ""}
+                            </div>
+                            <div className="mt-1.5 flex items-center gap-1.5">
+                              <span className="rounded bg-[#eef6f0] px-1.5 py-0.5 text-[10px] font-semibold text-[#217346]">최근거래</span>
+                              <span className="text-[11px] text-[#888]">{a.recent_date || "—"} · 거래 {a.count}건</span>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
               </>
             )}
           </div>

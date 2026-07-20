@@ -77,6 +77,40 @@ export function RealEstateAptDetail({
     return { line, dots, ticks, sY, sM, months, yDomain: [Math.max(0, yMin - pad), yMax + pad] as [number, number] };
   }, [d, area]);
 
+  // 가격 흐름 분석: "언제 올랐나" — 최고/최저 시점, 기간별 변화율, 최대 급등 구간
+  const moves = useMemo(() => {
+    if (!d || !area) return null;
+    const ser = d.series[area.key] ?? [];
+    if (ser.length < 2) return null;
+    const pts = ser.map((p) => ({ ym: p.ym, avg: p.avg }));
+    const idx = (ym: string) => { const [y, m] = ym.split("-").map(Number); return y * 12 + (m - 1); };
+    const last = pts[pts.length - 1];
+    let peak = pts[0], trough = pts[0];
+    for (const p of pts) { if (p.avg > peak.avg) peak = p; if (p.avg < trough.avg) trough = p; }
+    const lastIdx = idx(last.ym);
+    const near = (monthsAgo: number) => {
+      const target = lastIdx - monthsAgo;
+      let best: { ym: string; avg: number } | null = null, bestDiff = 1e9;
+      for (const p of pts) { const diff = Math.abs(idx(p.ym) - target); if (diff < bestDiff) { bestDiff = diff; best = p; } }
+      return best && bestDiff <= 3 ? best : null;
+    };
+    const pct = (from: number, to: number) => (from > 0 ? Math.round((to / from - 1) * 1000) / 10 : null);
+    const chg = (mo: number) => { const b = near(mo); return b ? { ym: b.ym, pct: pct(b.avg, last.avg) } : null; };
+    // 최대 12개월 급등 구간
+    let rise: { from: { ym: string; avg: number }; to: { ym: string; avg: number }; pct: number } | null = null;
+    for (const p of pts) {
+      const ti = idx(p.ym);
+      const base = pts.find((q) => idx(q.ym) >= ti - 13 && idx(q.ym) <= ti - 11);
+      if (base && base.avg > 0) { const g = (p.avg / base.avg - 1) * 100; if (!rise || g > rise.pct) rise = { from: base, to: p, pct: Math.round(g * 10) / 10 }; }
+    }
+    return {
+      recent: area.recent_eok, peak, trough,
+      vsPeak: pct(peak.avg, last.avg),
+      y1: chg(12), y3: chg(36), y5: chg(60),
+      rise: rise && rise.pct > 5 ? rise : null,
+    };
+  }, [d, area]);
+
   // 거래이력: 계약월 내림차순 그룹
   const history = useMemo(() => {
     if (!area) return [];
@@ -179,16 +213,58 @@ export function RealEstateAptDetail({
             <div className="py-24 text-center text-sm text-[#999]">최근 10년 실거래 내역이 없습니다.</div>
           ) : tab === "price" ? (
             <div className="p-4">
-              {/* 요약 */}
+              {/* 과거 데이터 점진 로딩 배너 (최근부터 먼저 뜨고 뒤이어 채워짐) */}
+              {d.warming && d.progress?.total ? (
+                <div className="mb-3 flex items-center gap-2 rounded-md border border-[#e0c98a] bg-[#fff8e6] px-3 py-1.5 text-[11px] text-[#8a6d1a]">
+                  <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-[#c99a1a]" />
+                  과거 실거래 더 불러오는 중 · {d.progress.done}/{d.progress.total}개월 (최근부터 표시)
+                </div>
+              ) : null}
+
+              {/* 요약 hero */}
               {area && (
-                <div className="mb-3 flex items-end gap-3">
-                  <div>
-                    <div className="text-[11px] text-[#999]">최근 실거래 ({area.recent_date.slice(2)})</div>
-                    <div className="text-xl font-extrabold text-[#217346]">{area.recent_eok}억</div>
+                <div className="mb-3 rounded-lg border border-[#e6ede8] bg-[#f7faf8] p-3">
+                  <div className="flex items-end justify-between">
+                    <div>
+                      <div className="text-[11px] text-[#999]">최근 실거래 · {area.recent_date.replace(/-/g, ".")} · {area.area}㎡</div>
+                      <div className="text-2xl font-extrabold leading-tight text-[#217346]">{area.recent_eok}<span className="text-base font-bold">억</span></div>
+                    </div>
+                    {moves?.vsPeak != null && (
+                      <div className="text-right">
+                        <div className="text-[10px] text-[#999]">최고점 대비</div>
+                        <div className={`text-sm font-bold ${moves.vsPeak >= 0 ? "text-[#c0392b]" : "text-[#1c6fd6]"}`}>
+                          {moves.vsPeak >= 0 ? "+" : ""}{moves.vsPeak}%
+                        </div>
+                      </div>
+                    )}
                   </div>
-                  <div className="pb-0.5 text-[12px] text-[#888]">
-                    10년 범위 {area.min_eok}~{area.max_eok}억 · {area.count}건
+                  <div className="mt-1 text-[11px] text-[#888]">10년 {area.min_eok}~{area.max_eok}억 · {area.count}건</div>
+                </div>
+              )}
+
+              {/* 가격 흐름 — 언제 올랐나 */}
+              {moves && (
+                <div className="mb-4 rounded-lg border border-[#eee] p-3">
+                  <div className="mb-2 text-[12px] font-bold text-[#333]">가격 흐름 — 언제 올랐나</div>
+                  <div className="grid grid-cols-3 gap-2">
+                    {([["1년 전", moves.y1], ["3년 전", moves.y3], ["5년 전", moves.y5]] as const).map(([label, m]) => (
+                      <div key={label} className="rounded bg-[#fafafa] px-2 py-1.5 text-center">
+                        <div className="text-[10px] text-[#999]">{label} 대비</div>
+                        <div className={`text-[13px] font-bold tabular-nums ${m?.pct == null ? "text-[#bbb]" : m.pct >= 0 ? "text-[#c0392b]" : "text-[#1c6fd6]"}`}>
+                          {m?.pct == null ? "—" : `${m.pct >= 0 ? "+" : ""}${m.pct}%`}
+                        </div>
+                      </div>
+                    ))}
                   </div>
+                  <div className="mt-2 grid grid-cols-2 gap-2 text-[11px]">
+                    <div className="rounded bg-[#fafafa] px-2 py-1.5">최고 <b className="text-[#c0392b]">{moves.peak.avg}억</b> <span className="text-[#aaa]">{moves.peak.ym.replace("-", ".")}</span></div>
+                    <div className="rounded bg-[#fafafa] px-2 py-1.5">최저 <b className="text-[#1c6fd6]">{moves.trough.avg}억</b> <span className="text-[#aaa]">{moves.trough.ym.replace("-", ".")}</span></div>
+                  </div>
+                  {moves.rise && (
+                    <div className="mt-2 rounded bg-[#fdecec] px-2.5 py-1.5 text-[11px] text-[#c0392b]">
+                      📈 가장 크게 오른 시기 <b>{moves.rise.from.ym.replace("-", ".")} → {moves.rise.to.ym.replace("-", ".")}</b> · <b>+{moves.rise.pct}%</b>
+                    </div>
+                  )}
                 </div>
               )}
               {/* 차트 */}

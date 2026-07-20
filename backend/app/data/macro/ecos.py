@@ -238,6 +238,23 @@ def _base_rate() -> dict | None:
     }
 
 
+def _gdp() -> dict | None:
+    """실질 GDP(200Y108/10601 국내총생산에 대한 지출, 실질·계절조정, 분기) — 전년동기比가 성장률."""
+    d = datetime.date.today()
+    cur_q = (d.month - 1) // 3 + 1
+    rows = _search("200Y108", "Q", "2000Q1", f"{d.year}Q{cur_q}", "10601")
+    if not rows:
+        return None
+    return {
+        "key": "gdp", "group": "성장", "label": "실질 GDP (계절조정)",
+        "period": _fmt_period(rows[-1]["period"]),
+        "display": f"{_trillion(rows[-1]['value']):,}조원",
+        "yoy": _yoy(rows, 4), "yoy_label": "전년동기比(실질성장률)",
+        "desc": "실질성장률↑ = 경기 확장 / 둔화·마이너스 = 경기 위축",
+        **_pack(rows, "level", _trillion),
+    }
+
+
 def _cpi() -> dict | None:
     """소비자물가지수(901Y009/0 총지수, 월) — 전년동월比가 물가상승률."""
     rows = _search("901Y009", "M", "198001", _months_ago(0), "0")
@@ -357,7 +374,7 @@ def snapshot(force: bool = False) -> dict:
                 "reason": "ECOS_API_KEY 미설정 — backend/.env에 키를 넣으면 활성화됩니다.",
                 "indicators": []}
 
-    builders = [_m2, _household_credit, _msb, _base_rate, _govbond, _mortgage_rate,
+    builders = [_gdp, _m2, _household_credit, _msb, _base_rate, _govbond, _mortgage_rate,
                 _cpi, _ppi, _reserves, _current_account, _esi, _ccsi,
                 _house_price, _jeonse_price]
     indicators = []

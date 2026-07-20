@@ -364,6 +364,11 @@ def region_apartments(lawd: str, ym: str | None = None) -> dict:
     sido, region = _LAWD_INFO.get(lawd, ("", ""))
     deals = realestate.deals(lawd, ym)
 
+    # 지역을 선택하는 즉시 이 시군구의 5년 거래이력 수집을 백그라운드로 시작해 둔다.
+    # (사용자가 목록을 훑는 동안 미리 채워져, 단지 상세를 열 때 대기가 사라짐)
+    if get_settings().data_go_kr_key:
+        _ensure_hist(lawd, _HIST_MONTHS)
+
     # 시군구 중심(지오코딩 캐시 → 없으면 시도 중심)
     center = _cached_coord(sido, region) if sido else None
     if center is None:
@@ -419,7 +424,7 @@ def region_apartments(lawd: str, ym: str | None = None) -> dict:
 
 
 # --- 단지 상세(네이버 부동산 스타일): 시군구 N개월 거래이력 캐시 + 면적별 시세/실거래 ----
-_HIST_MONTHS = 120          # 10년
+_HIST_MONTHS = 120          # 10년. 120콜이라 느리므로 최신월부터 점진 저장(_hist_warm_run)
 _HIST_TTL = 7 * 24 * 3600.0  # 7일(과거월은 불변, 최신월만 갱신)
 _hist_mem: dict[str, dict] = {}                 # lawd -> {ts, months, deals}
 _hist_warm: dict[str, dict] = {}                # lawd -> {running, done, total, ok}
@@ -452,11 +457,15 @@ def _save_hist(lawd: str, data: dict) -> None:
 
 
 def _hist_warm_run(lawd: str, months: int) -> None:
-    yms = realestate._recent_months(months)
+    # 최신월 → 과거 순으로 수집(_recent_months 는 과거→최신이라 뒤집는다). 6개월치 모일
+    # 때마다 부분 저장 → 사용자는 최근 몇 년치 차트를 먼저 보고, 오래된 구간이 뒤이어 채워진다.
+    yms = list(reversed(realestate._recent_months(months)))
     st = _hist_warm[lawd] = {"running": True, "done": 0, "total": len(yms), "ok": 0}
     rows: list[dict] = []
+    SAVE_EVERY = 6
 
     def run(ym):
+        ds: list[dict] = []
         for a in range(3):                       # 429 백오프 재시도
             ds, ok = realestate.month_deals(lawd, ym)
             if ok:
@@ -465,20 +474,28 @@ def _hist_warm_run(lawd: str, months: int) -> None:
         return ym, ds, False
 
     try:
-        with ThreadPoolExecutor(max_workers=6) as ex:
+        with ThreadPoolExecutor(max_workers=8) as ex:
+            since = 0
             for ym, ds, ok in ex.map(run, yms):
                 st["done"] += 1
                 if ok:
                     st["ok"] += 1
                     rows.extend(ds)
-        _save_hist(lawd, {"ts": time.time(), "months": months, "deals": rows})
+                since += 1
+                if since >= SAVE_EVERY:          # 부분 저장(진행 중 = complete False)
+                    since = 0
+                    _save_hist(lawd, {"ts": time.time(), "months": months,
+                                      "deals": list(rows), "complete": False})
+        _save_hist(lawd, {"ts": time.time(), "months": months, "deals": rows, "complete": True})
     finally:
         st["running"] = False
 
 
 def _ensure_hist(lawd: str, months: int) -> dict | None:
     cache = _load_hist(lawd)
-    fresh = cache and (time.time() - cache.get("ts", 0) < _HIST_TTL) and cache.get("months", 0) >= months
+    # 부분 저장(complete=False)은 fresh 로 보지 않아, 남은 과거월을 계속 채우게 한다.
+    fresh = (cache and cache.get("complete") and (time.time() - cache.get("ts", 0) < _HIST_TTL)
+             and cache.get("months", 0) >= months)
     if fresh:
         return cache
     warm = _hist_warm.get(lawd)

@@ -7,6 +7,7 @@ import { KrOpenForecast } from "@/components/KrOpenForecast";
 import { StockScore } from "@/components/StockScore";
 import { WatchPortfolio } from "@/components/WatchPortfolio";
 import { DividendsBoard } from "@/components/DividendsBoard";
+import { KospiEarnings } from "@/components/KospiEarnings";
 import { BudgetManager } from "@/components/BudgetManager";
 import { IncomeGrowth } from "@/components/IncomeGrowth";
 import { WealthPlan } from "@/components/WealthPlan";
@@ -209,7 +210,12 @@ function Home() {
                 {tab === "movers" && <MarketMovers />}
                 {tab === "score" && <StockScore />}
                 {tab === "watch" && <WatchPortfolio />}
-                {tab === "dividend" && <DividendsBoard />}
+                {tab === "dividend" && (
+                  <div className="flex flex-col gap-5">
+                    <DividendsBoard />
+                    <KospiEarnings />
+                  </div>
+                )}
                 {tab === "budget" && <BudgetManager />}
                 {tab === "wealth" && (
                   <div className="flex flex-col gap-5">

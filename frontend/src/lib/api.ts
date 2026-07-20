@@ -1040,6 +1040,56 @@ export interface KoreaFlow {
   note: string;
 }
 
+// 전체 기업 실적
+export interface KospiEarningRow {
+  ticker: string;
+  name: string | null;
+  sector: string | null;
+  period: string;
+  sales: number | null;
+  op_profit: number | null;
+  net_income: number | null;
+  op_margin: number | null;
+  op_yoy: number | null;
+  per: number | null;
+  pbr: number | null;
+  roe: number | null;
+  market_cap: number | null;
+  close: number | null;
+}
+export interface KospiEarnings {
+  generated_at: string;
+  count: number;
+  summary: { companies: number; profitable: number; profitable_pct: number | null; improving: number; improving_pct: number | null };
+  companies: KospiEarningRow[];
+  note: string;
+}
+
+// 한국경제 종합 진단
+export interface DiagnosisAxis {
+  key: string;
+  title: string;
+  status: "good" | "neutral" | "warn" | "na";
+  status_label: string;
+  color: string;
+  headline: string;
+  detail: string;
+  metrics: { k: string; v: string }[];
+}
+export interface KoreaDiagnosis {
+  available: boolean;
+  reason?: string;
+  generated_at: string;
+  regime?: string;
+  regime_color?: string;
+  score?: number | null;
+  score_label?: string;
+  narrative?: string;
+  axes: DiagnosisAxis[];
+  source?: string;
+  note?: string;
+}
+
 // 부동산 실거래 — 국토부 RTMS (서울 25개구 아파트 매매 월별 거래량·거래대금)
 export interface RealEstateMonth {
   ym: string;
@@ -2103,6 +2153,8 @@ export const api = {
   wealthDividendPicks: (top = 12) => request<DividendPicks>(`/api/data/wealth/dividend-picks?top=${top}`),
   wealthIpoSchedule: () => request<IpoSchedule>(`/api/data/wealth/ipo-schedule`),
   koreaFlow: () => request<KoreaFlow>(`/api/data/korea-flow`),
+  koreaDiagnosis: () => request<KoreaDiagnosis>(`/api/data/korea-diagnosis`),
+  kospiEarnings: () => request<KospiEarnings>(`/api/data/kospi-earnings`),
   realestateTrades: () => request<RealEstateTrades>(`/api/data/realestate-trades`),
   realestateRent: () => request<RealEstateRent>(`/api/data/realestate-rent`),
   ecosMacro: () => request<EcosMacro>(`/api/data/ecos-macro`),
