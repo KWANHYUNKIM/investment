@@ -7,6 +7,10 @@ import { KrOpenForecast } from "@/components/KrOpenForecast";
 import { StockScore } from "@/components/StockScore";
 import { WatchPortfolio } from "@/components/WatchPortfolio";
 import { DividendsBoard } from "@/components/DividendsBoard";
+import { DividendDeepDive } from "@/components/DividendDeepDive";
+import { DividendRoyalty } from "@/components/DividendRoyalty";
+import { CrisisSurvivors } from "@/components/CrisisSurvivors";
+import { DividendEtf } from "@/components/DividendEtf";
 import { KospiEarnings } from "@/components/KospiEarnings";
 import { BudgetManager } from "@/components/BudgetManager";
 import { IncomeGrowth } from "@/components/IncomeGrowth";
@@ -24,8 +28,9 @@ import { CrisisSim } from "@/components/CrisisSim";
 import { RealEstateMap } from "@/components/RealEstateMap";
 import { MarketMovers } from "@/components/MarketMovers";
 import { MarketBriefing } from "@/components/MarketBriefing";
+import { UnitEconomics } from "@/components/UnitEconomics";
 
-type Tab = "market" | "briefing" | "open" | "movers" | "score" | "watch" | "dividend" | "budget" | "wealth" | "live" | "money" | "korea" | "inst" | "future" | "report" | "industry" | "crisis" | "realestate";
+type Tab = "market" | "briefing" | "open" | "movers" | "score" | "watch" | "dividend" | "unitecon" | "budget" | "wealth" | "live" | "money" | "korea" | "inst" | "future" | "report" | "industry" | "crisis" | "realestate";
 
 // ── ERP식 좌측 사이드바: 18개 기능을 6개 모듈로 그룹핑 ────────────────────
 const NAV: { group: string; icon: string; items: { id: Tab; label: string }[] }[] = [
@@ -35,6 +40,7 @@ const NAV: { group: string; icon: string; items: { id: Tab; label: string }[] }[
     { id: "movers", label: "급등락 원인" },
     { id: "watch", label: "관심·보유" },
     { id: "dividend", label: "배당·실적" },
+    { id: "unitecon", label: "제품 원가분해" },
   ] },
   { group: "시황·브리핑", icon: "📰", items: [
     { id: "briefing", label: "장전 브리핑" },
@@ -212,10 +218,15 @@ function Home() {
                 {tab === "watch" && <WatchPortfolio />}
                 {tab === "dividend" && (
                   <div className="flex flex-col gap-5">
+                    <DividendDeepDive />
+                    <CrisisSurvivors />
+                    <DividendRoyalty />
+                    <DividendEtf />
                     <DividendsBoard />
                     <KospiEarnings />
                   </div>
                 )}
+                {tab === "unitecon" && <UnitEconomics />}
                 {tab === "budget" && <BudgetManager />}
                 {tab === "wealth" && (
                   <div className="flex flex-col gap-5">

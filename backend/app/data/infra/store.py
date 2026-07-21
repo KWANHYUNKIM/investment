@@ -587,6 +587,36 @@ def dart_latest_bs(ticker: str) -> dict:
     return {r["account_nm"]: r["amount"] for r in df.to_dict("records")}
 
 
+def dart_cashflow_operating(ticker: str) -> list[dict]:
+    """연도별 영업활동현금흐름 (원). [{year, amount}] 오래된→최신 순.
+
+    기업마다 계정명이 '영업활동현금흐름' / '영업활동 현금흐름' / '영업활동으로 인한
+    현금흐름' 등으로 달라, sj_div='CF' + 이름에 '영업활동'과 '현금흐름'을 모두 포함하는
+    행을 잡고, 연도별로 최상위(가장 작은 ord) 합계 행 하나를 고른다.
+    """
+    with connection() as conn:
+        df = conn.execute(
+            """
+            WITH cf AS (
+                SELECT year, amount,
+                       ROW_NUMBER() OVER (PARTITION BY year ORDER BY ord) AS rn
+                FROM dart_financials
+                WHERE ticker = ? AND sj_div = 'CF'
+                  AND account_nm LIKE '%영업활동%' AND account_nm LIKE '%현금흐름%'
+            )
+            SELECT year, amount FROM cf WHERE rn = 1 ORDER BY year
+            """,
+            [ticker],
+        ).df()
+    def _amt(v):
+        try:
+            v = float(v)
+            return None if v != v else v  # drop NaN
+        except (TypeError, ValueError):
+            return None
+    return [{"year": int(r["year"]), "amount": _amt(r["amount"])} for r in df.to_dict("records")]
+
+
 def financials_latest() -> pd.DataFrame:
     """Per ticker: most recent 사업연도 figures + YoY 영업이익 증감률 (prior year)."""
     with connection() as conn:

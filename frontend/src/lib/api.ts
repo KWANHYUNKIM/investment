@@ -670,6 +670,89 @@ export interface DividendUniverse {
   note: string;
 }
 
+// ── 종목 단위 배당 심층 분석 ──────────────────────────────────────────────
+export interface DDMetric {
+  series: { year: number; value: number; estimate: boolean }[];
+  latest: { year: number; value: number } | null;
+  trend: "증가" | "감소" | "정체" | null;
+  unit: string;
+  why: string;
+  available?: boolean;
+  note?: string;
+}
+export interface DDCrisisRow { year: number; dps: number | null; verdict: "증가" | "유지" | "삭감" | "중단" | null; }
+export interface DDCrisis {
+  key: string;
+  label: string;
+  rows: DDCrisisRow[];
+  summary: string;
+  min?: number | null;
+  max?: number | null;
+}
+export interface DividendDetail {
+  ticker: string;
+  name: string | null;
+  sector: string | null;
+  market?: "KR" | "US";
+  currency?: "KRW" | "USD";
+  royalty?: { tier: string; tier_label: string; years: number | null } | null;
+  close: number | null;
+  generated_at: string;
+  dividend: { dps: number | null; dps_estimated: boolean; div_yield: number | null; formula: string };
+  checklist: {
+    revenue: DDMetric;
+    net_income: DDMetric;
+    op_cash_flow: DDMetric;
+    div_years: { value: number; window: [number, number] | null; why: string };
+    div_growth: { cagr: number | null; series: { year: number; dps: number }[]; window: [number, number] | null; why: string };
+    roe: DDMetric;
+  } | null;
+  crises: { available: boolean; name: string | null; notes: string | null; sources: string[]; crises: DDCrisis[] } | null;
+  note: string;
+}
+
+// ── 배당왕·귀족·월배당 ────────────────────────────────────────────────────
+export interface RoyaltyRow { ticker: string; name: string; sector?: string; type?: string; years?: number | null; yield?: number | null; freq?: string; }
+export interface RoyaltyGroup { count: number; criteria: string; avg_yield: number | null; rows: RoyaltyRow[]; }
+export interface MonthlyPortfolio {
+  invest: number; blended_yield: number; annual_gross: number; annual_net: number;
+  monthly_gross: number; monthly_net: number; n_holdings: number; note: string;
+}
+export interface DividendRoyalty {
+  as_of: string;
+  kings: RoyaltyGroup;
+  aristocrats: RoyaltyGroup;
+  monthly: RoyaltyGroup;
+  portfolio?: MonthlyPortfolio;
+  note: string;
+}
+
+// ── 위기를 이겨낸 우상향 배당주 ───────────────────────────────────────────
+export interface SurvivorCrisis { key: string; label: string; drawdown: number | null; dividend: string; }
+export interface SurvivorRow {
+  ticker: string; name: string; sector: string | null; tier_label: string | null; years: number | null;
+  multiple: number | null; cagr: number | null;
+  index: { date: string; v: number }[];
+  crises: SurvivorCrisis[];
+}
+export interface CrisisSurvivors {
+  generated_at: string; start: string; benchmark: SurvivorRow | null;
+  survivors: SurvivorRow[]; crises: { key: string; label: string }[]; note: string;
+}
+
+// ── 배당 ETF + S&P 적립 ───────────────────────────────────────────────────
+export interface EtfRow {
+  ticker: string; name: string; category: string; yield: number | null;
+  div_cagr_5y: number | null; expense: number | null; inception: number | null;
+  freq: string; strategy: string;
+}
+export interface EtfGroup { category: string; count: number; avg_yield: number | null; rows: EtfRow[]; }
+export interface DividendEtfBoard { as_of: string; groups: EtfGroup[]; count: number; note: string; }
+export interface SpDca {
+  monthly: number; years: number; annual_return_pct: number; principal: number;
+  future_value: number; gain: number; est_annual_dividend: number; est_monthly_dividend: number; note: string;
+}
+
 export interface BudgetIncome {
   monthly_net: number;
   extra: number;
@@ -2037,6 +2120,59 @@ export interface PortfolioResponse {
 
 // --- Endpoints --------------------------------------------------------------
 
+// --- 제품 단위 원가분해 (unit economics) ------------------------------------
+export interface UEProduct {
+  id: string;
+  ticker: string;
+  company: string;
+  product: string;
+  unit: string;
+  sector: string;
+}
+export interface UEWaterfallItem {
+  item: string;
+  won: number;
+  pct_of_retail: number;
+  kind: "channel" | "material" | "process" | "sga" | "profit";
+  commodity?: string | null;
+  commodity_key?: string | null;
+  chg_1y?: number | null;
+  direction?: "up" | "down" | "flat" | null;
+}
+export interface UESensitivity {
+  item: string;
+  commodity: string;
+  op_delta_per_10pct: number;
+  op_delta_pct_per_10pct: number | null;
+  chg_1y: number | null;
+  direction: "up" | "down" | "flat" | null;
+}
+export interface UnitEconomics {
+  product: { ticker: string; company: string; product: string; unit: string; channel: string; note: string };
+  as_of: string;
+  basis: { source: string; year: number | null };
+  summary: {
+    retail_price: number;
+    distribution_take: number;
+    channel_label: string;
+    factory_price: number;
+    cogs_ratio: number;
+    sga_ratio: number;
+    op_margin: number;
+    profit_per_unit: number;
+  };
+  waterfall: UEWaterfallItem[];
+  materials: UEWaterfallItem[];
+  sensitivity: UESensitivity[];
+  momentum: {
+    cost_delta_won: number;
+    op_before: number;
+    op_after: number;
+    op_change_pct: number | null;
+    verdict: string;
+  };
+}
+
 export const api = {
   health: () => request<Health>("/api/health"),
   authLogin: (username: string, password: string) =>
@@ -2078,6 +2214,12 @@ export const api = {
     request<Portfolio>(`/api/data/portfolio`, { method: "POST", body: JSON.stringify(holdings) }),
   dividends: () => request<DividendsBoard>(`/api/data/dividends`),
   dividendUniverse: () => request<DividendUniverse>(`/api/data/dividend-universe`),
+  dividendDetail: (ticker: string) => request<DividendDetail>(`/api/data/dividend-detail?ticker=${ticker}`),
+  dividendRoyalty: (invest = 0) => request<DividendRoyalty>(`/api/data/dividend-royalty${invest > 0 ? `?invest=${invest}` : ""}`),
+  crisisSurvivors: () => request<CrisisSurvivors>(`/api/data/crisis-survivors`),
+  dividendEtf: () => request<DividendEtfBoard>(`/api/data/dividend-etf`),
+  spDca: (monthly: number, years: number, annualReturn: number) =>
+    request<SpDca>(`/api/data/sp-dca?monthly=${monthly}&years=${years}&annual_return=${annualReturn}`),
   budgetSummary: (month?: string) => request<BudgetSummary>(`/api/data/budget/summary${month ? `?month=${month}` : ""}`),
   budgetSetIncome: (monthly_net: number, extra = 0, memo = "") =>
     request<BudgetIncome>(`/api/data/budget/income`, { method: "POST", body: JSON.stringify({ monthly_net, extra, memo }) }),
@@ -2184,6 +2326,10 @@ export const api = {
   fundamentals: (ticker: string) => request<FundamentalsResponse>(`/api/data/fundamentals?ticker=${ticker}`),
   financials: (ticker: string) => request<FinancialsResponse>(`/api/data/financials?ticker=${ticker}`),
   dartFinancials: (ticker: string) => request<DartFinancials>(`/api/data/dart-financials?ticker=${ticker}`),
+  unitEconomicsProducts: () =>
+    request<{ as_of: string; products: UEProduct[] }>(`/api/data/unit-economics/products`),
+  unitEconomics: (product: string) =>
+    request<UnitEconomics>(`/api/data/unit-economics?product=${encodeURIComponent(product)}`),
   crisisMeta: () => request<CrisisMeta>(`/api/crisis/meta`),
   crisisSim: (metric: string, crises?: string[]) => {
     const q = new URLSearchParams({ metric });

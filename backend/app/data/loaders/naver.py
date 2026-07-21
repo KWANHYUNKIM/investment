@@ -77,5 +77,58 @@ def fetch_fundamentals(ticker: str, on: str | None = None) -> pd.DataFrame:
     return pd.DataFrame([row])
 
 
+# ── 연간 재무·배당 시계열 (배당 심층분석용) ──────────────────────────────
+# m.stock.naver.com/api/stock/{code}/finance/annual 은 최근 3개 사업연도 + 컨센서스
+# 1년치를, 각 계정(매출액·당기순이익·주당배당금·ROE 등)의 연도→값 맵으로 준다.
+# 금액 단위: 매출액·영업이익·당기순이익 = 억원, 주당배당금(DPS) = 원, ROE/부채비율 = %.
+_ANNUAL_TITLES = ("매출액", "영업이익", "당기순이익", "주당배당금", "ROE", "부채비율")
+
+
+def fetch_annual(ticker: str) -> dict:
+    """연도별 매출/영업이익/순이익/주당배당금/ROE 시계열.
+
+    반환: {"years":[{"year":2023,"estimate":False},...],
+           "series":{"매출액":{2023:val,...}, "주당배당금":{...}, ...}}
+    값이 없으면 빈 dict.
+    """
+    url = f"https://m.stock.naver.com/api/stock/{ticker}/finance/annual"
+    r = requests.get(url, headers=_UA, timeout=12)
+    r.raise_for_status()
+    fi = (r.json() or {}).get("financeInfo") or {}
+    tr = fi.get("trTitleList") or []
+    rows = fi.get("rowList") or []
+    if not tr or not rows:
+        return {}
+
+    years = []
+    key_year: dict[str, int] = {}
+    for t in tr:
+        key = t.get("key")  # "202312"
+        if not key or len(key) < 4:
+            continue
+        yr = int(key[:4])
+        key_year[key] = yr
+        years.append({"year": yr, "estimate": (t.get("isConsensus") == "Y")})
+
+    series: dict[str, dict] = {}
+    for row in rows:
+        title = row.get("title")
+        if title not in _ANNUAL_TITLES:
+            continue
+        cols = row.get("columns") or {}
+        vals: dict[int, float] = {}
+        for key, cell in cols.items():
+            yr = key_year.get(key)
+            if yr is None:
+                continue
+            v = _num((cell or {}).get("value"))
+            if v is not None:
+                vals[yr] = v
+        if vals:
+            series[title] = vals
+
+    return {"years": years, "series": series}
+
+
 def pace(seconds: float = 0.05) -> None:
     time.sleep(seconds)

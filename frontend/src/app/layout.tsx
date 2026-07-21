@@ -30,8 +30,12 @@ export default function RootLayout({
     <html
       lang="ko"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      suppressHydrationWarning
     >
-      <body className="min-h-full flex flex-col bg-[#fafafa] text-[#1f1f1f]">{children}</body>
+      {/* 브라우저 확장(Grammarly·비밀번호 매니저·번역기 등)이 <body>에 속성을 주입해
+          SSR HTML과 클라이언트 DOM이 달라지는 것을 무시한다. 이 요소 '자체' 속성에만
+          적용되며 트리 내부의 실제 불일치는 그대로 잡힌다. */}
+      <body className="min-h-full flex flex-col bg-[#fafafa] text-[#1f1f1f]" suppressHydrationWarning>{children}</body>
     </html>
   );
 }

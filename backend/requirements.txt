@@ -13,6 +13,7 @@ pyarrow==18.1.0
 # --- Market data sources ---
 pykrx==1.0.51          # Korea: KOSPI/KOSDAQ OHLCV + fundamentals
 yfinance==0.2.51       # US / global equities
+finance-datareader==0.9.202  # Korea/US: 종목 리스트 + OHLCV (asset_detail)
 
 # --- Optimization (portfolio) ---
 scipy==1.15.0

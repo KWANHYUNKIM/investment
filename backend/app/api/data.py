@@ -14,6 +14,8 @@ from app.data.macro import crossasset
 from app.data.reports import daily_archive
 from app.data.fundamentals import dart
 from app.data.fundamentals import dart_financials
+from app.data.fundamentals import unit_economics
+from app.data.fundamentals import commodities
 from app.data.news import feed
 from app.data.fundamentals import financials
 from app.data.intel import futuretheme
@@ -26,6 +28,10 @@ from app.data.market import signals as signals_mod
 from app.data.market import stock_score
 from app.data.market import watchlist
 from app.data.market import dividends
+from app.data.market import dividend_detail
+from app.data.market import dividend_royalty
+from app.data.market import dividend_etf
+from app.data.market import crisis_survivors
 from app.data.market import budget
 from app.data.market import income
 from app.data.market import wealthplan
@@ -509,6 +515,48 @@ def dividend_universe_endpoint():
     return dividends.stock_universe()
 
 
+@router.get("/dividend-detail")
+def dividend_detail_endpoint(ticker: str = Query(..., description="single ticker")):
+    """종목 단위 배당 심층 분석 — 배당률 + 투자전 체크리스트(매출·순이익·영업현금흐름·
+    배당연수·배당성장률) + 3대 위기(2000·2008·2020) 배당 내역."""
+    return dividend_detail.detail(ticker)
+
+
+@router.get("/dividend-royalty")
+def dividend_royalty_endpoint(invest: float = Query(default=0, ge=0)):
+    """배당 성장주 레퍼런스 — 배당왕(50년+)·배당귀족(25년+ & S&P500)·월배당 포트.
+
+    invest>0 이면 월배당 동일가중 포트폴리오의 월 배당(세전/세후) 추정도 함께 반환.
+    """
+    out = dividend_royalty.board()
+    if invest > 0:
+        out["portfolio"] = dividend_royalty.monthly_portfolio(invest)
+    return out
+
+
+@router.get("/crisis-survivors")
+def crisis_survivors_endpoint():
+    """3대 위기(2000·2008·2020)를 이겨내고 우상향한 배당주 — 장기 주가 궤적 +
+    위기별 낙폭 + 배당 방어(배당왕/귀족). 첫 호출은 주가 취합으로 느릴 수 있음(하루 캐시)."""
+    return crisis_survivors.board()
+
+
+@router.get("/dividend-etf")
+def dividend_etf_endpoint():
+    """배당·인덱스 ETF 레퍼런스 — 배당성장(VIG·SCHD·DGRO 등)·고배당·커버드콜·S&P500."""
+    return dividend_etf.board()
+
+
+@router.get("/sp-dca")
+def sp_dca_endpoint(
+    monthly: float = Query(default=500000, ge=0, description="월 적립액(원 또는 통화단위)"),
+    years: float = Query(default=20, gt=0, le=60),
+    annual_return: float = Query(default=0.10, ge=-0.5, le=0.5),
+):
+    """S&P500 적립형 — 매월 적립 시 미래가치·예상 배당 추정(복리)."""
+    return dividend_etf.sp_dca(monthly, years, annual_return)
+
+
 @router.get("/kospi-earnings")
 def kospi_earnings_endpoint():
     """전체 기업 실적 — 매출·영업이익·순이익·영업이익률·전년比 + PER/PBR/ROE/시총(전 종목)."""
@@ -951,3 +999,26 @@ def ohlc(
         "close": [_f(v) for v in df["close"]],
         "volume": [_f(v) for v in df["volume"]],
     }
+
+
+@router.get("/unit-economics/products")
+def unit_economics_products():
+    """제품 단위 원가분해가 가능한 제품 목록 (위젯 드롭다운용)."""
+    return {"as_of": commodities.AS_OF, "products": unit_economics.list_products()}
+
+
+@router.get("/unit-economics")
+def unit_economics_endpoint(
+    product: str = Query(..., description="product id, e.g. 004370:sinramyeon"),
+):
+    """제품 1개를 팔면 소비자가가 누구에게 얼마씩 가는지 + 마진 민감도."""
+    try:
+        return unit_economics.teardown(product)
+    except KeyError:
+        raise HTTPException(404, f"unknown product: {product}")
+
+
+@router.get("/commodities")
+def commodities_endpoint():
+    """원자재 시세 스냅샷 (원가분해 엔진의 가격 소스)."""
+    return {"as_of": commodities.AS_OF, "items": commodities.all()}
