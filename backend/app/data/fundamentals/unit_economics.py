@@ -3705,6 +3705,9 @@ def list_products() -> list[dict]:
     for pid, p in _auto_products().items():
         if pid in PRODUCTS or p.get("ticker") in curated_tickers:
             continue  # 수작업이 있으면 자동본은 숨김
+        # 원재료 매핑이 하나도 없는 자동본(껍데기·비영업 법인·파싱실패)은 숨김
+        if not any(m.get("commodity") for m in p.get("material_mix", [])):
+            continue
         out.append({"id": pid, "ticker": p["ticker"], "company": p["company"],
                     "product": p["product"], "unit": p["unit"], "sector": AUTO_SECTOR})
     return out

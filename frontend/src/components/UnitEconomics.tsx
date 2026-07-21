@@ -100,8 +100,8 @@ export function UnitEconomics() {
             }}
             className="rounded border border-white/30 bg-white/10 px-2 py-1 text-xs text-white outline-none [&>option]:text-black"
           >
-            <option value="전체">🗂 전체 업종</option>
-            {sectors.map((sec) => (
+            <option key="all" value="전체">🗂 전체 업종</option>
+            {sectors.filter(Boolean).map((sec) => (
               <option key={sec} value={sec}>{sec}</option>
             ))}
           </select>
@@ -111,7 +111,7 @@ export function UnitEconomics() {
             className="max-w-[240px] rounded border border-white/30 bg-white/10 px-2 py-1 text-xs text-white outline-none [&>optgroup]:text-black [&>option]:text-black"
           >
             {grouped.map(([sec, ps]) => (
-              <optgroup key={sec} label={sec}>
+              <optgroup key={sec || "기타"} label={sec || "기타"}>
                 {ps.map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.company} · {p.product}
