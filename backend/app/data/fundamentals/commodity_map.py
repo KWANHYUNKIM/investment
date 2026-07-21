@@ -56,13 +56,19 @@ _RULES: list[tuple[tuple[str, ...], str]] = [
 ]
 
 # '원유'가 우유(raw_milk)인지 원유(crude)인지: 회사/맥락 키워드로 구분.
-_MILK_HINT = ("우유", "유가공", "낙농", "원유(", "집유", "생유", "유제품", "분유", "치즈")
+_MILK_HINT = ("우유", "유가공", "낙농", "집유", "생유", "유제품", "분유", "치즈")
+# 크루드오일 강신호 — 우유 맥락과 겹쳐도 이게 있으면 원유(crude)로 확정.
+_CRUDE_STRONG = ("정제", "정유", "석유", "petroleum", "bbl", "배럴", "쿠웨이트",
+                 "kuwait", "dubai", "브렌트", "brent", "wti")
 
 
 def to_commodity(name: str, context: str = "") -> str | None:
     """품목명(+선택 문맥)을 커모디티 키로. 없으면 None."""
     s = (name or "").lower()
     ctx = (context or "").lower()
+    # '원유'는 우유/원유 중의로 애매 — 강한 크루드 신호가 있으면 우유 판정보다 우선.
+    if "원유" in s and any(t in s or t in ctx for t in _CRUDE_STRONG):
+        return "crude_oil"
     # 우유 맥락이면 '원유'는 raw_milk
     if "원유" in s and any(h in ctx or h in s for h in _MILK_HINT):
         return "raw_milk"
