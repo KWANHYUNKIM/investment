@@ -8,10 +8,13 @@
 """
 from __future__ import annotations
 
+import base64
 import html
+import io
 import time
 
 from app.data.market import dividend_detail, crisis_survivors, dividend_etf, dividend_royalty
+from app.data.infra import store
 
 
 # ── 문서 빌더 (섹션 → 마크다운/HTML) ──────────────────────────────────────
@@ -24,7 +27,7 @@ def _md(blocks: list) -> str:
         elif t == "h3":
             out.append(f"### {b[1]}")
         elif t == "p":
-            out.append(b[1])
+            out.append(str(b[1]))
         elif t == "quote":
             out.append(f"> {b[1]}")
         elif t == "ul":
@@ -34,6 +37,8 @@ def _md(blocks: list) -> str:
             out.append("| " + " | ".join(headers) + " |")
             out.append("| " + " | ".join(["---"] * len(headers)) + " |")
             out.extend("| " + " | ".join(str(c) for c in r) + " |" for r in rows)
+        elif t == "img":
+            out.append(f"![{b[2]}]({b[1]})")
         elif t == "hr":
             out.append("---")
         out.append("")
@@ -61,6 +66,8 @@ def _html(blocks: list) -> str:
             th = "".join(f"<th>{e(str(h))}</th>" for h in headers)
             trs = "".join("<tr>" + "".join(f"<td>{e(str(c))}</td>" for c in r) + "</tr>" for r in rows)
             out.append(f'<table border="1" cellpadding="6" cellspacing="0"><thead><tr>{th}</tr></thead><tbody>{trs}</tbody></table>')
+        elif t == "img":
+            out.append(f'<img src="{b[1]}" alt="{e(b[2])}" style="max-width:100%;border-radius:8px;" />')
         elif t == "hr":
             out.append("<hr>")
     return "\n".join(out)
@@ -140,29 +147,238 @@ def dividend_stock(ticker: str) -> dict:
     return _pack(f"{name} 배당 분석 (배당률 {yld}%)", blocks, ["배당주", "배당투자", name])
 
 
+def _chart_data_uri(ticker: str, up: bool, days: int = 40) -> str | None:
+    """종목의 최근 주가 라인차트 PNG를 base64 data URI 로. (블로그 임베드용)"""
+    try:
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+        import matplotlib.dates as mdates
+        from datetime import datetime, timedelta
+
+        start = (datetime.now() - timedelta(days=days * 2)).strftime("%Y-%m-%d")
+        wide = store.load_prices(tickers=[ticker], market="KR", start=start, field="close")
+        if wide is None or wide.empty or ticker not in wide.columns:
+            return None
+        ser = wide[ticker].dropna().tail(days)
+        if len(ser) < 3:
+            return None
+        color = "#c0392b" if up else "#1971c2"
+        fig, ax = plt.subplots(figsize=(5.2, 2.2), dpi=110)
+        ax.plot(ser.index, ser.values, color=color, linewidth=2)
+        ax.fill_between(ser.index, ser.values, ser.min(), color=color, alpha=0.08)
+        ax.margins(x=0.01)
+        ax.grid(True, axis="y", alpha=0.25, linewidth=0.5)
+        for sp in ("top", "right", "left"):
+            ax.spines[sp].set_visible(False)
+        ax.tick_params(labelsize=7, length=0)
+        ax.xaxis.set_major_formatter(mdates.DateFormatter("%m/%d"))
+        ax.xaxis.set_major_locator(mdates.AutoDateLocator())
+        last = ser.values[-1]
+        ax.annotate(f"{last:,.0f}", (ser.index[-1], last), textcoords="offset points",
+                    xytext=(4, 0), fontsize=8, color=color, fontweight="bold", va="center")
+        fig.tight_layout(pad=0.4)
+        buf = io.BytesIO()
+        fig.savefig(buf, format="png", bbox_inches="tight")
+        plt.close(fig)
+        return "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()
+    except Exception:
+        return None
+
+
+# 증시/종목 관련 뉴스인지 판별하는 키워드 — 동명이의(예: 제지회사 '모나리자' vs 그림
+# '모나리자')로 인한 잘못된 원인 귀속을 막는다. 거짓 원인은 절대 넣지 않는다.
+_STOCK_KW = (
+    "주가", "급등", "급락", "상한가", "하한가", "특징주", "종목", "증시", "코스피", "코스닥",
+    "신고가", "신저가", "강세", "약세", "상승", "하락", "매수", "매도", "목표주가", "실적",
+    "수주", "계약", "공시", "인수", "합병", "유상증자", "무상증자", "배당", "거래량", "시총",
+    "어닝", "분기", "영업이익", "적자", "흑자", "리포트", "증권", "투자", "테마", "관련주",
+    "해운주", "조선주", "방산", "바이오", "2차전지", "반도체", "%", "％",
+)
+
+
+def _is_stock_relevant(article: dict, name: str) -> bool:
+    """기사 제목/관련보도에 증시·종목 맥락이 있으면 True. 동명이의 오귀속 방지."""
+    hay = (article.get("title") or "")
+    hay += " " + " ".join(article.get("cluster") or [])
+    if name and name not in hay:
+        # 회사명이 아예 없으면 관련성 낮음(구글뉴스는 보통 이름으로 검색됨)
+        pass
+    return any(k in hay for k in _STOCK_KW)
+
+
+def _relevant_news(news: list[dict], name: str) -> list[dict]:
+    return [a for a in (news or []) if _is_stock_relevant(a, name)]
+
+
+def _mover_blocks(it: dict, real_move: bool) -> list:
+    """핫 종목 1개 → 제목 + 차트 + (검증된) 뉴스 발췌 블록.
+
+    real_move=True 면 실제 등락률 기준(급등/급락). False 면 데이터가 평평한 상태라
+    등락률을 단정하지 않고 거래대금 기준으로만 표기한다(거짓 표기 방지).
+    """
+    name = it.get("name") or it.get("ticker")
+    chg = it.get("change_pct") or 0
+    up = chg >= 0
+    sign = "+" if chg >= 0 else ""
+    val = it.get("value") or 0
+    val_txt = f"{val/1e8:,.0f}억" if val >= 1e8 else f"{round(val):,}원"
+    close_txt = f"{round(it.get('close') or 0):,}원"
+    if real_move and abs(chg) >= 0.01:
+        head = f"{name}  {sign}{chg}%  (종가 {close_txt})"
+    else:
+        head = f"{name}  거래대금 {val_txt}  (종가 {close_txt})"
+    blocks: list = [("h3", head)]
+    uri = _chart_data_uri(it.get("ticker"), up)
+    if uri:
+        blocks.append(("img", uri, f"{name} 최근 주가"))
+
+    rel = _relevant_news(it.get("news") or [], name)
+    if rel:
+        top = rel[0]
+        cause = f"📰 {top.get('title','')}"
+        if top.get("source"):
+            cause += f" — {top['source']}"
+        blocks.append(("p", cause))
+        extra = [f"{a['title']}" + (f" — {a['source']}" if a.get("source") else "")
+                 for a in rel[1:4] if a.get("title")]
+        if extra:
+            blocks.append(("ul", extra))
+    else:
+        # 관련 뉴스가 확인 안 되면 원인을 지어내지 않고 정직하게 표기
+        blocks.append(("p", "관련 증시 뉴스가 뚜렷하게 확인되지 않았습니다. (거래는 활발)"))
+    return blocks
+
+
+def _headline_text(h) -> str | None:
+    if isinstance(h, dict):
+        t = h.get("title") or h.get("headline")
+        return (t + (f" — {h['source']}" if h.get("source") else "")) if t else None
+    if isinstance(h, str):
+        return h
+    return None
+
+
+def _market_issue_blocks() -> list:
+    """하루 전체 이슈 — 시장 분위기 + 주도 테마 + 시장 전체 주요 뉴스.
+
+    livepulse(실시간 시황 취합)의 검증된 분위기·드라이버·뉴스만 쓴다. 지어내지 않는다.
+    """
+    from app.data.news import livepulse
+    try:
+        p = livepulse.pulse()
+    except Exception:
+        return []
+    blocks: list = []
+    pulse = p.get("pulse") or {}
+    drivers = [d for d in (p.get("drivers") or []) if d.get("direction") != "중립"][:5] or (p.get("drivers") or [])[:4]
+    flow = p.get("flow") or []
+
+    # 시장 분위기 한 줄
+    if pulse.get("narrative"):
+        blocks.append(("h2", "🗞️ 오늘 시장 분위기"))
+        blocks.append(("quote", pulse["narrative"]))
+
+    # 하루를 끌고 간 핵심 이슈(테마)
+    if drivers:
+        blocks.append(("h2", "🎯 오늘의 핵심 이슈"))
+        for d in drivers:
+            theme = d.get("theme", "이슈")
+            direction = d.get("direction")
+            cnt = d.get("count")
+            head = theme + (f"  ({direction}" if direction else "  (") + (f" · {cnt}건)" if cnt else ")")
+            blocks.append(("h3", head))
+            # digest 는 헤드라인들이 뭉친 형태라 지저분 → 깔끔한 헤드라인 목록만 사용
+            hl = [t for t in (_headline_text(h) for h in (d.get("headlines") or [])[:4]) if t]
+            if hl:
+                blocks.append(("ul", hl))
+
+    # 시장 전체 주요 뉴스(최신 헤드라인)
+    top_news = []
+    for a in flow[:8]:
+        t = a.get("title")
+        if t:
+            top_news.append(t + (f" — {a['source']}" if a.get("source") else "") + (f" ({a['ago']})" if a.get("ago") else ""))
+    if top_news:
+        blocks.append(("h2", "📰 오늘의 주요 뉴스"))
+        blocks.append(("ul", top_news))
+    return blocks
+
+
+def _sector_blocks(snap: dict) -> list:
+    """업종별 등락 — 오른/내린 업종과 대표 종목(주도 테마 파악)."""
+    up = snap.get("sectors_up") or []
+    down = snap.get("sectors_down") or []
+    if not up and not down:
+        return []
+
+    def _row(s):
+        leaders = ", ".join(l.get("name", "") for l in (s.get("leaders") or [])[:3])
+        return [s.get("sector"), f"{s.get('avg_change_pct'):+.2f}%", str(s.get("count", "")), leaders]
+    blocks: list = [("h2", "🏭 업종별 등락 (오늘 주도 업종)")]
+    if up:
+        blocks.append(("h3", "오른 업종"))
+        blocks.append(("table", ["업종", "평균등락", "종목수", "대표 종목"], [_row(s) for s in up[:5]]))
+    if down:
+        blocks.append(("h3", "내린 업종"))
+        blocks.append(("table", ["업종", "평균등락", "종목수", "대표 종목"], [_row(s) for s in down[:5]]))
+    return blocks
+
+
 def daily_report() -> dict:
     from app.data.market import market_movers
     snap = market_movers.snapshot()
     blocks: list = []
     today = time.strftime("%Y년 %m월 %d일")
-    blocks.append(("h2", f"{today} 시황 브리핑 — 오늘의 급등락 원인"))
-    gainers = (snap.get("gainers") or [])[:5]
-    losers = (snap.get("losers") or [])[:5]
+    thr = snap.get("threshold") or 5.0
+    gainers = (snap.get("gainers") or [])[:4]
+    losers = (snap.get("losers") or [])[:4]
+
+    # 실제 등락이 있는 날인지(데이터 기준). 거짓으로 '급등/급락'이라 부르지 않기 위함.
+    real_move = any(abs(x.get("change_pct") or 0) >= thr for x in gainers + losers)
+    breadth = snap.get("breadth") or {}
+    ai = snap.get("ai")
+
+    if real_move:
+        title = f"{today} 오늘의 급등락 종목 총정리"
+        blocks.append(("h2", f"{today} 오늘의 급등락 — 가장 크게 움직인 종목과 그 이유"))
+        intro = "오늘 시장에서 가장 크게 움직인 종목들을 관련 뉴스와 함께 정리했습니다."
+        if breadth:
+            intro += f" (상승 {breadth.get('advancers','—')} · 하락 {breadth.get('decliners','—')} 종목)"
+        gain_head, lose_head = "🔥 급등 종목", "❄️ 급락 종목"
+    else:
+        title = f"{today} 거래 상위 종목·이슈 정리"
+        blocks.append(("h2", f"{today} 오늘 거래가 활발했던 종목과 이슈"))
+        intro = ("※ 아직 장중 시세가 반영되지 않아 등락률을 단정하지 않고, 거래대금(거래가 "
+                 "몰린 정도) 기준으로 정리했습니다. 등락률은 장 마감 데이터가 들어오면 갱신됩니다.")
+        gain_head, lose_head = "💹 거래대금 상위 (관심 집중)", None
+
+    blocks.append(("p", intro))
+    if ai and isinstance(ai, dict) and ai.get("summary"):
+        blocks.append(("quote", ai["summary"]))
+
+    # ── 하루 전체 이슈: 시장 분위기 + 핵심 테마 + 주요 뉴스 + 업종 등락 ──
+    blocks.extend(_market_issue_blocks())
+    blocks.extend(_sector_blocks(snap))
+
+    # ── 개별 종목: 급등락/거래 상위 + 종목별 원인 뉴스 ──
     if gainers:
-        blocks.append(("h3", "급등 종목 TOP 5"))
-        blocks.append(("table", ["종목", "등락률", "종가"],
-                       [[g.get("name") or g.get("ticker"), f"+{g.get('change_pct')}%", f"{round(g.get('close') or 0):,}원"] for g in gainers]))
-    if losers:
-        blocks.append(("h3", "급락 종목 TOP 5"))
-        blocks.append(("table", ["종목", "등락률", "종가"],
-                       [[l.get("name") or l.get("ticker"), f"{l.get('change_pct')}%", f"{round(l.get('close') or 0):,}원"] for l in losers]))
-    cause = snap.get("ai_cause") or snap.get("cause")
-    if cause and isinstance(cause, dict) and cause.get("summary"):
-        blocks.append(("h3", "오늘 시장 한줄 요약"))
-        blocks.append(("quote", cause["summary"]))
+        blocks.append(("h2", gain_head))
+        for it in gainers:
+            blocks.extend(_mover_blocks(it, real_move))
+    if losers and lose_head:
+        blocks.append(("h2", lose_head))
+        for it in losers:
+            blocks.extend(_mover_blocks(it, real_move))
+
     blocks.append(("hr",))
-    blocks.append(("p", "※ 자동 생성 시황 리포트입니다. 투자 판단의 책임은 본인에게 있습니다."))
-    return _pack(f"{today} 시황 브리핑", blocks, ["시황", "증시", "급등주", "급락주"])
+    blocks.append(("p", "※ 원인으로 제시한 뉴스는 증시 관련성으로 선별했으나 상관관계일 뿐 "
+                        "인과를 보장하지 않습니다. 수치·인용은 실제 데이터·기사 기준이며, "
+                        "확인되지 않은 원인은 임의로 넣지 않습니다. 투자 판단의 책임은 본인에게 있습니다."))
+    tags = (["오늘의증시", "급등주", "급락주", "시황"] if real_move
+            else ["오늘의증시", "거래상위", "관심종목", "시황"])
+    tags += [g.get("name") for g in gainers[:2] if g.get("name")]
+    return _pack(title, blocks, tags)
 
 
 def crisis_survivors_post() -> dict:
