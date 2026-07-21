@@ -753,6 +753,24 @@ export interface SpDca {
   future_value: number; gain: number; est_annual_dividend: number; est_monthly_dividend: number; note: string;
 }
 
+// ── 관리자 ────────────────────────────────────────────────────────────────
+export interface Me { username: string; is_admin: boolean; }
+export interface BlogPost { title: string; markdown: string; html: string; tags: string[]; generated_at: string; }
+export interface AdminUser { username: string; email: string | null; name: string | null; created: number | null; is_admin: boolean; }
+export interface AdminStatus {
+  coverage: { market: string; tickers: number; rows: number; first_date: string; last_date: string }[];
+  price_scheduler: Record<string, unknown>;
+  report_scheduler: Record<string, unknown>;
+  fundamentals_crawler: Record<string, unknown>;
+  dart_enabled: boolean;
+}
+export interface VisitorStats {
+  total: number; today: number;
+  top_views: { view: string; count: number }[];
+  daily: { date: string; count: number }[];
+}
+export interface Curation { headline: string; picks: string[]; note: string; updated_at: string | null; }
+
 export interface BudgetIncome {
   monthly_net: number;
   extra: number;
@@ -2171,6 +2189,17 @@ export interface UnitEconomics {
     op_change_pct: number | null;
     verdict: string;
   };
+  company?: {
+    year: number | null;
+    headcount: number | null;
+    avg_salary_manwon: number | null;
+    revenue_eok: number | null;
+    labor_eok: number | null;
+    labor_pct: number | null;
+    sga_eok: number | null;
+    op_eok: number | null;
+    sga_per_day_eok: number | null;
+  } | null;
 }
 
 export const api = {
@@ -2185,6 +2214,17 @@ export const api = {
     request<{ usernames: string[] }>("/api/auth/find-id", { method: "POST", body: JSON.stringify({ email }) }),
   authResetPassword: (username: string, email: string, new_password: string, code: string) =>
     request<{ ok: boolean }>("/api/auth/reset-password", { method: "POST", body: JSON.stringify({ username, email, new_password, code }) }),
+  me: () => request<Me>("/api/auth/me"),
+  track: (view: string) => request<{ ok: boolean }>("/api/track", { method: "POST", body: JSON.stringify({ view }) }),
+  // 관리자
+  adminBlogGenerate: (p: { kind: string; ticker?: string; title?: string; body?: string }) =>
+    request<BlogPost>("/api/admin/blog/generate", { method: "POST", body: JSON.stringify(p) }),
+  adminUsers: () => request<{ users: AdminUser[]; admins: string[] }>("/api/admin/users"),
+  adminStatus: () => request<AdminStatus>("/api/admin/status"),
+  adminStats: () => request<VisitorStats>("/api/admin/stats"),
+  adminCurationGet: () => request<Curation>("/api/admin/curation"),
+  adminCurationSet: (headline: string, picks: string[], note: string) =>
+    request<Curation>("/api/admin/curation", { method: "POST", body: JSON.stringify({ headline, picks, note }) }),
   coverage: () => request<Coverage[]>("/api/data/coverage"),
   securities: (market?: string) =>
     request<Security[]>(`/api/data/securities${market ? `?market=${market}` : ""}`),

@@ -147,6 +147,9 @@ export function UnitEconomics() {
             </span>
           </div>
 
+          {/* 회사 규모 · 인건비 · 숨만 쉬어도 나가는 고정비 */}
+          {data.company && <CompanyPanel c={data.company} />}
+
           {/* 핵심 스탯 */}
           <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
             <Stat label="소비자가" value={won(s.retail_price)} />
@@ -239,6 +242,45 @@ export function UnitEconomics() {
           </p>
         </div>
       )}
+    </div>
+  );
+}
+
+function eok(v: number | null | undefined): string {
+  if (v == null) return "—";
+  if (Math.abs(v) >= 10000) return `${(v / 10000).toFixed(1)}조`;
+  return `${Math.round(v).toLocaleString("ko-KR")}억`;
+}
+
+function CompanyPanel({ c }: { c: NonNullable<UE["company"]> }) {
+  return (
+    <div className="mb-4 rounded-md border border-[#c7d9cd] bg-[#f4f9f5] p-3">
+      <div className="mb-2 flex items-center gap-2 text-xs font-bold text-[#217346]">
+        🏢 회사 규모 · 숨만 쉬어도 나가는 고정비
+        {c.year && <span className="font-normal text-[#8aa593]">DART {c.year} 실측</span>}
+      </div>
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+        <MiniStat label="총 인원" value={c.headcount != null ? `${c.headcount.toLocaleString("ko-KR")}명` : "—"}
+          sub={c.avg_salary_manwon ? `1인평균 ${c.avg_salary_manwon.toLocaleString("ko-KR")}만원` : undefined} />
+        <MiniStat label="연 매출" value={eok(c.revenue_eok)} />
+        <MiniStat label="연 인건비" value={eok(c.labor_eok)}
+          sub={c.labor_pct != null ? `매출의 ${c.labor_pct}%` : undefined} />
+        <MiniStat label="연 판관비(고정비)" value={eok(c.sga_eok)} tone="warn"
+          sub="숨만 쉬어도 나가는 돈" />
+        <MiniStat label="하루 고정비" value={c.sga_per_day_eok != null ? `${c.sga_per_day_eok}억/일` : "—"} tone="warn" />
+        <MiniStat label="연 영업이익" value={eok(c.op_eok)} tone={(c.op_eok ?? 0) >= 0 ? "pos" : "neg"} />
+      </div>
+    </div>
+  );
+}
+
+function MiniStat({ label, value, sub, tone }: { label: string; value: string; sub?: string; tone?: "pos" | "neg" | "warn" }) {
+  const color = tone === "pos" ? "#1b7a3d" : tone === "neg" ? "#c92a2a" : tone === "warn" ? "#c76a00" : "#212529";
+  return (
+    <div className="rounded border border-[#dbe6de] bg-white px-2 py-1.5">
+      <div className="text-[10px] text-[#7a8b80]">{label}</div>
+      <div className="text-sm font-bold tabular-nums" style={{ color }}>{value}</div>
+      {sub && <div className="text-[9px] text-[#adb5bd]">{sub}</div>}
     </div>
   );
 }
