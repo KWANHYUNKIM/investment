@@ -564,6 +564,20 @@ def kospi_earnings_endpoint():
     return earnings.board()
 
 
+@router.get("/delisting-risk")
+def delisting_risk_endpoint():
+    """관리종목·상장폐지 위험 스크리너 + 감사 정정(어닝쇼크) 공시 경보."""
+    from app.data.market import delisting
+    return delisting.board()
+
+
+@router.get("/earnings-quality")
+def earnings_quality_endpoint():
+    """이익의 질·회계 착시 — 연결범위·비지배지분·일회성이익·자산처분이익 탐지."""
+    from app.data.market import earnings_quality
+    return earnings_quality.board()
+
+
 # --- 가계부 (급여·카드내역·저축계획) ------------------------------------------
 @router.get("/budget/summary")
 def budget_summary(month: str | None = Query(default=None), user: str = Depends(require_auth)):

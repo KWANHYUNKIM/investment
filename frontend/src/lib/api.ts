@@ -591,6 +591,70 @@ export interface StockScoreBoard {
   note: string;
 }
 
+export interface DelistingReason { sev: number; text: string; }
+export interface DelistingAlert {
+  date: string;
+  report_nm: string;
+  sev: number;
+  kind: string;
+  rcept_no: string;
+}
+export interface DelistingRow {
+  ticker: string;
+  name: string;
+  market: string;
+  dept: string | null;
+  level: number;
+  level_name: string;
+  designated: string | null;
+  tech_special: boolean;
+  reasons: DelistingReason[];
+  consec_op_loss: number;
+  latest_year: number | null;
+  latest_op: number | null;
+  latest_sales: number | null;
+  impair_rate: number | null;
+  alerts: DelistingAlert[];
+}
+export interface DelistingBoard {
+  generated_at: string;
+  count: number;
+  summary: Record<string, number>;
+  alerts_generated_at: string | null;
+  market_class_ready: boolean;
+  rows: DelistingRow[];
+  note: string;
+}
+
+export interface EqFlag { sev: number; kind: string; text: string; }
+export interface EqRow {
+  ticker: string;
+  name: string;
+  score: number;
+  latest_year: number | null;
+  rev: number | null;
+  op: number | null;
+  ni: number | null;
+  rev_yoy: number | null;
+  minor_eq_ratio: number | null;
+  minor_ni_ratio: number | null;
+  ctrl_equity: number | null;
+  disposal_gain: number | null;
+  sep_op: number | null;
+  gross_margin: number | null;
+  ar_ratio: number | null;
+  capital: number | null;
+  cap_impair_rate: number | null;
+  flags: EqFlag[];
+}
+export interface EqBoard {
+  generated_at: string;
+  count: number;
+  summary: Record<string, number>;
+  rows: EqRow[];
+  note: string;
+}
+
 export interface WatchRow {
   ticker: string;
   name: string | null;
@@ -2246,6 +2310,8 @@ export const api = {
   targetPrice: (ticker: string) => request<TargetPrice>(`/api/data/target-price?ticker=${ticker}`),
   signals: (ticker: string) => request<TradeSignals>(`/api/data/signals?ticker=${ticker}`),
   stockScore: () => request<StockScoreBoard>(`/api/data/stock-score`),
+  delistingRisk: () => request<DelistingBoard>(`/api/data/delisting-risk`),
+  earningsQuality: () => request<EqBoard>(`/api/data/earnings-quality`),
   watchlist: () => request<Watchlist>(`/api/data/watchlist`),
   watchlistAdd: (ticker: string) => request<Watchlist>(`/api/data/watchlist/add?ticker=${ticker}`, { method: "POST" }),
   watchlistRemove: (ticker: string) => request<Watchlist>(`/api/data/watchlist/remove?ticker=${ticker}`, { method: "POST" }),
