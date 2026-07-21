@@ -20,7 +20,7 @@ import secrets
 import threading
 import time
 
-from fastapi import Header, HTTPException
+from fastapi import Depends, Header, HTTPException
 
 from app.core.config import get_settings
 
@@ -93,6 +93,22 @@ def has_users() -> bool:
 
 def user_exists(username: str) -> bool:
     return (username or "") in _load().get("users", {})
+
+
+def list_users() -> list[dict]:
+    """관리자용 사용자 목록(비밀번호 해시 제외)."""
+    users = _load().get("users", {})
+    out = []
+    for name, u in users.items():
+        out.append({
+            "username": name,
+            "email": u.get("email"),
+            "name": u.get("name"),
+            "created": u.get("created"),
+            "is_admin": is_admin(name),
+        })
+    out.sort(key=lambda x: x.get("created") or 0)
+    return out
 
 
 def _hash_pw(password: str, salt: bytes) -> bytes:
@@ -274,10 +290,26 @@ def verify_token(token: str) -> str | None:
     return u if user_exists(u) else None
 
 
+# --- 관리자 --------------------------------------------------------------
+def admin_users() -> set[str]:
+    raw = get_settings().admin_usernames or ""
+    return {u.strip() for u in raw.split(",") if u.strip()}
+
+
+def is_admin(username: str) -> bool:
+    return (username or "").strip() in admin_users()
+
+
 # --- FastAPI 의존성 --------------------------------------------------------
 def require_auth(authorization: str = Header(default="")) -> str:
     token = authorization[7:].strip() if authorization.lower().startswith("bearer ") else authorization.strip()
     user = verify_token(token)
     if not user:
         raise HTTPException(401, "로그인이 필요합니다.")
+    return user
+
+
+def require_admin(user: str = Depends(require_auth)) -> str:
+    if not is_admin(user):
+        raise HTTPException(403, "관리자 권한이 필요합니다.")
     return user

@@ -58,7 +58,7 @@ def reset_password(username: str = Body(...), email: str = Body(...),
 
 @router.get("/me")
 def me(user: str = Depends(auth.require_auth)):
-    return {"username": user}
+    return {"username": user, "is_admin": auth.is_admin(user)}
 
 
 @router.post("/change-password")

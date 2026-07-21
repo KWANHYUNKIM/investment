@@ -29,8 +29,9 @@ import { RealEstateMap } from "@/components/RealEstateMap";
 import { MarketMovers } from "@/components/MarketMovers";
 import { MarketBriefing } from "@/components/MarketBriefing";
 import { UnitEconomics } from "@/components/UnitEconomics";
+import { Admin } from "@/components/Admin";
 
-type Tab = "market" | "briefing" | "open" | "movers" | "score" | "watch" | "dividend" | "unitecon" | "budget" | "wealth" | "live" | "money" | "korea" | "inst" | "future" | "report" | "industry" | "crisis" | "realestate";
+type Tab = "market" | "briefing" | "open" | "movers" | "score" | "watch" | "dividend" | "unitecon" | "budget" | "wealth" | "live" | "money" | "korea" | "inst" | "future" | "report" | "industry" | "crisis" | "realestate" | "admin";
 
 // ── ERP식 좌측 사이드바: 18개 기능을 6개 모듈로 그룹핑 ────────────────────
 const NAV: { group: string; icon: string; items: { id: Tab; label: string }[] }[] = [
@@ -66,11 +67,14 @@ const NAV: { group: string; icon: string; items: { id: Tab; label: string }[] }[
     { id: "realestate", label: "부동산 지도" },
   ] },
 ];
+// 관리자 전용 네비(관리자에게만 노출)
+const ADMIN_NAV = { group: "운영", icon: "🛠", items: [{ id: "admin" as Tab, label: "관리자" }] };
+const ALL_NAV = [...NAV, ADMIN_NAV];
 const TAB_LABEL: Record<Tab, string> = Object.fromEntries(
-  NAV.flatMap((g) => g.items.map((it) => [it.id, it.label])),
+  ALL_NAV.flatMap((g) => g.items.map((it) => [it.id, it.label])),
 ) as Record<Tab, string>;
 const GROUP_OF: Record<Tab, string> = Object.fromEntries(
-  NAV.flatMap((g) => g.items.map((it) => [it.id, g.group])),
+  ALL_NAV.flatMap((g) => g.items.map((it) => [it.id, g.group])),
 ) as Record<Tab, string>;
 
 export default function Page() {
@@ -81,7 +85,7 @@ export default function Page() {
   );
 }
 
-function Sidebar({ tab, setTab, collapsed }: { tab: Tab; setTab: (t: Tab) => void; collapsed: boolean }) {
+function Sidebar({ tab, setTab, collapsed, nav }: { tab: Tab; setTab: (t: Tab) => void; collapsed: boolean; nav: typeof ALL_NAV }) {
   // 아코디언: 기본은 모든 그룹 펼침. 접혀도 현재 탭의 그룹은 항상 펼침 유지.
   const [closed, setClosed] = useState<Record<string, boolean>>({});
   const toggle = (g: string) => setClosed((s) => ({ ...s, [g]: !s[g] }));
@@ -90,7 +94,7 @@ function Sidebar({ tab, setTab, collapsed }: { tab: Tab; setTab: (t: Tab) => voi
     // 아이콘 레일: 그룹 아이콘만. 클릭 시 그 그룹의 첫 화면으로 이동.
     return (
       <aside className="flex w-12 shrink-0 flex-col items-center gap-1 border-r border-[#d7ddd9] bg-[#f3f5f4] py-2">
-        {NAV.map((g) => {
+        {nav.map((g) => {
           const active = GROUP_OF[tab] === g.group;
           return (
             <button key={g.group} title={g.group} onClick={() => setTab(g.items[0].id)}
@@ -105,7 +109,7 @@ function Sidebar({ tab, setTab, collapsed }: { tab: Tab; setTab: (t: Tab) => voi
 
   return (
     <aside className="flex w-52 shrink-0 flex-col overflow-y-auto border-r border-[#d7ddd9] bg-[#f3f5f4] py-1.5">
-      {NAV.map((g) => {
+      {nav.map((g) => {
         const isClosed = closed[g.group] && GROUP_OF[tab] !== g.group;
         return (
           <div key={g.group} className="mb-0.5">
@@ -144,6 +148,7 @@ function Home() {
   const [navCollapsed, setNavCollapsed] = useState(false);
   const [online, setOnline] = useState<boolean | null>(null);
   const [coverage, setCoverage] = useState<Coverage[]>([]);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -158,12 +163,20 @@ function Home() {
       } catch {
         if (alive) setOnline(false);
       }
+      try {
+        const me = await api.me();
+        if (alive) setIsAdmin(me.is_admin);
+      } catch { /* 비관리자/미로그인 */ }
     })();
     return () => {
       alive = false;
     };
   }, []);
 
+  // 방문자 통계: 화면 전환 시 조회 기록
+  useEffect(() => { api.track(tab).catch(() => {}); }, [tab]);
+
+  const nav = isAdmin ? ALL_NAV : NAV;
   const kr = coverage.find((c) => c.market === "KR");
 
   return (
@@ -204,7 +217,7 @@ function Home() {
 
       {/* ── 본문: 좌측 사이드바 + 콘텐츠 ─────────────────────────── */}
       <div className="flex min-h-0 flex-1">
-        <Sidebar tab={tab} setTab={setTab} collapsed={navCollapsed} />
+        <Sidebar tab={tab} setTab={setTab} collapsed={navCollapsed} nav={nav} />
         <main className="min-h-0 flex-1">
           {tab === "market" ? (
             <MarketView />
@@ -249,6 +262,7 @@ function Home() {
                 {tab === "industry" && <IndustryMap />}
                 {tab === "crisis" && <CrisisSim />}
                 {tab === "realestate" && <RealEstateMap />}
+                {tab === "admin" && isAdmin && <Admin />}
               </div>
             </div>
           )}

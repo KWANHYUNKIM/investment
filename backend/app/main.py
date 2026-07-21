@@ -9,6 +9,7 @@ from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api import auth, backtest, crisis, data, portfolio, screening
+from app.api import admin
 from app.core.auth import require_auth
 from app.core.config import get_settings
 from app.data.fundamentals import fundamentals_crawler
@@ -85,3 +86,6 @@ app.include_router(crisis.router, dependencies=_protected)
 app.include_router(screening.router, dependencies=_protected)
 app.include_router(backtest.router, dependencies=_protected)
 app.include_router(portfolio.router, dependencies=_protected)
+# 관리자 라우터(엔드포인트별 require_admin) + 방문자 추적(require_auth) 공개 라우터.
+app.include_router(admin.router)
+app.include_router(admin.track_router)

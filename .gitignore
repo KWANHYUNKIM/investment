@@ -28,6 +28,9 @@ out/
 *.tsbuildinfo
 frontend/.env.local
 
+# Claude Code 세션/메모리 데이터 (프로젝트 설정 .claude/settings.json 은 유지)
+.claude/projects/
+
 # OS / Editor
 .DS_Store
 Thumbs.db

@@ -19,6 +19,9 @@ class Settings(BaseSettings):
     # Annual risk-free rate used in Sharpe / Sortino calculations.
     risk_free_rate: float = 0.03
 
+    # 관리자 계정(쉼표구분 아이디). 관리자 페이지·블로그 생성 등 운영기능 접근 허용.
+    admin_usernames: str = ""
+
     # DART (전자공시) open API key — enables 5% major-holder names by ticker.
     dart_api_key: str = ""
 
