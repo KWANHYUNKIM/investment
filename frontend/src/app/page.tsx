@@ -28,7 +28,7 @@ import { CrisisSim } from "@/components/CrisisSim";
 import { RealEstateMap } from "@/components/RealEstateMap";
 import { MarketMovers } from "@/components/MarketMovers";
 import { MarketBriefing } from "@/components/MarketBriefing";
-import { UnitEconomics } from "@/components/UnitEconomics";
+import { CompanyCostModel } from "@/components/CompanyCostModel";
 import { DelistingScreener } from "@/components/DelistingScreener";
 import { EarningsQuality } from "@/components/EarningsQuality";
 import { Admin } from "@/components/Admin";
@@ -43,7 +43,7 @@ const NAV: { group: string; icon: string; items: { id: Tab; label: string }[] }[
     { id: "movers", label: "급등락 원인" },
     { id: "watch", label: "관심·보유" },
     { id: "dividend", label: "배당·실적" },
-    { id: "unitecon", label: "제품 원가분해" },
+    { id: "unitecon", label: "원가분석" },
     { id: "delisting", label: "관리종목·상폐 경보" },
     { id: "eq", label: "회계 착시 탐지" },
   ] },
@@ -243,7 +243,7 @@ function Home() {
                     <KospiEarnings />
                   </div>
                 )}
-                {tab === "unitecon" && <UnitEconomics />}
+                {tab === "unitecon" && <CompanyCostModel />}
                 {tab === "delisting" && <DelistingScreener />}
                 {tab === "eq" && <EarningsQuality />}
                 {tab === "budget" && <BudgetManager />}

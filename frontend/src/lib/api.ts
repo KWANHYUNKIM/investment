@@ -2266,6 +2266,147 @@ export interface UnitEconomics {
   } | null;
 }
 
+// ===== 회사 단위 원가분석 (원가분석 탭 드릴다운) =====
+export interface CCMCompany {
+  ticker: string;
+  company: string;
+  sector: string;
+  n_products: number;
+  cogs_ratio: number;
+  op_margin: number;
+  basis: string;
+}
+export interface CCMProduct {
+  id: string;
+  product: string;
+  unit: string;
+  retail_price: number;
+  cogs_ratio: number;
+  op_margin: number;
+  profit_per_unit: number;
+  top_materials: string[];
+  material_names: (string | null)[];
+}
+export interface CCMMaterial {
+  item: string;
+  pct_of_cogs: number;
+  commodity: string | null;
+  commodity_key: string | null;
+  price: number | null;
+  unit: string | null;
+  chg_1y: number | null;
+  direction: "up" | "down" | "flat" | null;
+}
+export interface CCMReconciliation {
+  bottom_up_op_margin: number;
+  reported_op_margin: number;
+  gap_pp: number;
+  status: "ok" | "warn" | "mismatch" | "loss";
+  loss_making?: boolean;
+  reason?: string;
+  assumptions: string[];
+}
+export interface CCMFinYear {
+  year: number;
+  sales: number;
+  revenue_eok: number;
+  cogs_ratio: number;
+  sga_ratio: number | null;
+  op_margin: number | null;
+}
+export interface CCMVarContribution {
+  item: string;
+  commodity: string | null;
+  material_eok: number;
+  chg_1y: number;
+  variance_eok: number;
+  fu: "U" | "F" | "—";
+}
+export interface CCMVariance {
+  basis: string;
+  years: string;
+  price_variance_eok: number;
+  price_variance_pp: number;
+  price_fu: "U" | "F" | "—";
+  actual_change_pp: number;
+  actual_fu: "U" | "F" | "—";
+  efficiency_pp: number;
+  efficiency_fu: "U" | "F" | "—";
+  cogs_ratio_change_3y_pp: number | null;
+  contributions: CCMVarContribution[];
+  note: string;
+  verdict: string;
+}
+export interface CompanyCostModel {
+  ticker: string;
+  company: string;
+  sector: string;
+  as_of: string;
+  basis: { source: string; year: number | null; sales: number | null };
+  summary: { cogs_ratio: number; sga_ratio: number; op_margin: number; revenue_eok: number | null };
+  financials_3y: CCMFinYear[];
+  variance: CCMVariance | null;
+  products: CCMProduct[];
+  materials: CCMMaterial[];
+  reconciliation: CCMReconciliation;
+  financials_detail: {
+    source: string;
+    year: number | null;
+    rows: { label: string; eok: number | null; pct: number }[];
+    note: string;
+  };
+  company_block: UnitEconomics["company"];
+  coverage: { products: string; sales_mix: string; financials: string };
+}
+
+// ===== P1: DART 사업보고서 품목별 매출구성 =====
+export interface CompanyProducts {
+  ticker: string;
+  products: { name: string; pct: number }[];
+  source: string;
+  coverage: string;
+}
+
+// ===== 애널리스트 리포트 취합 (Tier 1: 사실+링크) =====
+export interface AnalystReport {
+  title: string;
+  broker: string;
+  date: string;
+  url: string | null;
+  target_price?: number | null;
+}
+export interface AnalystProvider {
+  broker: string;
+  date: string;
+  target: number | null;
+  opinion: string;
+}
+export interface AnalystConsensus {
+  opinion_score: number;
+  opinion_label: string;
+  target_price: number;
+  eps: number;
+  per: number;
+  n_institutions: number;
+  as_of: string | null;
+  opinion_dist: { buy: number; hold: number; sell: number };
+  providers: AnalystProvider[];
+  source: string;
+}
+export interface AnalystReports {
+  ticker: string;
+  company: string;
+  n_reports: number;
+  brokers: string[];
+  broker_count: number;
+  latest_date: string | null;
+  reports: AnalystReport[];
+  consensus: AnalystConsensus | null;
+  target_sample?: { n: number; avg: number | null; high: number | null; low: number | null };
+  source: string;
+  error?: string;
+}
+
 export const api = {
   health: () => request<Health>("/api/health"),
   authLogin: (username: string, password: string) =>
@@ -2436,6 +2577,14 @@ export const api = {
     request<{ as_of: string; products: UEProduct[] }>(`/api/data/unit-economics/products`),
   unitEconomics: (product: string) =>
     request<UnitEconomics>(`/api/data/unit-economics?product=${encodeURIComponent(product)}`),
+  companyCostModelList: () =>
+    request<{ as_of: string; sectors: string[]; companies: CCMCompany[] }>(`/api/data/company-costmodel/list`),
+  companyCostModel: (ticker: string) =>
+    request<CompanyCostModel>(`/api/data/company-costmodel?ticker=${encodeURIComponent(ticker)}`),
+  analystReports: (ticker: string, company: string) =>
+    request<AnalystReports>(`/api/data/analyst-reports?ticker=${encodeURIComponent(ticker)}&company=${encodeURIComponent(company)}`),
+  companyProducts: (ticker: string) =>
+    request<CompanyProducts>(`/api/data/company-products?ticker=${encodeURIComponent(ticker)}`),
   crisisMeta: () => request<CrisisMeta>(`/api/crisis/meta`),
   crisisSim: (metric: string, crises?: string[]) => {
     const q = new URLSearchParams({ metric });

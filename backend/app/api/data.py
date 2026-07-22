@@ -15,6 +15,7 @@ from app.data.reports import daily_archive
 from app.data.fundamentals import dart
 from app.data.fundamentals import dart_financials
 from app.data.fundamentals import unit_economics
+from app.data.fundamentals import company_costmodel
 from app.data.fundamentals import commodities
 from app.data.news import feed
 from app.data.fundamentals import financials
@@ -1030,6 +1031,45 @@ def unit_economics_endpoint(
         return unit_economics.teardown(product)
     except KeyError:
         raise HTTPException(404, f"unknown product: {product}")
+
+
+@router.get("/company-costmodel/list")
+def company_costmodel_list():
+    """레벨1: 회사 목록(업종 태그 포함) + 업종 필터 목록.  (원가분석 드릴다운)"""
+    return {
+        "as_of": commodities.AS_OF,
+        "sectors": company_costmodel.sectors(),
+        "companies": company_costmodel.list_companies(),
+    }
+
+
+@router.get("/company-costmodel")
+def company_costmodel_endpoint(
+    ticker: str = Query(..., description="종목코드, 예: 004370"),
+):
+    """레벨2·3: 회사의 품목 전체 원가·영익 + 원재료 시세 + 마진 정합성 + 재무근거."""
+    try:
+        return company_costmodel.analyze(ticker)
+    except KeyError:
+        raise HTTPException(404, f"unknown company: {ticker}")
+
+
+@router.get("/company-products")
+def company_products_endpoint(
+    ticker: str = Query(..., description="종목코드, 예: 004370"),
+):
+    """(P1) DART 사업보고서에서 회사가 실제로 파는 품목·매출비중% 자동 발굴."""
+    return company_costmodel.dart_products(ticker)
+
+
+@router.get("/analyst-reports")
+def analyst_reports_endpoint(
+    ticker: str = Query(..., description="종목코드, 예: 004370"),
+    company: str = Query(..., description="회사명, 예: 농심"),
+):
+    """회사별 애널리스트 리포트 취합(Tier 1) — 제목·증권사·작성일·원문 링크(사실+링크만)."""
+    from app.data.news import naver_research
+    return naver_research.reports(company, ticker)
 
 
 @router.get("/commodities")
