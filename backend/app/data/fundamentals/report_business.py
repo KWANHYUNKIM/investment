@@ -32,6 +32,9 @@ from app.data.fundamentals.dart import _load_corp_map, enabled
 from app.data.fundamentals import auto_costmodel as ac
 
 _TTL = 30 * 24 * 3600.0
+# 파서를 고치면 올린다. 캐시에 같이 적어두고 다르면 무시 → **옛 파서 결과가 남지 않는다.**
+# (실제로 겪음: 배치가 만든 구버전 캐시 때문에 고친 뒤에도 '백만개'가 품목명으로 남아 있었다)
+_PARSER_VERSION = 2
 
 # 품목명이 아니라 '구분' 값 — 이게 이름이 되면 전 품목이 '수입'이 된다.
 _QUALIFIER = re.compile(r"^(수입|국내|내수|수출|해외|직수출|로컬)$")
@@ -311,8 +314,10 @@ def business(ticker: str, refresh: bool = False) -> dict:
     if cp.exists() and not refresh:
         try:
             d = json.loads(cp.read_text(encoding="utf-8"))
-            if time.time() - d.get("_ts", 0) < _TTL:
+            if (time.time() - d.get("_ts", 0) < _TTL
+                    and d.get("_v") == _PARSER_VERSION):
                 d.pop("_ts", None)
+                d.pop("_v", None)
                 return d
         except Exception:
             pass
@@ -352,7 +357,8 @@ def business(ticker: str, refresh: bool = False) -> dict:
     if not out["available"]:
         out["reason"] = "가격변동추이·생산실적 표 미공시 또는 파싱 실패"
     try:
-        cp.write_text(json.dumps({**out, "_ts": time.time()}, ensure_ascii=False), encoding="utf-8")
+        cp.write_text(json.dumps({**out, "_ts": time.time(), "_v": _PARSER_VERSION},
+                                 ensure_ascii=False), encoding="utf-8")
     except Exception:
         pass
     return out

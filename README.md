@@ -70,3 +70,17 @@ npm install; npm run dev
 # MVVM 데모 (루트에서)
 & backend\.venv\Scripts\python.exe -m examples.mvvm.demo
 ```
+
+### 운영·자동화 (Windows) — 권장
+
+DuckDB 가 **단일 쓰기**라 서버와 배치가 서로 DB 를 막는다. 그 조율을 스크립트가 대신한다.
+자세한 사용법은 [ops/win/README.md](ops/win/README.md).
+
+```powershell
+.\ops\win\serve.ps1 start           # 배치 끝나길 기다렸다가 세션과 분리해 기동
+.\ops\win\serve.ps1 status          # 서버·API·배치·마지막 배치 시각
+.\ops\win\batch.ps1 verify          # 공시 파서 스모크 테스트(깨지면 종료코드 1)
+.\ops\win\batch.ps1 report -Top 40  # 전 종목 재무제표 이상 종목(업종 보정)
+.\ops\win\batch.ps1 costmodel       # 전 종목 원가모델 배치(서버 자동 정지→재기동)
+.\ops\win\schedule.ps1 install      # 로그온 시 서버 + 매일 03:10 야간 배치 등록
+```

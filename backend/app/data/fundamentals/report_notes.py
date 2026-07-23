@@ -31,6 +31,7 @@ from app.data.fundamentals import auto_costmodel as ac
 _BASE = "https://opendart.fss.or.kr/api"
 _MAIN_MAX = 2_000_000        # 이보다 큰 멤버는 본문(사업의 내용) — 주석 파싱에서 제외
 _TTL = 30 * 24 * 3600.0
+_PARSER_VERSION = 4          # 파서 수정 시 올린다 → 옛 결과 캐시를 자동 무효화
 
 _UNIT = (("십억원", 1e9), ("백만원", 1e6), ("천원", 1e3), ("억원", 1e8), ("원", 1.0))
 
@@ -102,9 +103,24 @@ def _cat_of(name: str) -> str:
 
 def _parse_cost_nature(txt: str) -> dict | None:
     """「비용의 성격별 분류」 표 → {unit, items[{name,cat,cur,prev}], totals}."""
-    i = txt.find("비용의 성격별 분류")
-    if i < 0:
-        return None
+    # 제목이 회사마다 다르다: '비용의 성격별 분류'(농심·POSCO) / '비용의 성격별 공시'(삼성SDI).
+    # 게다가 목차·판관비 명세 등 **다른 절에도** 같은 말이 나온다.
+    # 그래서 후보를 모두 파싱한 뒤 **원가 3요소(재료비·노무비)가 들어 있는 표**를 고른다.
+    # 첫 매칭을 그냥 쓰면 판관비 성격별 표가 잡혀 재료비가 통째로 빠진다(POSCO에서 실제로 발생).
+    best, best_score = None, -1
+    for m0 in list(re.finditer(r"비용의\s*성격별|성격별\s*(?:분류|공시|정보|비용)", txt))[:8]:
+        got = _parse_at(txt, m0.start())
+        if not got:
+            continue
+        cats = {it["cat"] for it in got["items"]}
+        score = (100 if "재료비" in cats else 0) + (50 if "노무비" in cats else 0) + len(got["items"])
+        if score > best_score:
+            best, best_score = got, score
+    return best
+
+
+def _parse_at(txt: str, i: int) -> dict | None:
+    """제목 위치 ``i`` 뒤의 표에서 성격별 비용을 읽는다. 실패하면 None."""
     # 단위는 제목 문단 뒤 설명문·표 캡션 어디에나 온다(포스코는 표 안 첫 행) → 넉넉히 훑는다.
     head = _flat(txt[i:i + 4000])
     mu = re.search(r"단위\s*[:：]?\s*(십억원|백만원|천원|억원|원)", head)
@@ -114,7 +130,7 @@ def _parse_cost_nature(txt: str) -> dict | None:
     pos = i
     for _ in range(4):
         j = txt.find("<TABLE", pos)
-        if j < 0:
+        if j < 0 or j - i > 6000:
             return None
         end = txt.find("</TABLE>", j)
         rows = ac._table_rows(txt[j:end + 8])
@@ -225,8 +241,9 @@ def notes(ticker: str, refresh: bool = False) -> dict:
     if cp.exists() and not refresh:
         try:
             d = json.loads(cp.read_text(encoding="utf-8"))
-            if time.time() - d.get("_ts", 0) < _TTL:
+            if time.time() - d.get("_ts", 0) < _TTL and d.get("_v") == _PARSER_VERSION:
                 d.pop("_ts", None)
+                d.pop("_v", None)
                 return d
         except Exception:
             pass
@@ -287,7 +304,8 @@ def notes(ticker: str, refresh: bool = False) -> dict:
 
     out["available"] = bool(out["cost_nature"] or out["audit"])
     try:
-        cp.write_text(json.dumps({**out, "_ts": time.time()}, ensure_ascii=False), encoding="utf-8")
+        cp.write_text(json.dumps({**out, "_ts": time.time(), "_v": _PARSER_VERSION},
+                                 ensure_ascii=False), encoding="utf-8")
     except Exception:
         pass
     return out
