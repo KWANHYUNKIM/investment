@@ -1074,6 +1074,16 @@ def statement_audit_endpoint(
     return statement_audit.audit(ticker, nt)
 
 
+@router.get("/report-business")
+def report_business_endpoint(
+    ticker: str = Query(..., description="종목코드, 예: 005490"),
+    refresh: bool = Query(False),
+):
+    """(B3·B4) 사업보고서 「사업의 내용」 — 실제 원재료·제품 단가 변동 + 생산실적·가동률."""
+    from app.data.fundamentals import report_business
+    return report_business.business(ticker, refresh=refresh)
+
+
 @router.get("/report-notes")
 def report_notes_endpoint(
     ticker: str = Query(..., description="종목코드, 예: 004370"),

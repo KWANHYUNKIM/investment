@@ -2490,6 +2490,31 @@ export interface CCMReportNotes {
   note: string;
 }
 
+// B3·B4: 사업보고서 「사업의 내용」 — 실단가 변동 + 생산물량·가동률
+export interface CCMPriceItem {
+  name: string;
+  values: Record<string, number>;
+  latest_period?: string;
+  latest?: number;
+  chg_1y?: number | null;
+  chg_span?: number | null;
+  span?: string;
+}
+export interface CCMBusiness {
+  ticker: string;
+  available: boolean;
+  rcept?: string;
+  reason?: string;
+  price_trend: { scope: string; unit: string | null; items: CCMPriceItem[] }[];
+  utilization: {
+    unit: string | null;
+    items: { name: string; capacity: number | null; output: number | null; utilization_pct: number }[];
+  }[];
+  output_series: { unit: string | null; items: CCMPriceItem[]; dropped_rows?: number }[];
+  source: string;
+  note: string;
+}
+
 // 재무제표 3종 감사 — 커버리지 + 정합성(조작 탐지)
 export interface CCMStatementCheck {
   code: string;
@@ -2533,6 +2558,7 @@ export interface CompanyCostModel {
   labor: CCMLabor | null;
   statement_audit: CCMStatementAudit | null;
   report_notes: CCMReportNotes | null;
+  business: CCMBusiness | null;
   products: CCMProduct[];
   materials: CCMMaterial[];
   reconciliation: CCMReconciliation;
@@ -2779,6 +2805,8 @@ export const api = {
     request<CCMStatementAudit>(`/api/data/statement-audit?ticker=${encodeURIComponent(ticker)}`),
   reportNotes: (ticker: string) =>
     request<CCMReportNotes>(`/api/data/report-notes?ticker=${encodeURIComponent(ticker)}`),
+  reportBusiness: (ticker: string) =>
+    request<CCMBusiness>(`/api/data/report-business?ticker=${encodeURIComponent(ticker)}`),
   crisisMeta: () => request<CrisisMeta>(`/api/crisis/meta`),
   crisisSim: (metric: string, crises?: string[]) => {
     const q = new URLSearchParams({ metric });

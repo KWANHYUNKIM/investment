@@ -172,7 +172,8 @@ def _audit_report_checks(nt: dict | None) -> list[dict]:
     return out
 
 
-def audit(ticker: str, notes: dict | None = None) -> dict:
+def audit(ticker: str, notes: dict | None = None,
+          extra_checks: list[dict] | None = None) -> dict:
     """재무제표 3종 커버리지 + 정합성·조작탐지. DB에 자료가 없으면 coverage만 반환.
 
     ``notes`` 로 ``report_notes.notes(ticker)`` 를 넘기면 **감사의견·계속기업·KAM** 검증이
@@ -307,6 +308,7 @@ def audit(ticker: str, notes: dict | None = None) -> dict:
                     "보이게 했을 수 있다(§11.4-②). 증설·연결범위 변경기에는 정상일 수 있다."))
 
     checks.extend(_audit_report_checks(notes))     # 감사보고서 기반(선택)
+    checks.extend([c for c in (extra_checks or []) if c])   # 물량 기반(B4) 등 외부 검증
 
     # --- 스코어 -----------------------------------------------------------
     # 같은 검증이 3개년 내내 걸리면 3건이 아니라 1건으로 센다(연도 반복 = 같은 문제).

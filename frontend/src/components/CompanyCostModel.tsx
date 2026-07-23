@@ -9,6 +9,7 @@ import {
   CCMProduct,
   CCMFinYear,
   CCMJointAllocation,
+  CCMBusiness,
   CCMCostNature,
   CCMLabor,
   CCMStatementAudit,
@@ -400,6 +401,9 @@ function CompanyDetail({
         <CostNatureSection cn={data.report_notes.cost_nature} url={data.report_notes.url} />
       )}
 
+      {/* ③-3 단가·물량 실측 (B3·B4) */}
+      {data.business?.available && <BusinessSection biz={data.business} />}
+
       {/* ④ 결합원가 배분 (연산·등급 업종만) */}
       {data.joint_allocation && <JointAllocationSection ja={data.joint_allocation} edu={edu} />}
 
@@ -551,6 +555,87 @@ function CostNatureSection({ cn, url }: { cn: CCMCostNature; url?: string }) {
       <button onClick={() => setOpen(!open)} className="mt-1 text-[11px] text-gray-500 hover:text-gray-800">
         {open ? "▾ 접기" : `▸ 성격별 항목 ${cn.items.length}개 전체`}
       </button>
+    </section>
+  );
+}
+
+// ③-3 단가·물량 실측 (B3·B4) — 사업보고서 「사업의 내용」.
+// 금액은 다듬을 수 있어도 **물량은 다듬기 어렵다**. 그래서 매출 검증의 기준선이 된다.
+function ChgChip({ v }: { v?: number | null }) {
+  if (v == null) return <span className="text-[11px] text-gray-300">—</span>;
+  const up = v > 0;
+  return (
+    <span className="whitespace-nowrap text-[11px] font-semibold" style={{ color: up ? "#c92a2a" : v < 0 ? "#1971c2" : "#868e96" }}>
+      {up ? "▲" : v < 0 ? "▼" : "→"} {v > 0 ? "+" : ""}{(v * 100).toFixed(1)}%
+    </span>
+  );
+}
+
+function BusinessSection({ biz }: { biz: CCMBusiness }) {
+  const [open, setOpen] = useState(false);
+  const util = biz.utilization[0];
+  const out = biz.output_series[0];
+  const mat = biz.price_trend.find((p) => p.scope === "원재료");
+  const prod = biz.price_trend.find((p) => p.scope === "제품");
+
+  return (
+    <section>
+      <h3 className="mb-1 text-sm font-bold text-gray-700">
+        ③-3 단가·물량 <span className="font-normal" style={{ color: GREEN }}>실측</span>
+        <span className="font-normal text-gray-400"> — 사업보고서 「사업의 내용」(공시 단가·생산실적)</span>
+      </h3>
+
+      {util && util.items.length > 0 && (
+        <div className="mb-1 flex flex-wrap gap-x-4 gap-y-1 text-[12px] text-gray-700">
+          <span className="font-semibold text-gray-500">가동률:</span>
+          {util.items.slice(0, 4).map((it, i) => (
+            <span key={i}>
+              {it.name}{" "}
+              <b style={{ color: it.utilization_pct >= 80 ? GREEN : it.utilization_pct >= 60 ? "#b8860b" : "#c92a2a" }}>
+                {it.utilization_pct}%
+              </b>
+              {it.capacity != null && it.output != null && (
+                <span className="text-gray-400"> ({it.output.toLocaleString("ko-KR")}/{it.capacity.toLocaleString("ko-KR")} {util.unit ?? ""})</span>
+              )}
+            </span>
+          ))}
+        </div>
+      )}
+
+      <div className="grid gap-3 md:grid-cols-2">
+        {[{ blk: out, title: "생산실적", unitLabel: out?.unit },
+          { blk: mat, title: "원재료 매입단가", unitLabel: mat?.unit },
+          { blk: prod, title: "제품 판매단가", unitLabel: prod?.unit }]
+          .filter((x) => x.blk && x.blk.items.length > 0)
+          .map((x, i) => (
+            <div key={i}>
+              <div className="text-[11px] text-gray-400">
+                {x.title}{x.unitLabel ? ` (${x.unitLabel})` : ""}
+              </div>
+              <table className="w-full text-sm">
+                <tbody>
+                  {(open ? x.blk!.items : x.blk!.items.slice(0, 5)).map((it, j) => (
+                    <tr key={j} className="border-b border-gray-100">
+                      <td className="py-1 pr-2 text-gray-800">{it.name}</td>
+                      <td className="py-1 pr-2 text-right tabular-nums text-gray-600">
+                        {it.latest != null ? it.latest.toLocaleString("ko-KR") : "—"}
+                      </td>
+                      <td className="py-1 text-right"><ChgChip v={it.chg_1y} /></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ))}
+      </div>
+
+      <div className="mt-1 flex flex-wrap items-center gap-x-3 text-[11px] text-gray-400">
+        <button onClick={() => setOpen(!open)} className="text-gray-500 hover:text-gray-800">
+          {open ? "▾ 접기" : "▸ 전체 보기"}
+        </button>
+        <span>{biz.note}</span>
+        {out?.dropped_rows ? <span>· 파싱 불확실 {out.dropped_rows}행 제외</span> : null}
+      </div>
     </section>
   );
 }

@@ -23,6 +23,7 @@ from app.core.config import get_settings
 from app.data.fundamentals import commodities
 from app.data.fundamentals import joint_costing
 from app.data.fundamentals import labor_cost
+from app.data.fundamentals import report_business
 from app.data.fundamentals import report_notes
 from app.data.fundamentals import statement_audit
 from app.data.fundamentals import unit_economics as ue
@@ -572,6 +573,12 @@ def analyze(ticker: str) -> dict:
     except Exception:
         notes = None
 
+    # B3·B4: 사업의 내용 — 실제 단가 변동 + 생산 물량·가동률
+    try:
+        biz = report_business.business(ticker)
+    except Exception:
+        biz = None
+
     # Phase B: 표준(기준)원가 vs 실제 원가차이 분해(최근 1년) — 재료비 비중은 주석 실측 우선
     variance = _variance(mods, financials_3y, notes)
 
@@ -585,9 +592,10 @@ def analyze(ticker: str) -> dict:
     except Exception:
         labor = None
 
-    # 재무제표 3종 감사 — 커버리지 + 정합성(조작 탐지) + 감사보고서(의견·KAM)
+    # 재무제표 3종 감사 — 커버리지 + 정합성 + 감사보고서(의견·KAM) + 물량 대조(B4)
     try:
-        audit = statement_audit.audit(ticker, notes)
+        vol = report_business.volume_check(biz, financials_3y)
+        audit = statement_audit.audit(ticker, notes, [vol] if vol else None)
     except Exception:
         audit = None
 
@@ -613,6 +621,7 @@ def analyze(ticker: str) -> dict:
         "labor": labor,                          # W1 (§12)
         "statement_audit": audit,                # 재무제표 3종 감사
         "report_notes": notes,                   # 사업보고서 원문 실측(성격별 비용·감사의견)
+        "business": biz,                         # B3·B4 실단가·생산물량·가동률
         "products": products,
         "materials": materials,
         "reconciliation": reconciliation,
@@ -629,6 +638,7 @@ def analyze(ticker: str) -> dict:
             "labor": (labor or {}).get("coverage", "unavailable"),
             "statement_audit": "ok" if (audit or {}).get("available") else "unavailable",
             "report_notes": "parsed" if (notes or {}).get("available") else "unavailable",
+            "business": "parsed" if (biz or {}).get("available") else "unavailable",
         },
     }
 
