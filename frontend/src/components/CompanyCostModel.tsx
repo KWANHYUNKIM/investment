@@ -11,6 +11,8 @@ import {
   CCMJointAllocation,
   CostRanking,
   CostRankRow,
+  FutureValueBoard,
+  FVRow,
   CCMBusiness,
   CCMCostNature,
   CCMLabor,
@@ -99,7 +101,7 @@ export function CompanyCostModel() {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
   const [showFin, setShowFin] = useState(false);
-  const [view, setView] = useState<"list" | "rank">("list");
+  const [view, setView] = useState<"list" | "rank" | "future">("list");
 
   useEffect(() => {
     let alive = true;
@@ -151,7 +153,8 @@ export function CompanyCostModel() {
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
-        {([["list", "업종별 목록"], ["rank", "괜찮은 순 (원가 경쟁력)"]] as const).map(([v, label]) => (
+        {([["list", "업종별 목록"], ["rank", "괜찮은 순 (원가 경쟁력)"],
+           ["future", "미래가치 (4문)"]] as const).map(([v, label]) => (
           <button
             key={v}
             onClick={() => setView(v)}
@@ -165,7 +168,9 @@ export function CompanyCostModel() {
         ))}
       </div>
 
-      {view === "rank" ? (
+      {view === "future" ? (
+        <FutureValueView sector={sectorFilter} onSector={setSectorFilter} onPick={setSel} />
+      ) : view === "rank" ? (
         <CostRankingView sector={sectorFilter} sectors={sectors} onSector={setSectorFilter} onPick={setSel} />
       ) : (
       <>
@@ -220,6 +225,202 @@ export function CompanyCostModel() {
       </>
       )}
     </div>
+  );
+}
+
+// ===== 레벨 1-c: 미래가치 4문(門) =====
+const FV_LABEL: Record<string, string> = {
+  reinvest: "재투자", conversion: "전환", endurance: "체력", market: "시장",
+};
+
+function FutureValueView({
+  sector, onSector, onPick,
+}: { sector: string; onSector: (s: string) => void; onPick: (t: string) => void }) {
+  const [data, setData] = useState<FutureValueBoard | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState("");
+  const [onlyLoss, setOnlyLoss] = useState(false);
+  const [open, setOpen] = useState("");
+
+  useEffect(() => {
+    let alive = true;
+    setLoading(true);
+    setErr("");
+    api.futureValue(sector, onlyLoss)
+      .then((r) => alive && setData(r))
+      .catch((e) => alive && setErr(e?.message ?? "미래가치 계산 실패"))
+      .finally(() => alive && setLoading(false));
+    return () => { alive = false; };
+  }, [sector, onlyLoss]);
+
+  if (loading && !data) return <div className="text-sm text-gray-400">미래가치 계산 중… (전 종목 재무제표 스캔)</div>;
+  if (err) return <div className="text-sm text-red-600">{err}</div>;
+  if (!data) return null;
+
+  const order = ["reinvest", "conversion", "endurance", "market"];
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <select value={sector} onChange={(e) => onSector(e.target.value)}
+                className="rounded border border-gray-300 px-2 py-1 text-sm">
+          <option value="전체">업종 전체</option>
+          {data.sectors.map((s) => <option key={s} value={s}>{s}</option>)}
+        </select>
+        <label className="flex items-center gap-1 text-[12px] text-gray-600">
+          <input type="checkbox" checked={onlyLoss} onChange={(e) => setOnlyLoss(e.target.checked)} />
+          적자기업만 (미래투자형 ↔ 소멸형 판별)
+        </label>
+        <span className="text-xs text-gray-400">
+          {data.filtered ?? data.count}사 · 갱신 {data.generated_at}
+          {!data.theme_ready && " · 테마 미준비(시장 항목 중립)"}
+        </span>
+      </div>
+
+      <div className="flex flex-wrap gap-x-4 gap-y-1 rounded bg-gray-50 px-3 py-2 text-[11px] text-gray-600">
+        {Object.entries(data.weights).map(([k, w]) => (
+          <span key={k}><b>{FV_LABEL[k]}</b> {w}점</span>
+        ))}
+        <span className="text-gray-400">※ 뉴스가 섞이는 시장 항목만 배점 최소</span>
+      </div>
+
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[860px] text-sm">
+          <thead>
+            <tr className="border-b text-left text-[11px] text-gray-400">
+              <th className="py-1 pr-2">#</th>
+              <th className="py-1 pr-2">회사</th>
+              <th className="py-1 pr-2 text-right">점수</th>
+              <th className="py-1 pr-2">재투자·전환·체력·시장</th>
+              <th className="py-1 pr-2">판정</th>
+              <th className="py-1 pr-2 text-right">재투자율</th>
+              <th className="py-1 text-right">전환</th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.rows.map((r) => (
+              <FVRowView key={r.ticker} r={r} order={order} open={open === r.ticker}
+                         onToggle={() => setOpen(open === r.ticker ? "" : r.ticker)}
+                         onPick={() => onPick(r.ticker)} />
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="text-[11px] leading-relaxed text-gray-400">{data.note}</p>
+    </div>
+  );
+}
+
+function FVRowView({ r, order, open, onToggle, onPick }:
+  { r: FVRow; order: string[]; open: boolean; onToggle: () => void; onPick: () => void }) {
+  const capped = r.grade !== r.raw_grade;
+  return (
+    <>
+      <tr className="cursor-pointer border-b border-gray-100 hover:bg-gray-50" onClick={onToggle}>
+        <td className="py-1.5 pr-2 tabular-nums text-gray-400">{r.rank}</td>
+        <td className="py-1.5 pr-2">
+          <button onClick={(e) => { e.stopPropagation(); onPick(); }}
+                  className="font-semibold hover:underline" style={{ color: GREEN }}>
+            {r.name}
+          </button>
+          <div className="text-[10px] text-gray-400">
+            {r.sector}{r.year ? ` · FY${r.year}` : ""}
+            {r.loss_making && <span className="ml-1 text-[#c92a2a]">· 적자</span>}
+          </div>
+        </td>
+        <td className="py-1.5 pr-2 text-right">
+          <span className="tabular-nums font-bold" style={{ color: GRADE_COLOR[r.grade] ?? "#333" }}>
+            {r.score.toFixed(1)}
+          </span>
+          <span className="ml-1 rounded px-1 text-[10px] font-bold text-white"
+                style={{ background: GRADE_COLOR[r.grade] ?? "#999" }}>
+            {r.grade}
+          </span>
+          {capped && (
+            <div className="text-[9px] text-[#c92a2a]">반증 상한 ({r.raw_grade}→{r.grade})</div>
+          )}
+        </td>
+        <td className="py-1.5 pr-2">
+          <div className="flex items-center gap-[3px]">
+            {order.map((k) => {
+              const p = r.parts[k];
+              if (!p) return null;
+              const ratio = p.max ? p.score / p.max : 0;
+              return (
+                <span key={k} title={`${FV_LABEL[k]} ${p.score}/${p.max} — ${p.detail}`}
+                      className="h-3 rounded-sm"
+                      style={{
+                        width: `${p.max * 1.6}px`,
+                        background: p.estimated ? "#e5e7eb" : `rgba(33,115,70,${0.25 + ratio * 0.75})`,
+                      }} />
+              );
+            })}
+          </div>
+        </td>
+        <td className="py-1.5 pr-2 text-[11px] text-gray-600">
+          {r.verdict}
+          {r.falsifiers.length > 0 && (
+            <span className="ml-1 rounded px-1 text-[10px] font-bold" style={{ background: "#fbe9e9", color: "#c92a2a" }}>
+              반증 {r.falsifiers.length}
+            </span>
+          )}
+        </td>
+        <td className="py-1.5 pr-2 text-right tabular-nums text-gray-600">
+          {r.reinvest_rate != null ? `${(r.reinvest_rate * 100).toFixed(1)}%` : "—"}
+        </td>
+        <td className="py-1.5 text-right tabular-nums"
+            style={{ color: (r.conversion ?? 0) > 0 ? GREEN : "#c92a2a" }}>
+          {r.conversion != null ? `${r.conversion}배` : "—"}
+        </td>
+      </tr>
+      {open && (
+        <tr>
+          <td colSpan={7} className="bg-gray-50 px-3 py-2">
+            <div className="grid grid-cols-1 gap-1 sm:grid-cols-2">
+              {order.map((k) => {
+                const p = r.parts[k];
+                if (!p) return null;
+                return (
+                  <div key={k} className="rounded border border-gray-200 bg-white px-2 py-1.5">
+                    <div className="flex items-baseline justify-between">
+                      <span className="text-[12px] font-semibold text-gray-700">{FV_LABEL[k]}</span>
+                      <span className="tabular-nums text-[12px]" style={{ color: GREEN }}>
+                        {p.score}<span className="text-gray-400">/{p.max}</span>
+                        {p.estimated && <span className="ml-1 text-[10px] text-amber-600">중립</span>}
+                      </span>
+                    </div>
+                    <div className="text-[11px] text-gray-500">{p.detail}</div>
+                  </div>
+                );
+              })}
+            </div>
+            {r.falsifiers.length > 0 && (
+              <div className="mt-2 rounded border p-2" style={{ borderColor: "#f0c8c8", background: "#fdf6f6" }}>
+                <div className="mb-1 text-[11px] font-bold" style={{ color: "#c92a2a" }}>
+                  반증 신호 — 켜지면 &lsquo;미래에 투자 중&rsquo;이라는 설명이 성립하지 않는다
+                </div>
+                <ul className="space-y-0.5">
+                  {r.falsifiers.map((f, i) => (
+                    <li key={i} className="text-[11px] text-gray-700">
+                      <b style={{ color: "#c92a2a" }}>[상한 {f.cap}]</b> {f.text}
+                      <span className="ml-1 text-gray-400">— {f.why}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            <div className="mt-1 flex flex-wrap gap-x-4 text-[11px] text-gray-500">
+              {r.revenue_eok != null && <span>매출 {r.revenue_eok.toLocaleString("ko-KR")}억</span>}
+              {r.net_cash_eok != null && <span>순현금 {r.net_cash_eok.toLocaleString("ko-KR")}억</span>}
+              {r.cash_positive ? <span>영업현금 흑자</span>
+                : r.runway_months != null && <span>런웨이 {r.runway_months}개월</span>}
+              {r.interest_cover != null && <span>이자보상 {r.interest_cover}배</span>}
+              {r.sales_cagr != null && <span>매출 CAGR {(r.sales_cagr * 100).toFixed(1)}%</span>}
+              {r.themes.length > 0 && <span>테마: {r.themes.slice(0, 3).join(", ")}</span>}
+            </div>
+          </td>
+        </tr>
+      )}
+    </>
   );
 }
 

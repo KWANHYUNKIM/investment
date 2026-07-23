@@ -2624,6 +2624,48 @@ export interface CostRanking {
   note: string;
 }
 
+// ===== 미래가치 4문(門) =====
+export interface FVFalsifier { cap: string; text: string; why: string }
+export interface FVRow {
+  rank: number;
+  ticker: string;
+  name: string;
+  sector: string;
+  score: number;
+  grade: string;
+  raw_grade: string;
+  parts: Record<string, CostRankPart>;
+  estimated_parts: string[];
+  falsifiers: FVFalsifier[];
+  verdict: string;
+  loss_making: boolean;
+  year: number | null;
+  revenue_eok: number | null;
+  op_margin: number | null;
+  reinvest_rate: number | null;
+  conversion: number | null;
+  sales_cagr: number | null;
+  net_cash_eok: number | null;
+  interest_cover: number | null;
+  runway_months: number | null;
+  cash_positive: boolean;
+  dilution_years: number;
+  themes: string[];
+}
+export interface FutureValueBoard {
+  generated_at: string;
+  count: number;
+  filtered?: number;
+  weights: Record<string, number>;
+  grades: Record<string, number>;
+  verdicts: Record<string, number>;
+  loss_verdicts: Record<string, number>;
+  theme_ready: boolean;
+  sectors: string[];
+  rows: FVRow[];
+  note: string;
+}
+
 // ===== P1: DART 사업보고서 품목별 매출구성 =====
 export interface CompanyProducts {
   ticker: string;
@@ -2851,6 +2893,13 @@ export const api = {
   companyProducts: (ticker: string) =>
     request<CompanyProducts>(`/api/data/company-products?ticker=${encodeURIComponent(ticker)}`),
   costingEducation: () => request<CostingEducation>(`/api/data/costing-education`),
+  futureValue: (sector?: string, onlyLoss = false) => {
+    const q = new URLSearchParams();
+    if (sector && sector !== "전체") q.set("sector", sector);
+    if (onlyLoss) q.set("only_loss", "true");
+    const s = q.toString();
+    return request<FutureValueBoard>(`/api/data/future-value${s ? `?${s}` : ""}`);
+  },
   costRanking: (sector?: string) => {
     const q = sector && sector !== "전체" ? `?sector=${encodeURIComponent(sector)}` : "";
     return request<CostRanking>(`/api/data/company-costmodel/ranking${q}`);

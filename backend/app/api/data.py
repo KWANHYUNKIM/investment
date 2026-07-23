@@ -1127,6 +1127,23 @@ def company_costmodel_ranking(
     return cost_ranking.ranking(sector=sector, limit=limit)
 
 
+@router.get("/future-value")
+def future_value_endpoint(
+    sector: str | None = Query(None, description="업종 필터(없으면 전체)"),
+    only_loss: bool = Query(False, description="적자기업만 — 미래투자형/소멸형 판별"),
+    limit: int = Query(0, ge=0, le=1000),
+):
+    """미래가치 4문(門) — 재투자30·전환30·체력30·시장10 + 반증 신호(등급 상한)."""
+    from app.data.fundamentals import future_value
+    b = future_value.board()
+    rows = b["rows"]
+    if sector:
+        rows = [r for r in rows if r["sector"] == sector]
+    if only_loss:
+        rows = [r for r in rows if r["loss_making"]]
+    return {**b, "rows": rows[:limit] if limit else rows, "filtered": len(rows)}
+
+
 @router.get("/company-costmodel/batch")
 def company_costmodel_batch_status():
     """(I1) 전 종목 원가모델 야간 배치 상태 — 언제 돌았고 몇 개/몇 건 실패인지."""
