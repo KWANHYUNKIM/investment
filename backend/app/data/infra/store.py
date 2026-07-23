@@ -152,6 +152,18 @@ CREATE TABLE IF NOT EXISTS dart_financials (
     amount      DOUBLE,             -- 금액 (원)
     PRIMARY KEY (ticker, sj_div, year, account_nm)
 );
+
+-- 반기보고서(reprt_code=11012) 핵심 계정. 상장폐지 요건 중 코스닥 자본잠식은
+-- "사업연도(반기)말" 기준이라 연간(dart_financials)만으로는 판정할 수 없어서,
+-- 자본총계·자본금·매출액 등 판정에 필요한 계정만 따로 얇게 적재한다.
+CREATE TABLE IF NOT EXISTS dart_half (
+    ticker      VARCHAR NOT NULL,
+    year        INTEGER NOT NULL,   -- 사업연도(YYYY) — 그 해 반기말
+    account_nm  VARCHAR NOT NULL,   -- 자본총계 · 자본금 · 매출액 · 영업이익
+    fs_div      VARCHAR,            -- CFS(연결)/OFS(별도)
+    amount      DOUBLE,             -- 금액 (원)
+    PRIMARY KEY (ticker, year, account_nm)
+);
 """
 
 
@@ -523,6 +535,31 @@ def foreign_fin_count() -> int:
 def upsert_dart_financials(df: pd.DataFrame) -> int:
     """Upsert DART 전 계정 재무제표 rows (long-format)."""
     return _upsert("dart_financials", df, ["ticker", "sj_div", "year", "account_nm"])
+
+
+def upsert_dart_half(df: pd.DataFrame) -> int:
+    """Upsert 반기보고서 핵심 계정 rows (상폐요건의 '반기말' 판정용)."""
+    return _upsert("dart_half", df, ["ticker", "year", "account_nm"])
+
+
+def dart_half_map(conn=None) -> dict[str, dict[int, dict[str, float]]]:
+    """{ticker: {year: {account_nm: amount}}} — 반기 계정 전체를 한 번에."""
+    sql = "SELECT ticker, year, account_nm, amount FROM dart_half WHERE amount IS NOT NULL"
+    if conn is not None:
+        rows = conn.execute(sql).fetchall()
+    else:
+        with connection() as c:
+            rows = c.execute(sql).fetchall()
+    out: dict[str, dict[int, dict[str, float]]] = {}
+    for tk, yr, nm, amt in rows:
+        out.setdefault(tk, {}).setdefault(int(yr), {})[nm] = float(amt)
+    return out
+
+
+def dart_half_tickers() -> set[str]:
+    with connection() as conn:
+        rows = conn.execute("SELECT DISTINCT ticker FROM dart_half").fetchall()
+    return {r[0] for r in rows}
 
 
 def dart_financials_count() -> int:

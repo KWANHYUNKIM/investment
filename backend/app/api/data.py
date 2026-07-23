@@ -1054,6 +1054,52 @@ def company_costmodel_endpoint(
         raise HTTPException(404, f"unknown company: {ticker}")
 
 
+@router.get("/company-labor")
+def company_labor_endpoint(
+    ticker: str = Query(..., description="종목코드, 예: 004370"),
+):
+    """(W1) 인건비 실측 — DART 「직원 등의 현황」 3개년·부문별 + 노동생산성 + 조작탐지 플래그."""
+    from app.data.fundamentals import labor_cost
+    return labor_cost.analyze(ticker)
+
+
+@router.get("/statement-audit")
+def statement_audit_endpoint(
+    ticker: str = Query(..., description="종목코드, 예: 005930"),
+    with_report: bool = Query(True, description="감사보고서(의견·KAM)까지 원문에서 확인"),
+):
+    """재무제표 3종(재무상태표·손익계산서·현금흐름표) 구비 점검 + 정합성 조작탐지."""
+    from app.data.fundamentals import report_notes, statement_audit
+    nt = report_notes.notes(ticker) if with_report else None
+    return statement_audit.audit(ticker, nt)
+
+
+@router.get("/report-notes")
+def report_notes_endpoint(
+    ticker: str = Query(..., description="종목코드, 예: 004370"),
+    refresh: bool = Query(False),
+):
+    """사업보고서 **원문** 실측 — 「비용의 성격별 분류」(재료비·노무비·감가상각) + 감사보고서."""
+    from app.data.fundamentals import report_notes
+    return report_notes.notes(ticker, refresh=refresh)
+
+
+@router.get("/statement-audit/coverage")
+def statement_audit_coverage_endpoint(
+    limit: int = Query(0, description="0=전체"),
+):
+    """전 종목 재무제표 적재 현황 — 어느 표가 몇 개 종목에 몇 개년 들어와 있는지."""
+    from app.data.fundamentals import statement_audit
+    return statement_audit.coverage_summary(limit or None)
+
+
+@router.get("/delisting-risk/batch")
+def delisting_batch_status():
+    """관리종목·상폐 스크리너 데이터 배치 상태(시장구분·공시·반기 자본계정 준비 여부)."""
+    from app.data.schedulers import delisting_scheduler
+    return delisting_scheduler.status()
+
+
 @router.get("/costing-education")
 def costing_education_endpoint():
     """⚪ 원가회계 교육 레이어 — 툴팁 + 해설 카드(정적 콘텐츠)."""

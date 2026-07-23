@@ -22,6 +22,9 @@ import time
 from app.core.config import get_settings
 from app.data.fundamentals import commodities
 from app.data.fundamentals import joint_costing
+from app.data.fundamentals import labor_cost
+from app.data.fundamentals import report_notes
+from app.data.fundamentals import statement_audit
 from app.data.fundamentals import unit_economics as ue
 from app.data.infra import store
 
@@ -103,24 +106,33 @@ def income_ratios_3y(ticker: str) -> list[dict]:
 
 
 # --- Phase B: 표준(기준)원가 vs 실제 원가차이 분해 -------------------------
-def _variance(mods: list[dict], fin3y: list[dict]) -> dict | None:
+def _variance(mods: list[dict], fin3y: list[dict], notes: dict | None = None) -> dict | None:
     """최근 1년(FY-1→FY) 원가차이를 가격차이(원자재발)/능률·기타차이(잔차)로 분해.
 
     - 가격차이 = Σ(원재료비ᵢ × 원자재 최근1년 등락률) : 시세가 원가에 준 압력.
     - 실제 원가율 변화 = cogs_ratio[FY] − cogs_ratio[FY-1].
     - 능률·기타차이(잔차) = 실제변화 − 가격차이(%p 환산).
     ⚪ 노무·제조간접의 표준임률/시간차이는 미공시 → 여기 잔차에 포함(주석).
+
+    ``notes`` 가 있으면 매출원가 중 원재료비 비중을 **가정(0.8) 대신 사업보고서
+    「비용의 성격별 분류」 실측**으로 대체한다 — 가격차이 금액이 실측 기반이 된다.
     """
     if len(fin3y) < 2:
         return None
     cur, prev = fin3y[0], fin3y[1]
     cogs_eok = cur["revenue_eok"] * cur["cogs_ratio"]     # 매출원가(억)
 
+    # 원재료비 비중: 주석 실측(재료비 ÷ 매출원가) 우선, 없으면 제품 KB 가정
+    cn = (notes or {}).get("cost_nature") or {}
+    measured_mr = None
+    if cn.get("material_eok") and cogs_eok:
+        measured_mr = round(min(1.0, cn["material_eok"] / cogs_eok), 4)
+
     # 원재료비를 커모디티 기준으로 집계(제품 평균 material_ratio 가중)
     agg: dict[str, dict] = {}
     n = len(mods)
     for m in mods:
-        mr = m.get("material_ratio_of_cogs", 0.8)
+        mr = measured_mr if measured_mr else m.get("material_ratio_of_cogs", 0.8)
         for x in m.get("material_mix", []):
             key = x.get("commodity")
             if not key:
@@ -163,6 +175,9 @@ def _variance(mods: list[dict], fin3y: list[dict]) -> dict | None:
         "efficiency_fu": "U" if eff_pp > 0 else ("F" if eff_pp < 0 else "—"),
         "cogs_ratio_change_3y_pp": change_3y_pp,
         "contributions": contribs,
+        "material_ratio_of_cogs": measured_mr,
+        "material_ratio_source": ("사업보고서 「비용의 성격별 분류」 실측"
+                                  if measured_mr else "제품 KB 가정(0.8 등)"),
         "note": "노무·제조간접의 표준임률/시간차이는 미공시(⚪) → 능률·기타차이(잔차)에 포함.",
         "verdict": _variance_verdict(price_var, eff_pp),
     }
@@ -248,6 +263,9 @@ def _batch_row(a: dict) -> dict:
     """배치 파일에 남길 회사 1개 요약(전체 analyze 응답은 무겁다)."""
     v = a.get("variance") or {}
     ja = a.get("joint_allocation") or {}
+    sa = a.get("statement_audit") or {}
+    lb = (a.get("labor") or {}).get("current") or {}
+    rn = (a.get("report_notes") or {}).get("audit") or {}
     return {
         "company": a["company"],
         "sector": a["sector"],
@@ -263,6 +281,13 @@ def _batch_row(a: dict) -> dict:
         "efficiency_pp": v.get("efficiency_pp"),
         "verdict": v.get("verdict"),
         "recon_status": (a.get("reconciliation") or {}).get("status"),
+        # 아래 4개는 F1(전 종목 재무제표 이상 랭킹)의 재료 — 배치가 밤에 미리 계산해 둔다.
+        "audit_score": sa.get("score"),
+        "audit_verdict": sa.get("verdict"),
+        "audit_opinion": rn.get("opinion"),
+        "headcount": lb.get("headcount"),
+        "avg_salary": lb.get("avg_salary"),
+        "material_ratio_of_cogs": v.get("material_ratio_of_cogs"),
         "coverage": a.get("coverage"),
     }
 
@@ -541,12 +566,30 @@ def analyze(ticker: str) -> dict:
     # Phase A: 3개년 손익 실측
     financials_3y = income_ratios_3y(ticker)
 
-    # Phase B: 표준(기준)원가 vs 실제 원가차이 분해(최근 1년)
-    variance = _variance(mods, financials_3y)
+    # 사업보고서 원문 실측(비용의 성격별 분류 · 감사보고서) — 추정을 실측으로 대체
+    try:
+        notes = report_notes.notes(ticker)
+    except Exception:
+        notes = None
+
+    # Phase B: 표준(기준)원가 vs 실제 원가차이 분해(최근 1년) — 재료비 비중은 주석 실측 우선
+    variance = _variance(mods, financials_3y, notes)
 
     # Phase C(C2·C3): 생산유형 태깅 + 결합원가 배분(연산·등급 업종만)
     ptype = joint_costing.production_type(ticker, sector)
     joint_allocation = _joint_allocation(ticker, sector, financials_3y, ratios, basis)
+
+    # W1: 노무비(인건비) 레이어 — DART 직원현황 실측 + 노동생산성 + 조작탐지 플래그
+    try:
+        labor = labor_cost.analyze(ticker, financials_3y, notes)
+    except Exception:
+        labor = None
+
+    # 재무제표 3종 감사 — 커버리지 + 정합성(조작 탐지) + 감사보고서(의견·KAM)
+    try:
+        audit = statement_audit.audit(ticker, notes)
+    except Exception:
+        audit = None
 
     # 레벨3 재무제표 근거
     financials_detail = _financials_detail(ticker, ratios, basis)
@@ -567,6 +610,9 @@ def analyze(ticker: str) -> dict:
         "variance": variance,                    # Phase B
         "production_type": ptype,                # C2
         "joint_allocation": joint_allocation,    # C3
+        "labor": labor,                          # W1 (§12)
+        "statement_audit": audit,                # 재무제표 3종 감사
+        "report_notes": notes,                   # 사업보고서 원문 실측(성격별 비용·감사의견)
         "products": products,
         "materials": materials,
         "reconciliation": reconciliation,
@@ -580,6 +626,9 @@ def analyze(ticker: str) -> dict:
             "variance": "estimate" if variance else "unavailable",
             "joint_allocation": "estimate" if joint_allocation else (
                 "no-mix" if ptype["is_joint"] else "not-applicable"),
+            "labor": (labor or {}).get("coverage", "unavailable"),
+            "statement_audit": "ok" if (audit or {}).get("available") else "unavailable",
+            "report_notes": "parsed" if (notes or {}).get("available") else "unavailable",
         },
     }
 

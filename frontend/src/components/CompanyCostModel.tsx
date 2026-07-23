@@ -9,6 +9,10 @@ import {
   CCMProduct,
   CCMFinYear,
   CCMJointAllocation,
+  CCMCostNature,
+  CCMLabor,
+  CCMStatementAudit,
+  CCMStatementCheck,
   AnalystReports,
   CompanyProducts,
   CostingEducation,
@@ -236,6 +240,18 @@ function CompanyDetail({
             <Edu k="production_type" edu={edu} />
           </span>
         )}
+        {data.statement_audit?.available && data.statement_audit.score != null && (
+          <span
+            className="rounded px-1.5 py-0.5 text-[11px] font-bold"
+            style={{
+              color: data.statement_audit.score >= 80 ? GREEN : data.statement_audit.score >= 60 ? "#b8860b" : "#c92a2a",
+              background: data.statement_audit.score >= 80 ? "#e9f3ee" : data.statement_audit.score >= 60 ? "#fdf8ef" : "#fdf2f2",
+            }}
+            title={data.statement_audit.verdict}
+          >
+            재무제표 신뢰도 {data.statement_audit.score}
+          </span>
+        )}
       </div>
 
       {/* 3개년 추세 (Phase A) */}
@@ -379,6 +395,11 @@ function CompanyDetail({
         </section>
       )}
 
+      {/* ③-2 원가 구성 실측 — 사업보고서 「비용의 성격별 분류」 */}
+      {data.report_notes?.cost_nature && (
+        <CostNatureSection cn={data.report_notes.cost_nature} url={data.report_notes.url} />
+      )}
+
       {/* ④ 결합원가 배분 (연산·등급 업종만) */}
       {data.joint_allocation && <JointAllocationSection ja={data.joint_allocation} edu={edu} />}
 
@@ -402,7 +423,13 @@ function CompanyDetail({
         </ul>
       </section>
 
-      {/* ⑥ 애널리스트 리포트 취합 (Tier 1) */}
+      {/* ⑥ 인건비·노동생산성 (W1) */}
+      {data.labor && <LaborSection labor={data.labor} />}
+
+      {/* ⑦ 재무제표 3종 감사 — 구비 점검 + 정합성 조작탐지 */}
+      {data.statement_audit && <StatementAuditSection audit={data.statement_audit} />}
+
+      {/* ⑧ 애널리스트 리포트 취합 (Tier 1) */}
       <AnalystReportsSection ticker={data.ticker} company={data.company} verdict={data.variance?.verdict} />
 
       {/* ⚪ 원가회계 해설 (C5 — 접이식 카드) */}
@@ -453,6 +480,302 @@ function CompanyDetail({
         )}
       </section>
     </div>
+  );
+}
+
+// ③-2 원가 구성 실측 — 사업보고서 재무제표 주석 「비용의 성격별 분류」.
+// 그동안 가정(재료비=매출원가의 80%)이던 값을 공시 실측으로 대체한 자리.
+const CAT_COLOR: Record<string, string> = {
+  재료비: "#217346", 노무비: "#2f7ed8", 감가상각: "#8a6d3b", 기타경비: "#adb5bd",
+};
+
+function CostNatureSection({ cn, url }: { cn: CCMCostNature; url?: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <section>
+      <h3 className="mb-1 text-sm font-bold text-gray-700">
+        ③-2 원가 구성 <span className="font-normal" style={{ color: GREEN }}>실측</span>
+        <span className="font-normal text-gray-400"> — 사업보고서 「비용의 성격별 분류」 ({cn.basis})</span>
+      </h3>
+
+      <div className="flex h-5 w-full overflow-hidden rounded border border-gray-200">
+        {cn.breakdown.map((b) => (
+          <div
+            key={b.cat}
+            title={`${b.cat} ${b.amount_eok.toLocaleString("ko-KR")}억 (${b.pct}%)`}
+            style={{ width: `${b.pct}%`, background: CAT_COLOR[b.cat] ?? "#ced4da" }}
+            className="flex items-center justify-center text-[10px] font-semibold text-white"
+          >
+            {b.pct >= 8 ? `${b.cat} ${b.pct}%` : ""}
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-1 flex flex-wrap gap-x-5 gap-y-1 text-[12px] text-gray-600">
+        <span>총비용 <b>{cn.total_cost_eok.toLocaleString("ko-KR")}억</b> (매출원가+판관비)</span>
+        <span>재료비 <b style={{ color: GREEN }}>{cn.material_eok.toLocaleString("ko-KR")}억</b></span>
+        <span>인건비 <b>{cn.labor_eok.toLocaleString("ko-KR")}억</b></span>
+        {url && (
+          <a href={url} target="_blank" rel="noreferrer" className="text-gray-400 underline hover:text-gray-700">
+            공시원문 ↗
+          </a>
+        )}
+      </div>
+
+      {open && (
+        <div className="mt-2 overflow-x-auto">
+          <table className="w-full min-w-[420px] text-sm">
+            <thead>
+              <tr className="border-b text-left text-[11px] text-gray-400">
+                <th className="py-1 pr-2">항목</th>
+                <th className="py-1 pr-2">구분</th>
+                <th className="py-1 pr-2 text-right">당기</th>
+                <th className="py-1 text-right">전기</th>
+              </tr>
+            </thead>
+            <tbody>
+              {cn.items.map((it, i) => (
+                <tr key={i} className="border-b border-gray-100">
+                  <td className="py-1 pr-2 text-gray-800">{it.name}</td>
+                  <td className="py-1 pr-2 text-[11px]" style={{ color: CAT_COLOR[it.cat] ?? "#868e96" }}>{it.cat}</td>
+                  <td className="py-1 pr-2 text-right tabular-nums">{it.amount_eok.toLocaleString("ko-KR")}억</td>
+                  <td className="py-1 text-right tabular-nums text-gray-500">
+                    {it.prev_eok != null ? `${it.prev_eok.toLocaleString("ko-KR")}억` : "—"}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <button onClick={() => setOpen(!open)} className="mt-1 text-[11px] text-gray-500 hover:text-gray-800">
+        {open ? "▾ 접기" : `▸ 성격별 항목 ${cn.items.length}개 전체`}
+      </button>
+    </section>
+  );
+}
+
+// ⑥ 인건비·노동생산성 (W1) — DART 「직원 등의 현황」 법정 공시 실측
+function LaborSection({ labor }: { labor: CCMLabor }) {
+  const cur = labor.current;
+  if (!cur) {
+    return (
+      <section className="rounded border border-gray-200 p-3">
+        <h3 className="mb-1 text-sm font-bold text-gray-700">⑥ 인건비·노동생산성</h3>
+        <p className="text-[12px] text-gray-400">
+          {labor.coverage === "no-key"
+            ? "DART_API_KEY 미설정 — 직원현황 실측 불가."
+            : "이 회사의 직원현황 공시를 찾지 못했습니다."}
+        </p>
+      </section>
+    );
+  }
+  const eok = (v: number | null | undefined) => (v != null ? `${Math.round(v / 1e8).toLocaleString("ko-KR")}억` : "—");
+  const man = (v: number | null | undefined) => (v != null ? `${Math.round(v / 1e4).toLocaleString("ko-KR")}만원` : "—");
+  const prodCur = labor.productivity[0];
+
+  return (
+    <section>
+      <h3 className="mb-1 text-sm font-bold text-gray-700">
+        ⑥ 인건비·노동생산성 <span className="font-normal text-gray-400">(사람값 — DART 실측)</span>
+      </h3>
+
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-sm text-gray-700">
+        <span>직원 <b>{cur.headcount?.toLocaleString("ko-KR") ?? "—"}명</b></span>
+        <span>
+          1인평균 <b style={{ color: GREEN }}>{man(cur.avg_salary)}</b>
+          {cur.avg_salary_disclosed != null && (
+            <span className="ml-1 text-[11px] text-gray-400">(공시 {man(cur.avg_salary_disclosed)})</span>
+          )}
+        </span>
+        <span>총인건비 <b>{eok(cur.annual_labor)}</b></span>
+        {cur.mfg_ratio != null ? (
+          <span>생산부문 <b>{pct(cur.mfg_ratio, 0)}</b> → 제조노무비 <b>{cur.mfg_labor_eok?.toLocaleString("ko-KR") ?? "—"}억</b></span>
+        ) : (
+          <span className="text-[11px] text-gray-400">제조노무비 분리 불가 — {cur.mfg_basis}</span>
+        )}
+        {cur.hourly_cost != null && <span className="text-gray-500">1인시 {won(cur.hourly_cost)}</span>}
+        <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[11px] text-gray-500">FY{cur.year} · {cur.source}</span>
+      </div>
+
+      {labor.consolidated && (
+        <div className="mt-1 text-[12px] text-gray-600">
+          연결 총인건비 <b>{labor.consolidated.consolidated_labor_eok.toLocaleString("ko-KR")}억</b>
+          <span className="text-gray-400"> (주석 실측)</span> vs 제출법인 공시{" "}
+          <b>{labor.consolidated.disclosed_domestic_eok.toLocaleString("ko-KR")}억</b>
+          {labor.consolidated.subsidiary_share != null && (
+            <span> → 자회사(국내·해외) 몫 <b>{pct(labor.consolidated.subsidiary_share, 0)}</b></span>
+          )}
+        </div>
+      )}
+
+      {prodCur && (
+        <div className="mt-1 flex flex-wrap gap-x-5 gap-y-1 text-[12px] text-gray-600">
+          <span>인당매출 <b>{prodCur.rev_per_head_eok}억</b></span>
+          {prodCur.op_per_head_eok != null && <span>인당영익 <b>{prodCur.op_per_head_eok}억</b></span>}
+          {prodCur.labor_to_revenue != null && <span>인건비/매출 <b>{pct(prodCur.labor_to_revenue)}</b></span>}
+          {labor.productivity.length >= 2 && (
+            <span className="text-gray-400">
+              (3년 인당매출 {[...labor.productivity].reverse().map((p) => p.rev_per_head_eok).join(" → ")})
+            </span>
+          )}
+        </div>
+      )}
+
+      {cur.by_segment.length > 1 && (
+        <div className="mt-2 overflow-x-auto">
+          <table className="w-full min-w-[480px] text-sm">
+            <thead>
+              <tr className="border-b text-left text-[11px] text-gray-400">
+                <th className="py-1 pr-2">사업부문</th>
+                <th className="py-1 pr-2">구분</th>
+                <th className="py-1 pr-2 text-right">인원</th>
+                <th className="py-1 pr-2 text-right">1인평균</th>
+                <th className="py-1 pr-2 text-right">근속</th>
+                <th className="py-1 text-right">계약직</th>
+              </tr>
+            </thead>
+            <tbody>
+              {cur.by_segment.slice(0, 8).map((s, i) => (
+                <tr key={i} className="border-b border-gray-100">
+                  <td className="py-1 pr-2 text-gray-800">{s.name}</td>
+                  <td className="py-1 pr-2 text-[11px]" style={{ color: s.kind === "생산" ? GREEN : "#868e96" }}>{s.kind}</td>
+                  <td className="py-1 pr-2 text-right tabular-nums">{s.headcount?.toLocaleString("ko-KR") ?? "—"}</td>
+                  <td className="py-1 pr-2 text-right tabular-nums">{man(s.avg_salary)}</td>
+                  <td className="py-1 pr-2 text-right tabular-nums text-gray-500">{s.tenure != null ? `${s.tenure}년` : "—"}</td>
+                  <td className="py-1 text-right tabular-nums text-gray-500">{s.contract?.toLocaleString("ko-KR") ?? "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {labor.flags.length > 0 && (
+        <div className="mt-2 space-y-1">
+          {labor.flags.map((f, i) => (
+            <div
+              key={i}
+              className="rounded border px-2 py-1 text-[12px]"
+              style={{
+                borderColor: f.severity === "alert" ? "#f1aeae" : f.severity === "warn" ? "#f0d5a8" : "#e5e7eb",
+                background: f.severity === "alert" ? "#fdf2f2" : f.severity === "warn" ? "#fdf8ef" : "#fafafa",
+              }}
+            >
+              <b style={{ color: f.severity === "alert" ? "#c92a2a" : f.severity === "warn" ? "#b8860b" : "#6b7280" }}>
+                {f.severity === "info" ? "" : "⚠ "}{f.type}
+              </b>
+              <span className="ml-1 text-gray-700">{f.detail}</span>
+              <div className="text-[11px] text-gray-500">{f.why}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <ul className="mt-1 list-disc pl-5 text-[11px] text-gray-400">
+        {labor.assumptions.map((a, i) => <li key={i}>{a}</li>)}
+      </ul>
+    </section>
+  );
+}
+
+// 감사보고서 원문에서 온 항목(R*)은 '정상'이라도 항상 보여준다 — 감사의견과 KAM은
+// 그 자체가 정보(감사인이 어디를 위험하게 봤는지)라서 접어두면 안 된다.
+function AuditOpinionLine({ checks }: { checks: CCMStatementCheck[] }) {
+  const op = checks.find((c) => c.code === "R1");
+  const kam = checks.find((c) => c.code === "R5");
+  const gc = checks.find((c) => c.code === "R2");
+  if (!op && !kam && !gc) return null;
+  return (
+    <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px]">
+      {op && (
+        <span>
+          감사의견{" "}
+          <b style={{ color: op.status === "ok" ? GREEN : "#c92a2a" }}>{op.detail}</b>
+        </span>
+      )}
+      {gc && <span style={{ color: "#c92a2a" }} className="font-semibold">계속기업 불확실성</span>}
+      {kam && <span className="text-gray-600">핵심감사사항: {kam.detail.replace(/^\d+건 — /, "")}</span>}
+    </div>
+  );
+}
+
+// ⑦ 재무제표 3종 감사 — 구비 점검(커버리지) + 정합성 검증(조작 탐지)
+function StatementAuditSection({ audit }: { audit: CCMStatementAudit }) {
+  const [open, setOpen] = useState(false);
+  if (!audit.available) {
+    return (
+      <section className="rounded border border-gray-200 p-3">
+        <h3 className="mb-1 text-sm font-bold text-gray-700">⑦ 재무제표 3종 감사</h3>
+        <p className="text-[12px] text-amber-600">{audit.verdict}</p>
+      </section>
+    );
+  }
+  const fails = audit.checks.filter((c) => c.status === "fail");
+  const warns = audit.checks.filter((c) => c.status === "warn");
+  const color = fails.length ? "#c92a2a" : warns.length ? "#b8860b" : GREEN;
+  const shown = open ? audit.checks : [...fails, ...warns].slice(0, 4);
+
+  return (
+    <section>
+      <h3 className="mb-1 text-sm font-bold text-gray-700">
+        ⑦ 재무제표 3종 감사 <span className="font-normal text-gray-400">(구비 점검 + 정합성 = 조작 탐지)</span>
+      </h3>
+
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px]">
+        {audit.statements.filter((s) => ["BS", "IS", "CIS", "CF"].includes(s.sj_div)).map((s) => (
+          <span key={s.sj_div} style={{ color: s.ok ? GREEN : "#c92a2a" }}>
+            {s.ok ? "●" : "○"} {s.label}
+            <span className="ml-1 text-gray-400">
+              {s.ok ? `${s.n_years}개년 · ${s.n_accounts}계정` : "없음"}
+            </span>
+          </span>
+        ))}
+        <span className="ml-auto rounded px-2 py-0.5 text-[12px] font-bold" style={{ color, background: "#f4f4f5" }}>
+          신뢰도 {audit.score}/100
+        </span>
+      </div>
+      <p className="mt-1 text-[12px] font-semibold" style={{ color }}>{audit.verdict}</p>
+      <AuditOpinionLine checks={audit.checks} />
+
+      {shown.length > 0 && (
+        <div className="mt-2 overflow-x-auto">
+          <table className="w-full min-w-[560px] text-sm">
+            <thead>
+              <tr className="border-b text-left text-[11px] text-gray-400">
+                <th className="py-1 pr-2">검증</th>
+                <th className="py-1 pr-2">연도</th>
+                <th className="py-1 pr-2">결과</th>
+                <th className="py-1">내용</th>
+              </tr>
+            </thead>
+            <tbody>
+              {shown.map((c, i) => {
+                const cc = c.status === "fail" ? "#c92a2a" : c.status === "warn" ? "#b8860b" : GREEN;
+                return (
+                  <tr key={i} className="border-b border-gray-100 align-top">
+                    <td className="py-1 pr-2 text-gray-800">{c.label}</td>
+                    <td className="py-1 pr-2 tabular-nums text-gray-500">{c.year ?? "—"}</td>
+                    <td className="py-1 pr-2 font-semibold" style={{ color: cc }}>
+                      {c.status === "fail" ? "이상" : c.status === "warn" ? "관찰" : "정상"}
+                    </td>
+                    <td className="py-1 text-[12px] text-gray-600">
+                      {c.detail}
+                      {c.why && <div className="text-[11px] text-gray-400">{c.why}</div>}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <button onClick={() => setOpen(!open)} className="mt-1 text-[11px] text-gray-500 hover:text-gray-800">
+        {open ? "▾ 접기" : `▸ 전체 검증 ${audit.checks.length}건 보기`}
+      </button>
+      <p className="mt-1 text-[11px] text-gray-400">{audit.note}</p>
+    </section>
   );
 }
 

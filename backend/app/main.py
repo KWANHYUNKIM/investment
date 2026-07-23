@@ -14,6 +14,7 @@ from app.core.auth import require_auth
 from app.core.config import get_settings
 from app.data.fundamentals import fundamentals_crawler
 from app.data.schedulers import costmodel_scheduler
+from app.data.schedulers import delisting_scheduler
 from app.data.schedulers import growth_scheduler
 from app.data.schedulers import industry_scheduler
 from app.data.schedulers import premarket_scheduler
@@ -73,6 +74,9 @@ def _startup() -> None:
     # 원가모델 전 종목 배치: 매일 야간 1회 company_costmodels.json 을 갱신해
     # 원가분석 목록이 추정 대신 DART 실측으로 뜨게 한다(장중 부하·rate limit 회피).
     costmodel_scheduler.start()
+    # 관리종목·상폐 스크리너 배치: 시장구분(FDR)·위험종목 공시·반기 자본계정을 매일
+    # 갱신한다. 이게 안 돌면 시장 구분을 몰라 매출·영업손실·법인세 요건이 통째로 빠진다.
+    delisting_scheduler.start()
 
 
 @app.get("/api/health", tags=["meta"])

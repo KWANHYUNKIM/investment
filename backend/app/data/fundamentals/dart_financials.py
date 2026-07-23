@@ -109,6 +109,81 @@ def fetch(ticker: str, latest_fy: int | None = None) -> list[dict]:
     return rows
 
 
+# ── 반기보고서(11012) — 상폐요건의 '반기말' 판정 전용 ──────────────────────
+# 코스닥 자본잠식 요건은 "사업연도(반기)말" 기준이라 연간 재무제표만으론 판정할 수
+# 없다. 반기 재무상태표에서 자본총계·자본금만 얇게 받아 dart_half 에 적재한다.
+# (반기보고서의 BS 는 thstrm_amount 가 당반기말, frmtrm_amount 는 직전 사업연도말이라
+#  당기 컬럼만 취한다. 손익 계정은 3개월/누적 구분이 있어 여기선 다루지 않는다.)
+_HALF_ACCOUNTS = ("자본총계", "자본금")
+
+
+def fetch_half(ticker: str, years: list[int] | None = None) -> list[dict]:
+    """반기 자본총계·자본금 rows. 미제출 연도는 조용히 건너뛴다. [] on miss."""
+    if not enabled():
+        return []
+    corp = _load_corp_map().get(ticker)
+    if not corp:
+        return []
+    if years is None:
+        latest = _default_latest_fy()
+        years = [latest + 1, latest, latest - 1]   # +1 은 8월 반기보고서 제출 후 자동 편입
+
+    rows: list[dict] = []
+    for y in years:
+        for fs in ("CFS", "OFS"):
+            items = _call_half(corp, y, fs)
+            if not items:
+                continue
+            got = False
+            for it in items:
+                if (it.get("sj_div") or "") != "BS":
+                    continue
+                nm = (it.get("account_nm") or "").strip().replace(" ", "")
+                if nm not in _HALF_ACCOUNTS:
+                    continue
+                amt = _float(it.get("thstrm_amount"))
+                if amt is None:
+                    continue
+                rows.append({"ticker": ticker, "year": y, "account_nm": nm,
+                             "fs_div": fs, "amount": amt})
+                got = True
+            if got:
+                break          # 연결이 나왔으면 별도는 안 받는다
+    return rows
+
+
+def _call_half(corp: str, year: int, fs_div: str) -> list[dict]:
+    try:
+        r = requests.get(_URL, params={
+            "crtfc_key": get_settings().dart_api_key, "corp_code": corp,
+            "bsns_year": str(year), "reprt_code": "11012", "fs_div": fs_div,
+        }, timeout=30)
+        j = r.json()
+    except Exception:
+        return []
+    if j.get("status") != "000":
+        return []
+    return j.get("list") or []
+
+
+def refresh_half(tickers: list[str], pause: float = 0.05) -> int:
+    """위험 종목의 반기 자본계정을 적재(배치). 저장된 회사 수."""
+    if not enabled():
+        return 0
+    n = 0
+    for tk in tickers:
+        rows = fetch_half(tk)
+        if rows:
+            try:
+                store.upsert_dart_half(pd.DataFrame(rows))
+                n += 1
+            except Exception:
+                pass
+        if pause:
+            time.sleep(pause)
+    return n
+
+
 def _default_latest_fy() -> int:
     """가장 최근 '확정 사업연도'. 연초엔 직전 보고서가 아직이라 한 해 보수적으로."""
     try:

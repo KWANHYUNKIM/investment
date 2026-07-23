@@ -591,7 +591,7 @@ export interface StockScoreBoard {
   note: string;
 }
 
-export interface DelistingReason { sev: number; text: string; }
+export interface DelistingReason { sev: number; text: string; kind?: string }
 export interface DelistingAlert {
   date: string;
   report_nm: string;
@@ -614,6 +614,12 @@ export interface DelistingRow {
   latest_op: number | null;
   latest_sales: number | null;
   impair_rate: number | null;
+  equity: number | null;            // 최신 시점 자기자본 (코스닥 (B) 10억 요건)
+  impair_basis: string | null;      // 잠식률 기준 시점 (FY2025말 / FY2025반기말)
+  half_ready: boolean;              // 반기 자본계정 적재 여부
+  market_cap: number | null;        // 비재무 요건: 시가총액(원)
+  cap_days_below: number | null;    // 시총 기준 미달 연속 거래일
+  vol_ratio: number | null;         // 월평균거래량 / 상장주식수(근사)
   alerts: DelistingAlert[];
 }
 export interface DelistingBoard {
@@ -622,6 +628,8 @@ export interface DelistingBoard {
   summary: Record<string, number>;
   alerts_generated_at: string | null;
   market_class_ready: boolean;
+  half_ready: number;               // 반기 자본계정이 적재된 종목 수
+  market_stats_ready: number;       // 시총·거래량 통계가 계산된 종목 수
   rows: DelistingRow[];
   note: string;
 }
@@ -2396,6 +2404,121 @@ export interface CostingEducation {
   }[];
   note: string;
 }
+// W1: 노무비(인건비) 레이어 — DART 「직원 등의 현황」 실측
+export interface CCMLaborSegment {
+  name: string;
+  kind: "생산" | "연구" | "관리·영업";
+  headcount: number | null;
+  annual_labor: number | null;
+  avg_salary: number | null;
+  tenure: number | null;
+  regular: number | null;
+  contract: number | null;
+}
+export interface CCMLaborYear {
+  year: number;
+  headcount: number | null;
+  annual_labor: number | null;
+  annual_labor_eok: number | null;
+  avg_salary: number | null;
+  avg_salary_disclosed: number | null;
+  hourly_cost: number | null;
+  mfg_ratio: number | null;
+  mfg_labor_eok: number | null;
+  mfg_basis: string;
+  contract_ratio: number | null;
+  by_segment: CCMLaborSegment[];
+  source: string;
+}
+export interface CCMLabor {
+  ticker: string;
+  years: CCMLaborYear[];
+  current: CCMLaborYear | null;
+  productivity: {
+    year: number;
+    rev_per_head_eok: number;
+    op_per_head_eok: number | null;
+    labor_to_revenue: number | null;
+    labor_to_cogs: number | null;
+  }[];
+  flags: { type: string; severity: "info" | "warn" | "alert"; detail: string; why: string }[];
+  consolidated: {
+    consolidated_labor_eok: number;
+    disclosed_domestic_eok: number;
+    subsidiary_share: number | null;
+    source: string;
+    note: string;
+  } | null;
+  outsourced: null;
+  market_salary: null;
+  unit_labor: null;
+  assumptions: string[];
+  coverage: string;
+  note: string;
+}
+
+// 사업보고서 원문 실측 — 「비용의 성격별 분류」 + 감사보고서
+export interface CCMCostNature {
+  basis: string;
+  member: string;
+  breakdown: { cat: string; amount_eok: number; pct: number }[];
+  material_ratio: number;
+  labor_ratio: number;
+  depreciation_ratio: number;
+  total_cost_eok: number;
+  labor_eok: number;
+  material_eok: number;
+  separate_total_eok?: number;
+  items: { name: string; cat: string; amount_eok: number; prev_eok: number | null }[];
+}
+export interface CCMReportNotes {
+  ticker: string;
+  available: boolean;
+  rcept: string | null;
+  url?: string;
+  reason?: string;
+  cost_nature: CCMCostNature | null;
+  audit: {
+    opinion: string | null;
+    kam: string[];
+    n_kam: number;
+    going_concern_doubt: boolean;
+    emphasis: boolean;
+    internal_control_issue: boolean;
+  } | null;
+  source: string;
+  note: string;
+}
+
+// 재무제표 3종 감사 — 커버리지 + 정합성(조작 탐지)
+export interface CCMStatementCheck {
+  code: string;
+  label: string;
+  status: "ok" | "warn" | "fail";
+  detail: string;
+  year: number | null;
+  why?: string;
+}
+export interface CCMStatementAudit {
+  ticker: string;
+  available: boolean;
+  statements: {
+    sj_div: string;
+    label: string;
+    years: number[];
+    n_years: number;
+    n_accounts: number;
+    ok: boolean;
+  }[];
+  core_ok?: boolean;
+  basis?: Record<string, string | null>;
+  years?: number[];
+  checks: CCMStatementCheck[];
+  score: number | null;
+  verdict: string;
+  note: string;
+}
+
 export interface CompanyCostModel {
   ticker: string;
   company: string;
@@ -2407,6 +2530,9 @@ export interface CompanyCostModel {
   variance: CCMVariance | null;
   production_type: CCMProductionType;
   joint_allocation: CCMJointAllocation | null;
+  labor: CCMLabor | null;
+  statement_audit: CCMStatementAudit | null;
+  report_notes: CCMReportNotes | null;
   products: CCMProduct[];
   materials: CCMMaterial[];
   reconciliation: CCMReconciliation;
@@ -2647,6 +2773,12 @@ export const api = {
   companyProducts: (ticker: string) =>
     request<CompanyProducts>(`/api/data/company-products?ticker=${encodeURIComponent(ticker)}`),
   costingEducation: () => request<CostingEducation>(`/api/data/costing-education`),
+  companyLabor: (ticker: string) =>
+    request<CCMLabor>(`/api/data/company-labor?ticker=${encodeURIComponent(ticker)}`),
+  statementAudit: (ticker: string) =>
+    request<CCMStatementAudit>(`/api/data/statement-audit?ticker=${encodeURIComponent(ticker)}`),
+  reportNotes: (ticker: string) =>
+    request<CCMReportNotes>(`/api/data/report-notes?ticker=${encodeURIComponent(ticker)}`),
   crisisMeta: () => request<CrisisMeta>(`/api/crisis/meta`),
   crisisSim: (metric: string, crises?: string[]) => {
     const q = new URLSearchParams({ metric });

@@ -121,6 +121,14 @@ class Settings(BaseSettings):
     costmodel_batch_sleep: float = 1.0     # 종목 간 대기(초) — DART rate limit 완충
     costmodel_batch_check_interval: float = 600.0  # 실행 시각 도달 여부 점검 주기
 
+    # 관리종목·상폐 스크리너 데이터 배치: 시장구분(FDR 상장목록)·위험종목 공시 스캔·
+    # 반기 자본계정을 매일 야간 갱신한다. 시장구분 캐시가 없으면 매출·영업손실·법인세
+    # 요건이 아예 적용되지 않으므로 이 배치가 스크리너 정확도의 전제다.
+    delisting_batch: bool = True
+    delisting_batch_hour: int = 4          # 원가모델 배치(03:30) 다음
+    delisting_batch_minute: int = 10
+    delisting_batch_check_interval: float = 600.0
+
     @property
     def duckdb_path(self) -> Path:
         return self.data_dir / "market.duckdb"

@@ -11,8 +11,15 @@ const LEVEL_STYLE: Record<number, { bg: string; fg: string; label: string }> = {
 const SEV_COLOR: Record<number, string> = { 3: "#b02a37", 2: "#c05621", 1: "#8a6d00" };
 const KIND_COLOR: Record<string, string> = {
   "관리·상폐": "#b02a37",
+  "감사의견": "#a3325b",
   "감사·정정": "#c05621",
   "잠정실적": "#7048a8",
+};
+// 사유 배지 앞에 붙는 요건 구분(재무 / 비재무 = 시총·거래량 / 공시)
+const REASON_KIND: Record<string, { bg: string; fg: string }> = {
+  "재무": { bg: "#f4eeee", fg: "#8a6d00" },
+  "비재무": { bg: "#eef2f7", fg: "#2a5d8a" },
+  "공시": { bg: "#f6eef4", fg: "#a3325b" },
 };
 
 function eok(v: number | null | undefined): string {
@@ -106,6 +113,16 @@ export function DelistingScreener() {
             <span className="mx-1 text-[11px] text-[#b8a0a0]">
               지정 관리종목 {s["지정_관리종목"] ?? 0}
             </span>
+            {!d.market_class_ready && (
+              <span className="rounded bg-[#fce4e4] px-2 py-1 text-[10px] font-semibold text-[#b02a37]">
+                ⚠ 시장구분 미적재 — 매출·영업손실·법인세 요건 미적용
+              </span>
+            )}
+            {d.market_class_ready && !d.half_ready && (
+              <span className="rounded bg-[#fff9db] px-2 py-1 text-[10px] font-semibold text-[#8a6d00]">
+                반기 자본계정 미적재 — 자본잠식은 연말 기준만
+              </span>
+            )}
             <input
               value={q}
               onChange={(e) => setQ(e.target.value)}
@@ -125,6 +142,7 @@ export function DelistingScreener() {
                   <th className="px-3 py-2 text-right font-semibold">최근매출</th>
                   <th className="px-3 py-2 text-right font-semibold">영업이익</th>
                   <th className="px-3 py-2 text-right font-semibold">자본잠식</th>
+                  <th className="px-3 py-2 text-right font-semibold">시가총액</th>
                   <th className="px-3 py-2 font-semibold">사유 / 감사·정정 공시</th>
                 </tr>
               </thead>
@@ -133,7 +151,7 @@ export function DelistingScreener() {
                   <RowView key={r.ticker} r={r} i={i} open={open.has(r.ticker)} onToggle={() => toggle(r.ticker)} />
                 ))}
                 {rows.length === 0 && (
-                  <tr><td colSpan={8} className="py-16 text-center text-[#bbb]">해당 조건의 종목이 없습니다.</td></tr>
+                  <tr><td colSpan={9} className="py-16 text-center text-[#bbb]">해당 조건의 종목이 없습니다.</td></tr>
                 )}
               </tbody>
             </table>
@@ -188,18 +206,39 @@ function RowView({ r, i, open, onToggle }: { r: DelistingRow; i: number; open: b
         </td>
         <td className="px-3 py-2 text-right tabular-nums" style={{ color: (r.impair_rate ?? 0) >= 50 ? "#b02a37" : "#999" }}>
           {r.impair_rate != null && r.impair_rate > 0 ? `${r.impair_rate}%` : "—"}
+          {r.impair_basis && <div className="text-[9px] text-[#bbb]">{r.impair_basis}</div>}
+          {r.equity != null && r.equity < 1e9 && (
+            <div className="text-[9px] font-semibold text-[#b02a37]">자기자본 {eok(r.equity)}</div>
+          )}
+        </td>
+        <td className="px-3 py-2 text-right tabular-nums text-[#555]">
+          {eok(r.market_cap)}
+          {(r.cap_days_below ?? 0) > 0 && (
+            <div className="text-[9px] font-semibold" style={{ color: (r.cap_days_below ?? 0) >= 30 ? "#b02a37" : "#8a6d00" }}>
+              미달 {r.cap_days_below}일
+            </div>
+          )}
+          {r.vol_ratio != null && r.vol_ratio < 0.01 && (
+            <div className="text-[9px] text-[#2a5d8a]">거래량 {(r.vol_ratio * 100).toFixed(2)}%</div>
+          )}
         </td>
         <td className="px-3 py-2">
           <div className="flex flex-wrap gap-1">
-            {r.reasons.map((rs, k) => (
-              <span
-                key={k}
-                className="rounded px-1.5 py-0.5 text-[10px] font-medium"
-                style={{ background: "#f4eeee", color: SEV_COLOR[rs.sev] ?? "#666" }}
-              >
-                {rs.text}
-              </span>
-            ))}
+            {r.reasons.map((rs, k) => {
+              const kd = REASON_KIND[rs.kind ?? "재무"] ?? REASON_KIND["재무"];
+              return (
+                <span
+                  key={k}
+                  className="rounded px-1.5 py-0.5 text-[10px] font-medium"
+                  style={{ background: kd.bg, color: SEV_COLOR[rs.sev] ?? "#666" }}
+                >
+                  {rs.kind && rs.kind !== "재무" && (
+                    <b className="mr-1" style={{ color: kd.fg }}>[{rs.kind}]</b>
+                  )}
+                  {rs.text}
+                </span>
+              );
+            })}
           </div>
           {hasAlerts && (
             <div className="mt-1 flex items-center gap-1 text-[10px] font-semibold" style={{ color: KIND_COLOR[r.alerts[0].kind] ?? "#a33" }}>
@@ -212,7 +251,7 @@ function RowView({ r, i, open, onToggle }: { r: DelistingRow; i: number; open: b
       {open && hasAlerts && (
         <tr className="bg-[#fbf6f6]">
           <td />
-          <td colSpan={7} className="px-3 pb-3 pt-1">
+          <td colSpan={8} className="px-3 pb-3 pt-1">
             <div className="rounded border border-[#eadede] bg-white p-2">
               <div className="mb-1 text-[10px] font-semibold text-[#b02a37]">감사·실적 정정 및 관리종목 관련 공시 (DART)</div>
               <ul className="flex flex-col gap-0.5">
