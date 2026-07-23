@@ -3,10 +3,13 @@
 집이든 회사든 **같은 명령 세 개**로 돌린다. 프로젝트 루트에서 실행.
 
 ```powershell
-.\ops\win\serve.ps1    start | stop | restart | status | logs
-.\ops\win\batch.ps1    costmodel | delisting | verify | report | nightly
+.\ops\win\serve.ps1    start | stop | restart | status | logs   [-App backend|frontend|all]
+.\ops\win\batch.ps1    costmodel | delisting | verify | report | blog | nightly
 .\ops\win\schedule.ps1 install | uninstall | status | run
 ```
+
+`serve.ps1` 은 기본이 `-App all` 이라 **백엔드와 프론트(npm run dev)를 같이** 띄운다.
+둘 다 세션과 분리되므로 터미널을 닫아도 살아 있다(로그 `data\next.log`).
 
 ## 왜 스크립트가 필요한가 — DuckDB 단일 쓰기
 
@@ -24,9 +27,8 @@
 ## 자주 쓰는 흐름
 
 ```powershell
-# 아침에 앱 켜기
+# 아침에 앱 켜기 (백엔드 + 프론트)
 .\ops\win\serve.ps1 start
-cd frontend; npm run dev            # 프론트는 별도 터미널
 
 # 지금 상태가 어떤지 (서버·API·배치·마지막 배치 시각)
 .\ops\win\serve.ps1 status
@@ -39,6 +41,10 @@ cd frontend; npm run dev            # 프론트는 별도 터미널
 
 # 전 종목 원가모델 다시 계산 (약 20분, 서버 자동 정지→재기동)
 .\ops\win\batch.ps1 costmodel
+
+# 오늘의 증시 보고서 블로그 글 발행 (약 10초)
+.\ops\win\batch.ps1 blog
+.\ops\win\batch.ps1 blog -Date 2026-07-22   # 지난 날짜로
 
 # 서버가 이상할 때
 .\ops\win\serve.ps1 logs -Tail 40
@@ -69,6 +75,24 @@ cd frontend; npm run dev            # 프론트는 별도 터미널
 | `data\company_costmodels.json` | 전 종목 원가모델(감사점수·인건비·재료비 실측 포함) |
 | `data\audit_report.json` | 재무제표 이상 종목 랭킹(업종 보정) |
 | `data\verify_parsers.json` | 파서 스모크 테스트 결과 |
+| `data\blog_posts\<날짜>_market-wrap.md` | **증시 보고서 블로그 원고**(그대로 복사해 올림) |
+| `data\blog_posts\<날짜>_market-wrap.json` | 같은 글의 제목·마크다운·HTML·태그 |
+
+## 증시 보고서 블로그 자동 발행
+
+평일 장 마감 뒤 **하루 1편**이 자동으로 만들어져 `data\blog_posts\` 에 쌓인다.
+
+- 앱 내부 스케줄러: 기본 **16:20**(장 마감 15:30 + 마감 시세·수급 반영 여유). `BLOG_AUTOPUBLISH=false` 로 끔
+- 서버가 꺼져 있어도 되게: `.\ops\win\batch.ps1 blog` (작업 스케줄러에 걸어도 됨)
+- 관리자 API: `POST /api/admin/blog/publish` · `GET /api/admin/blog/posts` · `GET /api/admin/blog/post?date=` · `GET /api/admin/blog/scheduler`
+
+글 구성(있는 데이터만 넣고, 없는 항목은 통째로 빠진다):
+한 줄 요약 → 시장 한눈에(등락 종목수·투자자별 순매수) → 시장 분위기 → 핵심 이슈 →
+주요 뉴스 → 업종별 등락 → 급등/급락 종목과 이유(주가 차트 임베드) → 매크로·환율 →
+일정 → 면책.
+
+> `.md` 는 차트가 base64 로 박혀 있어 파일이 200KB 정도 된다(텍스트만 6천 자 남짓).
+> 네이버·티스토리엔 `.json` 안의 `html` 을 붙여넣는 쪽이 깔끔하다.
 
 ## 파이썬 스크립트 단독 실행
 

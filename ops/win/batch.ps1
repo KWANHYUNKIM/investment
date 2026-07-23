@@ -9,6 +9,7 @@
   작업 목록
     costmodel  전 종목 원가모델 배치(감사점수·인건비·재료비 실측 포함). **DB 필요** → 서버 정지
     delisting  관리종목·상폐 스크리너 캐시.                              **DB 필요** → 서버 정지
+    blog       오늘의 증시 보고서 블로그 글 발행(data/blog_posts).        **DB 필요** → 서버 정지
     verify     공시 파서 스모크 테스트(품질 깨지면 종료코드 1).           DB 불필요 → 서버 유지
     report     전 종목 재무제표 감사 리포트(업종 보정).                   DB 불필요 → 서버 유지
     nightly    costmodel → verify → report 순서로 전부
@@ -22,10 +23,11 @@
 [CmdletBinding()]
 param(
     [Parameter(Position = 0)]
-    [ValidateSet("costmodel", "delisting", "verify", "report", "nightly")]
+    [ValidateSet("costmodel", "delisting", "verify", "report", "blog", "nightly")]
     [string]$Task = "report",
 
     [int]$Top = 20,
+    [string]$Date = "",          # blog: 대상 날짜(YYYY-MM-DD), 비우면 오늘
     [double]$Sleep = 0.1,        # 원가모델 배치의 종목 간 대기(DART rate limit)
     [switch]$KeepServer          # DB 배치라도 서버를 내리지 않는다(실패할 수 있음)
 )
@@ -98,6 +100,12 @@ switch ($Task) {
     "report" {
         $fail = Invoke-Py -PyArgs @("-m", "scripts.audit_report", "--top", "$Top",
             "--json", (Join-Path $Root "data\audit_report.json")) -Label "report"
+    }
+    "blog" {
+        # 시세·수급을 DuckDB 에서 읽어 오늘자 증시 보고서를 만든다 → 서버 정지 필요
+        $a = @("-m", "scripts.build_blog")
+        if ($Date) { $a += @("--date", $Date) }
+        $fail = Invoke-DbTask -PyArgs $a -Label "blog"
     }
     "nightly" {
         $c1 = Invoke-DbTask -PyArgs @("-c",

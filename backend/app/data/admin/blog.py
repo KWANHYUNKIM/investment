@@ -11,6 +11,7 @@ from __future__ import annotations
 import base64
 import html
 import io
+import re
 import time
 
 from app.data.market import dividend_detail, crisis_survivors, dividend_etf, dividend_royalty
@@ -428,6 +429,180 @@ def royalty_post() -> dict:
     return _pack("배당왕·배당귀족 완전정리", blocks, ["배당왕", "배당귀족", "미국배당주"])
 
 
+# ── 하루 증시 보고서 (자동 발행용) ────────────────────────────────────────
+def _amt_eok(v) -> str:
+    """억 단위 순매수 금액 → '+1.2조' / '-3,400억'."""
+    if v is None:
+        return "—"
+    sign = "+" if v >= 0 else "−"
+    a = abs(v)
+    return f"{sign}{a/10000:,.2f}조" if a >= 10000 else f"{sign}{a:,.0f}억"
+
+
+def _breadth_blocks(rep: dict) -> list:
+    """장 마감 상태 — 상승/하락 종목 수와 투자자별 순매수(누가 샀나)."""
+    m = rep.get("market") or {}
+    b = m.get("breadth") or {}
+    blocks: list = []
+    total = b.get("total")
+    if total:
+        rows = [["상승", f"{b.get('up', 0):,}종목"],
+                ["하락", f"{b.get('down', 0):,}종목"],
+                ["보합", f"{b.get('flat', 0):,}종목"]]
+        blocks.append(("h2", "📊 오늘 시장 한눈에"))
+        blocks.append(("table", ["구분", "종목 수"], rows))
+
+    trend = m.get("investor_trend") or []
+    if trend:
+        td = trend[0]
+        blocks.append(("h3", f"투자자별 순매수 ({td.get('date', '')})"))
+        blocks.append(("table", ["외국인", "기관", "개인"],
+                       [[_amt_eok(td.get("foreign")), _amt_eok(td.get("organ")),
+                         _amt_eok(td.get("individual"))]]))
+        # 방향이 갈리면 그 자체가 오늘의 이야기다.
+        f, o, i = td.get("foreign"), td.get("organ"), td.get("individual")
+        if f is not None and i is not None:
+            if f > 0 and i < 0:
+                blocks.append(("p", "외국인이 사고 개인이 판 날입니다. 외국인 수급이 들어온 업종을 보면 "
+                                    "오늘 시장이 무엇을 좋게 봤는지 드러납니다."))
+            elif f < 0 and i > 0:
+                blocks.append(("p", "외국인이 팔고 개인이 받은 날입니다. 개인 매수로 버틴 장은 "
+                                    "이튿날 수급이 이어지는지가 관건입니다."))
+    return blocks
+
+
+def _macro_blocks(rep: dict) -> list:
+    """매크로·금리·환율·글로벌 — 각 모듈이 이미 만든 요약문만 인용한다(지어내지 않음)."""
+    m = rep.get("market") or {}
+    items: list[str] = []
+    for key, label in (("macro", "거시"), ("rates", "금리"),
+                       ("foreign_view", "외국인 시각"), ("cross_asset", "크로스에셋")):
+        d = m.get(key) or {}
+        s = d.get("summary") or ((d.get("flow") or {}).get("summary") if key == "cross_asset" else None)
+        if s:
+            items.append(f"[{label}] {s}")
+    if not items:
+        return []
+    return [("h2", "🌍 매크로·환율·글로벌"), ("ul", items)]
+
+
+def _tomorrow_blocks(rep: dict) -> list:
+    """내일 관전포인트 — 공시된 일정(금리 캘린더)이 있을 때만. 전망은 만들지 않는다."""
+    rates = ((rep.get("market") or {}).get("rates") or {})
+    ev = rates.get("upcoming") or rates.get("events") or []
+    out: list[str] = []
+    for e in ev[:5]:
+        if isinstance(e, dict):
+            t = e.get("title") or e.get("name") or e.get("event")
+            d = e.get("date") or e.get("when")
+            if t:
+                out.append(f"{d} · {t}" if d else str(t))
+        elif isinstance(e, str):
+            out.append(e)
+    if not out:
+        return []
+    return [("h2", "📅 내일 이후 일정"), ("ul", out)]
+
+
+def market_wrap(date: str | None = None) -> dict:
+    """**오늘 하루 증시 보고서** — 블로그에 그대로 올릴 원고.
+
+    구성: 한 줄 요약 → 시장 한눈에(등락·수급) → 시장 분위기·핵심 이슈 → 업종 →
+    급등락 종목과 이유(차트 포함) → 매크로 → 일정 → 면책.
+
+    데이터는 이미 만들어 둔 것들을 모아 쓴다. 새로 계산하지도, 없는 걸 지어내지도 않는다.
+      · ``daily_archive``  그날 저장된 리포트(등락폭·투자자 수급·매크로 요약)
+      · ``livepulse``      시장 분위기·핵심 이슈·뉴스
+      · ``market_movers``  급등락 종목과 원인 뉴스, 업종별 등락
+    """
+    from app.data.market import market_movers
+    from app.data.reports import daily_archive
+
+    # ``snapshot()`` 은 리포트가 아니라 **저장 상태**({"status": "exists", ...})를 준다.
+    # 본문이 필요하므로 날짜를 정한 뒤 ``load()`` 로 읽는다(없으면 한 번 만들고 다시 읽기).
+    rep: dict = {}
+    try:
+        d0 = date or (daily_archive.list_dates() or [None])[0]
+        rep = (daily_archive.load(d0) if d0 else None) or {}
+        if not rep:
+            got = daily_archive.snapshot()
+            rep = daily_archive.load(got.get("date")) or {}
+    except Exception:
+        rep = {}
+    d = rep.get("date") or date or time.strftime("%Y-%m-%d")
+    try:
+        y, mth, dd = d.split("-")
+        today_ko = f"{y}년 {int(mth)}월 {int(dd)}일"
+    except Exception:
+        today_ko = time.strftime("%Y년 %m월 %d일")
+
+    try:
+        snap = market_movers.snapshot()
+    except Exception:
+        snap = {}
+
+    blocks: list = [("h2", f"{today_ko} 증시 리포트")]
+    summary = ((rep.get("market") or {}).get("summary") or "").strip()
+    if summary:
+        blocks.append(("quote", summary))
+        # 요약문의 '최고 상승/최대 하락'에 ±100% 넘는 값이 섞이는 날이 있다(신규상장·거래재개·
+        # 액면변경). 자동 발행이라 그대로 나가면 오해를 부르므로 한 줄 덧붙인다.
+        if re.search(r"[+-]\s?\d{3,}(?:\.\d+)?%", summary):
+            blocks.append(("p", "※ 등락률이 세 자리로 찍힌 종목은 신규상장·거래재개·액면변경처럼 "
+                                "기준가가 바뀐 경우일 수 있어 일반 등락과 같이 보기 어렵습니다."))
+
+    blocks.extend(_breadth_blocks(rep))
+    blocks.extend(_market_issue_blocks())          # 분위기 + 핵심 이슈 + 주요 뉴스
+    blocks.extend(_sector_blocks(snap))
+
+    thr = snap.get("threshold") or 5.0
+    gainers = (snap.get("gainers") or [])[:4]
+    losers = (snap.get("losers") or [])[:4]
+    real_move = any(abs(x.get("change_pct") or 0) >= thr for x in gainers + losers)
+    if gainers:
+        blocks.append(("h2", "🔥 오늘 많이 오른 종목" if real_move else "💹 거래가 몰린 종목"))
+        for it in gainers:
+            blocks.extend(_mover_blocks(it, real_move))
+    if losers and real_move:
+        blocks.append(("h2", "❄️ 오늘 많이 내린 종목"))
+        for it in losers:
+            blocks.extend(_mover_blocks(it, real_move))
+
+    blocks.extend(_macro_blocks(rep))
+    blocks.extend(_tomorrow_blocks(rep))
+
+    blocks.append(("hr",))
+    fresh = ((rep.get("market") or {}).get("data_freshness") or {})
+    if fresh.get("price_date"):
+        blocks.append(("p", f"※ 시세 기준일 {fresh['price_date']}"
+                            + (f" · 수급 기준일 {fresh['investor_date']}" if fresh.get("investor_date") else "")
+                            + f" · 작성 {time.strftime('%Y-%m-%d %H:%M')}"))
+    blocks.append(("p", "※ 원인으로 제시한 뉴스는 증시 관련성으로 선별했으나 상관관계일 뿐 "
+                        "인과를 보장하지 않습니다. 수치는 공시·시세 데이터 기준이며, 확인되지 않은 "
+                        "내용은 넣지 않았습니다. 투자 판단과 그 결과는 본인 책임입니다."))
+
+    post = _pack(f"{today_ko} 증시 리포트 — 오늘의 이슈와 급등락 정리", blocks,
+                 ["오늘의증시", "증시리포트", "시황", "급등주", "수급"])
+    post["date"] = d
+    return post
+
+
+def publish_market_wrap(date: str | None = None, force: bool = False) -> dict:
+    """보고서를 만들어 ``data/blog_posts/`` 에 저장한다(같은 날 재생성은 갱신).
+
+    자동 발행(스케줄러·스크립트)과 관리자 버튼이 같은 경로를 쓴다.
+    """
+    from app.data.admin import blog_archive
+    d = date or time.strftime("%Y-%m-%d")
+    if not force:
+        got = blog_archive.load(d, "market-wrap")
+        if got:
+            return {**got, "reused": True}
+    post = market_wrap(date)
+    saved = blog_archive.save(post, kind="market-wrap", date=post.get("date") or d)
+    return {**saved, "reused": False}
+
+
 def custom(title: str, body_markdown: str) -> dict:
     """직접 작성 — 제목 + 마크다운 본문을 HTML로도 변환."""
     blocks = [("p", body_markdown)]  # 본문은 그대로 두되 HTML은 문단 처리
@@ -446,6 +621,7 @@ def custom(title: str, body_markdown: str) -> dict:
 GENERATORS = {
     "dividend-stock": lambda p: dividend_stock(p.get("ticker", "")),
     "daily-report": lambda p: daily_report(),
+    "market-wrap": lambda p: market_wrap(p.get("date") or None),
     "crisis-survivors": lambda p: crisis_survivors_post(),
     "etf": lambda p: etf_post(),
     "royalty": lambda p: royalty_post(),

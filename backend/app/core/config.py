@@ -121,6 +121,14 @@ class Settings(BaseSettings):
     costmodel_batch_sleep: float = 1.0     # 종목 간 대기(초) — DART rate limit 완충
     costmodel_batch_check_interval: float = 600.0  # 실행 시각 도달 여부 점검 주기
 
+    # 증시 보고서 블로그 글 자동 발행: 평일 장 마감 뒤 하루 1편을 만들어
+    # data/blog_posts/ 에 저장한다(마크다운 + HTML). 장 마감 15:30 + 마감 시세·투자자
+    # 수급이 반영될 여유를 둬 기본 16:20. BLOG_AUTOPUBLISH=false 로 끔.
+    blog_autopublish: bool = True
+    blog_publish_hour: int = 16
+    blog_publish_minute: int = 20
+    blog_publish_check_interval: float = 600.0
+
     # 관리종목·상폐 스크리너 데이터 배치: 시장구분(FDR 상장목록)·위험종목 공시 스캔·
     # 반기 자본계정을 매일 야간 갱신한다. 시장구분 캐시가 없으면 매출·영업손실·법인세
     # 요건이 아예 적용되지 않으므로 이 배치가 스크리너 정확도의 전제다.

@@ -26,6 +26,40 @@ def blog_generate(kind: str = Body(...), ticker: str = Body(default=""),
     return blog.generate(kind, {"ticker": ticker, "title": title, "body": body})
 
 
+@router.post("/blog/publish")
+def blog_publish(date: str = Body(default=""), force: bool = Body(default=True),
+                 _: str = Depends(require_admin)):
+    """오늘(또는 지정일) **증시 보고서**를 만들어 data/blog_posts/ 에 저장한다.
+
+    스케줄러(평일 16:20 자동 발행)와 같은 경로. force=false 면 이미 있는 글을 재사용.
+    """
+    return blog.publish_market_wrap(date or None, force=force)
+
+
+@router.get("/blog/posts")
+def blog_posts(limit: int = 60, _: str = Depends(require_admin)):
+    """저장된 블로그 글 목록(본문 제외, 최신순)."""
+    from app.data.admin import blog_archive
+    return {"posts": blog_archive.listing(limit), "dir": str(blog_archive.dir_path())}
+
+
+@router.get("/blog/post")
+def blog_post(date: str = "", kind: str = "market-wrap", _: str = Depends(require_admin)):
+    """저장된 글 1편(마크다운·HTML 포함). date 를 비우면 가장 최근 글."""
+    from app.data.admin import blog_archive
+    got = blog_archive.load(date, kind) if date else blog_archive.latest(kind)
+    if not got:
+        return {"available": False, "reason": "저장된 글이 없습니다. 발행을 먼저 하세요."}
+    return {"available": True, **got}
+
+
+@router.get("/blog/scheduler")
+def blog_scheduler_status(_: str = Depends(require_admin)):
+    """자동 발행 스케줄러 상태(언제 도는지·마지막 글)."""
+    from app.data.schedulers import blog_scheduler
+    return blog_scheduler.status()
+
+
 @router.get("/users")
 def users(_: str = Depends(require_admin)):
     return {"users": auth.list_users(), "admins": sorted(auth.admin_users())}

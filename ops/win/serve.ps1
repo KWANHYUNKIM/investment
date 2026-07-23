@@ -24,7 +24,11 @@ param(
     [ValidateSet("start", "stop", "restart", "status", "logs")]
     [string]$Action = "status",
 
+    [ValidateSet("backend", "frontend", "all")]
+    [string]$App = "all",           # 무엇을 다룰지. status 는 항상 둘 다 보여준다
+
     [int]$Port = 8000,
+    [int]$WebPort = 3000,
     [int]$Tail = 20,
     [int]$WaitMinutes = 90          # 배치 종료를 기다리는 최대 시간
 )
@@ -50,6 +54,49 @@ function Get-BatchProcs {
             $_.CommandLine -like "*scripts.ingest*" -or
             $_.CommandLine -like "*scripts.build_*"
         }
+}
+
+function Get-WebProcs {
+    Get-CimInstance Win32_Process -Filter "Name='node.exe'" -ErrorAction SilentlyContinue |
+        Where-Object { $_.CommandLine -like "*next*" -or $_.CommandLine -like "*npm*run*dev*" }
+}
+
+function Test-Web {
+    try {
+        $r = Invoke-WebRequest "http://127.0.0.1:$WebPort/" -TimeoutSec 5 -UseBasicParsing
+        return $r.StatusCode -eq 200
+    } catch { return $false }
+}
+
+function Stop-Web {
+    $ps = @(Get-WebProcs)
+    if (-not $ps) { Write-Host "프론트: 실행 중 아님"; return }
+    foreach ($p in $ps) {
+        Stop-Process -Id $p.ProcessId -Force -ErrorAction SilentlyContinue
+        Write-Host "프론트 중지 (pid $($p.ProcessId))"
+    }
+    Start-Sleep -Seconds 2
+}
+
+function Start-Web {
+    if (Get-WebProcs) { Write-Host "프론트: 이미 실행 중"; return }
+    $fe = Join-Path $Root "frontend"
+    if (-not (Test-Path (Join-Path $fe "node_modules"))) {
+        Write-Warning "node_modules 없음 — frontend 에서 npm install 을 먼저 하세요."
+        return
+    }
+    # npm 은 배치 파일이라 cmd 를 거쳐야 하고, 여기서도 세션과 분리해 띄운다.
+    $p = Start-Process -FilePath "cmd.exe" -ArgumentList "/c", "npm run dev" `
+        -WorkingDirectory $fe `
+        -RedirectStandardOutput (Join-Path $Root "data\next.log") `
+        -RedirectStandardError (Join-Path $Root "data\next.err.log") `
+        -WindowStyle Hidden -PassThru
+    Write-Host "프론트 기동 (pid $($p.Id)) — 세션과 분리됨"
+    for ($i = 0; $i -lt 30; $i++) {
+        Start-Sleep -Seconds 2
+        if (Test-Web) { Write-Host "준비 완료: http://127.0.0.1:$WebPort"; return }
+    }
+    Write-Warning "60초 내 응답 없음 — data\next.err.log 를 확인하세요."
 }
 
 function Test-Api {
@@ -108,19 +155,29 @@ function Start-Server {
     Write-Warning "40초 내 응답 없음 — 로그를 확인하세요: .\ops\win\serve.ps1 logs"
 }
 
+$doBack = $App -in @("backend", "all")
+$doWeb = $App -in @("frontend", "all")
+
 switch ($Action) {
-    "start" { Start-Server }
-    "stop" { Stop-Server }
-    "restart" { Stop-Server; Start-Server }
+    "start" { if ($doBack) { Start-Server }; if ($doWeb) { Start-Web } }
+    "stop" { if ($doBack) { Stop-Server }; if ($doWeb) { Stop-Web } }
+    "restart" {
+        if ($doBack) { Stop-Server }
+        if ($doWeb) { Stop-Web }
+        if ($doBack) { Start-Server }
+        if ($doWeb) { Start-Web }
+    }
     "logs" {
         if (Test-Path $LogOut) { Write-Host "--- uvicorn.log ---"; Get-Content $LogOut -Tail $Tail }
         if (Test-Path $LogErr) { Write-Host "--- uvicorn.err.log ---"; Get-Content $LogErr -Tail $Tail }
     }
     "status" {
         $ps = @(Get-ServerProcs)
+        $ws = @(Get-WebProcs)
         $bs = @(Get-BatchProcs)
         Write-Host ("백엔드 : {0}" -f $(if ($ps) { "실행 중 (pid " + ($ps.ProcessId -join ", ") + ")" } else { "중지" }))
         Write-Host ("API    : {0}" -f $(if (Test-Api) { "응답함 (:$Port)" } else { "응답 없음" }))
+        Write-Host ("프론트  : {0}" -f $(if (Test-Web) { "응답함 (:$WebPort)" } elseif ($ws) { "기동 중" } else { "중지" }))
         Write-Host ("배치    : {0}" -f $(if ($bs) { "$($bs.Count)개 실행 중 — DB 잠금" } else { "없음" }))
         $f = Join-Path $Root "data\company_costmodels.json"
         if (Test-Path $f) {

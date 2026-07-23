@@ -13,6 +13,7 @@ from app.api import admin
 from app.core.auth import require_auth
 from app.core.config import get_settings
 from app.data.fundamentals import fundamentals_crawler
+from app.data.schedulers import blog_scheduler
 from app.data.schedulers import costmodel_scheduler
 from app.data.schedulers import delisting_scheduler
 from app.data.schedulers import growth_scheduler
@@ -77,6 +78,9 @@ def _startup() -> None:
     # 관리종목·상폐 스크리너 배치: 시장구분(FDR)·위험종목 공시·반기 자본계정을 매일
     # 갱신한다. 이게 안 돌면 시장 구분을 몰라 매출·영업손실·법인세 요건이 통째로 빠진다.
     delisting_scheduler.start()
+    # 증시 보고서 블로그 글 자동 발행: 평일 장 마감 뒤(기본 16:20) 하루 1편을 만들어
+    # data/blog_posts/ 에 저장한다. 관리자 화면에서 그대로 복사해 블로그에 올린다.
+    blog_scheduler.start()
 
 
 @app.get("/api/health", tags=["meta"])
