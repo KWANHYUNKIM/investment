@@ -2493,6 +2493,8 @@ export interface CCMReportNotes {
 // B3·B4: 사업보고서 「사업의 내용」 — 실단가 변동 + 생산물량·가동률
 export interface CCMPriceItem {
   name: string;
+  group?: string | null;
+  unit?: string | null;
   values: Record<string, number>;
   latest_period?: string;
   latest?: number;
@@ -2508,7 +2510,14 @@ export interface CCMBusiness {
   price_trend: { scope: string; unit: string | null; items: CCMPriceItem[] }[];
   utilization: {
     unit: string | null;
-    items: { name: string; capacity: number | null; output: number | null; utilization_pct: number }[];
+    items: {
+      name: string;
+      group?: string | null;
+      capacity: number | null;
+      output: number | null;
+      utilization_pct: number;
+      is_total?: boolean;
+    }[];
   }[];
   output_series: { unit: string | null; items: CCMPriceItem[]; dropped_rows?: number }[];
   source: string;
@@ -2570,6 +2579,49 @@ export interface CompanyCostModel {
   };
   company_block: UnitEconomics["company"];
   coverage: { products: string; sales_mix: string; financials: string };
+}
+
+// ===== 원가 경쟁력 랭킹 ("괜찮은 순") =====
+export interface CostRankPart {
+  score: number;
+  max: number;
+  detail: string;
+  estimated?: boolean;
+}
+export interface CostRankRow {
+  rank: number;
+  ticker: string;
+  company: string;
+  sector: string;
+  score: number;
+  grade: string;
+  parts: Record<string, CostRankPart>;
+  estimated_parts: string[];
+  headline: string;
+  op_margin: number | null;
+  cogs_ratio: number | null;
+  revenue_eok: number | null;
+  cogs_delta_3y_pp: number | null;
+  cogs_sd_pp: number | null;
+  efficiency_pp: number | null;
+  price_variance_pp: number | null;
+  verdict: string | null;
+  audit_score: number | null;
+  recon_status: string | null;
+  production_type: string | null;
+  basis: string | null;
+  year: number | null;
+}
+export interface CostRanking {
+  available: boolean;
+  built_at?: string;
+  as_of?: string;
+  count?: number;
+  excluded?: number;
+  weights?: Record<string, number>;
+  sectors?: string[];
+  rows: CostRankRow[];
+  note: string;
 }
 
 // ===== P1: DART 사업보고서 품목별 매출구성 =====
@@ -2799,6 +2851,10 @@ export const api = {
   companyProducts: (ticker: string) =>
     request<CompanyProducts>(`/api/data/company-products?ticker=${encodeURIComponent(ticker)}`),
   costingEducation: () => request<CostingEducation>(`/api/data/costing-education`),
+  costRanking: (sector?: string) => {
+    const q = sector && sector !== "전체" ? `?sector=${encodeURIComponent(sector)}` : "";
+    return request<CostRanking>(`/api/data/company-costmodel/ranking${q}`);
+  },
   companyLabor: (ticker: string) =>
     request<CCMLabor>(`/api/data/company-labor?ticker=${encodeURIComponent(ticker)}`),
   statementAudit: (ticker: string) =>

@@ -267,12 +267,17 @@ def _batch_row(a: dict) -> dict:
     sa = a.get("statement_audit") or {}
     lb = (a.get("labor") or {}).get("current") or {}
     rn = (a.get("report_notes") or {}).get("audit") or {}
+    f3 = a.get("financials_3y") or []
     return {
         "company": a["company"],
         "sector": a["sector"],
         "cogs_ratio": a["summary"]["cogs_ratio"],
         "op_margin": a["summary"]["op_margin"],
         "revenue_eok": a["summary"].get("revenue_eok"),
+        # 3개년 궤적 — 원가 경쟁력 랭킹(cost_ranking)의 추세·안정성 재료. 최신연도가 앞.
+        "years_3y": [x["year"] for x in f3],
+        "cogs_3y": [x["cogs_ratio"] for x in f3],
+        "op_3y": [x.get("op_margin") for x in f3],
         "basis": a["basis"]["source"],
         "year": a["basis"].get("year"),
         "n_products": len(a.get("products") or []),

@@ -1117,6 +1117,16 @@ def costing_education_endpoint():
     return costing_edu.content()
 
 
+@router.get("/company-costmodel/ranking")
+def company_costmodel_ranking(
+    sector: str | None = Query(None, description="업종 필터(없으면 전체)"),
+    limit: int = Query(0, ge=0, le=500, description="상위 N개만(0=전체)"),
+):
+    """원가 경쟁력 순 회사 랭킹 — 수익성·원가추세·전가력·안정성·신뢰도 5개 항목 점수."""
+    from app.data.fundamentals import cost_ranking
+    return cost_ranking.ranking(sector=sector, limit=limit)
+
+
 @router.get("/company-costmodel/batch")
 def company_costmodel_batch_status():
     """(I1) 전 종목 원가모델 야간 배치 상태 — 언제 돌았고 몇 개/몇 건 실패인지."""

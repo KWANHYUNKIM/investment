@@ -9,6 +9,8 @@ import {
   CCMProduct,
   CCMFinYear,
   CCMJointAllocation,
+  CostRanking,
+  CostRankRow,
   CCMBusiness,
   CCMCostNature,
   CCMLabor,
@@ -97,6 +99,7 @@ export function CompanyCostModel() {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
   const [showFin, setShowFin] = useState(false);
+  const [view, setView] = useState<"list" | "rank">("list");
 
   useEffect(() => {
     let alive = true;
@@ -148,6 +151,25 @@ export function CompanyCostModel() {
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
+        {([["list", "업종별 목록"], ["rank", "괜찮은 순 (원가 경쟁력)"]] as const).map(([v, label]) => (
+          <button
+            key={v}
+            onClick={() => setView(v)}
+            className="rounded border px-2.5 py-1 text-[12px]"
+            style={view === v
+              ? { borderColor: GREEN, color: "#fff", background: GREEN, fontWeight: 700 }
+              : { borderColor: "#d0d5dd", color: "#6b7280" }}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {view === "rank" ? (
+        <CostRankingView sector={sectorFilter} sectors={sectors} onSector={setSectorFilter} onPick={setSel} />
+      ) : (
+      <>
+      <div className="flex flex-wrap items-center gap-2">
         <select
           value={sectorFilter}
           onChange={(e) => setSectorFilter(e.target.value)}
@@ -195,7 +217,179 @@ export function CompanyCostModel() {
           </button>
         ))}
       </div>
+      </>
+      )}
     </div>
+  );
+}
+
+// ===== 레벨 1-b: 원가 경쟁력 랭킹 ("괜찮은 순") =====
+const PART_LABEL: Record<string, string> = {
+  profitability: "수익성", cost_trend: "원가추세", pass_through: "전가력",
+  stability: "안정성", reliability: "신뢰도",
+};
+const GRADE_COLOR: Record<string, string> = {
+  "A+": "#1b4332", A: "#217346", "B+": "#40916c", B: "#74c69d",
+  C: "#e8a33d", D: "#c92a2a",
+};
+
+function CostRankingView({
+  sector, sectors, onSector, onPick,
+}: {
+  sector: string; sectors: string[]; onSector: (s: string) => void; onPick: (t: string) => void;
+}) {
+  const [data, setData] = useState<CostRanking | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState("");
+  const [open, setOpen] = useState<string>("");
+
+  useEffect(() => {
+    let alive = true;
+    setLoading(true);
+    setErr("");
+    api.costRanking(sector)
+      .then((r) => alive && setData(r))
+      .catch((e) => alive && setErr(e?.message ?? "랭킹 실패"))
+      .finally(() => alive && setLoading(false));
+    return () => { alive = false; };
+  }, [sector]);
+
+  if (loading && !data) return <div className="text-sm text-gray-400">원가 경쟁력 계산 중…</div>;
+  if (err) return <div className="text-sm text-red-600">{err}</div>;
+  if (!data) return null;
+  if (!data.available) {
+    return <div className="rounded border border-amber-200 bg-amber-50 p-3 text-[12px] text-amber-700">{data.note}</div>;
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <select
+          value={sector}
+          onChange={(e) => onSector(e.target.value)}
+          className="rounded border border-gray-300 px-2 py-1 text-sm"
+        >
+          <option value="전체">업종 전체</option>
+          {(data.sectors ?? sectors).map((s) => <option key={s} value={s}>{s}</option>)}
+        </select>
+        <span className="text-xs text-gray-400">
+          {data.count}개 회사 · 배치 {data.built_at}
+          {data.excluded ? ` · 추정치뿐이라 제외 ${data.excluded}사` : ""}
+        </span>
+      </div>
+
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[820px] text-sm">
+          <thead>
+            <tr className="border-b text-left text-[11px] text-gray-400">
+              <th className="py-1 pr-2">#</th>
+              <th className="py-1 pr-2">회사</th>
+              <th className="py-1 pr-2 text-right">점수</th>
+              <th className="py-1 pr-2">항목별 (수익성·원가추세·전가력·안정성·신뢰도)</th>
+              <th className="py-1 pr-2 text-right">영익률</th>
+              <th className="py-1 pr-2 text-right">원가율</th>
+              <th className="py-1 text-right">3년 추세</th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.rows.map((r) => (
+              <RankRow key={r.ticker} r={r} open={open === r.ticker}
+                       onToggle={() => setOpen(open === r.ticker ? "" : r.ticker)}
+                       onPick={() => onPick(r.ticker)} />
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="text-[11px] leading-relaxed text-gray-400">{data.note}</p>
+    </div>
+  );
+}
+
+function RankRow({ r, open, onToggle, onPick }:
+  { r: CostRankRow; open: boolean; onToggle: () => void; onPick: () => void }) {
+  const order = ["profitability", "cost_trend", "pass_through", "stability", "reliability"];
+  return (
+    <>
+      <tr className="cursor-pointer border-b border-gray-100 hover:bg-gray-50" onClick={onToggle}>
+        <td className="py-1.5 pr-2 tabular-nums text-gray-400">{r.rank}</td>
+        <td className="py-1.5 pr-2">
+          <button
+            onClick={(e) => { e.stopPropagation(); onPick(); }}
+            className="font-semibold text-gray-800 hover:underline"
+            style={{ color: GREEN }}
+          >
+            {r.company}
+          </button>
+          <div className="text-[10px] text-gray-400">
+            {r.sector}{r.production_type ? ` · ${r.production_type}` : ""}
+            {r.year ? ` · FY${r.year}` : ""}
+          </div>
+        </td>
+        <td className="py-1.5 pr-2 text-right">
+          <span className="tabular-nums font-bold" style={{ color: GRADE_COLOR[r.grade] ?? "#333" }}>
+            {r.score.toFixed(1)}
+          </span>
+          <span className="ml-1 rounded px-1 text-[10px] font-bold text-white"
+                style={{ background: GRADE_COLOR[r.grade] ?? "#999" }}>
+            {r.grade}
+          </span>
+        </td>
+        <td className="py-1.5 pr-2">
+          <div className="flex items-center gap-[3px]">
+            {order.map((k) => {
+              const p = r.parts[k];
+              if (!p) return null;
+              const ratio = p.max ? p.score / p.max : 0;
+              return (
+                <span key={k} title={`${PART_LABEL[k]} ${p.score}/${p.max} — ${p.detail}`}
+                      className="h-3 rounded-sm"
+                      style={{
+                        width: `${p.max * 1.6}px`,
+                        background: p.estimated ? "#e5e7eb" : `rgba(33,115,70,${0.25 + ratio * 0.75})`,
+                      }} />
+              );
+            })}
+          </div>
+          <div className="mt-0.5 text-[10px] text-gray-500">{r.headline}</div>
+        </td>
+        <td className="py-1.5 pr-2 text-right tabular-nums"
+            style={{ color: (r.op_margin ?? 0) >= 0 ? GREEN : "#c92a2a" }}>
+          {r.op_margin != null ? pct(r.op_margin) : "—"}
+        </td>
+        <td className="py-1.5 pr-2 text-right tabular-nums text-gray-600">
+          {r.cogs_ratio != null ? pct(r.cogs_ratio, 0) : "—"}
+        </td>
+        <td className="py-1.5 text-right tabular-nums"
+            style={{ color: (r.cogs_delta_3y_pp ?? 0) > 0 ? "#c92a2a" : "#1971c2" }}>
+          {r.cogs_delta_3y_pp != null ? `${r.cogs_delta_3y_pp > 0 ? "+" : ""}${r.cogs_delta_3y_pp}%p` : "—"}
+        </td>
+      </tr>
+      {open && (
+        <tr>
+          <td colSpan={7} className="bg-gray-50 px-3 py-2">
+            <div className="grid grid-cols-1 gap-1 sm:grid-cols-2 lg:grid-cols-3">
+              {order.map((k) => {
+                const p = r.parts[k];
+                if (!p) return null;
+                return (
+                  <div key={k} className="rounded border border-gray-200 bg-white px-2 py-1.5">
+                    <div className="flex items-baseline justify-between">
+                      <span className="text-[12px] font-semibold text-gray-700">{PART_LABEL[k]}</span>
+                      <span className="tabular-nums text-[12px]" style={{ color: GREEN }}>
+                        {p.score}<span className="text-gray-400">/{p.max}</span>
+                        {p.estimated && <span className="ml-1 text-[10px] text-amber-600">자료없음·중립</span>}
+                      </span>
+                    </div>
+                    <div className="text-[11px] text-gray-500">{p.detail}</div>
+                  </div>
+                );
+              })}
+            </div>
+            {r.verdict && <p className="mt-1 text-[11px] text-gray-500">원가차이 판정: {r.verdict}</p>}
+          </td>
+        </tr>
+      )}
+    </>
   );
 }
 
@@ -588,8 +782,9 @@ function BusinessSection({ biz }: { biz: CCMBusiness }) {
       {util && util.items.length > 0 && (
         <div className="mb-1 flex flex-wrap gap-x-4 gap-y-1 text-[12px] text-gray-700">
           <span className="font-semibold text-gray-500">가동률:</span>
-          {util.items.slice(0, 4).map((it, i) => (
+          {util.items.filter((it) => !it.is_total).slice(0, 5).map((it, i) => (
             <span key={i}>
+              {it.group && <span className="text-gray-400">{it.group} · </span>}
               {it.name}{" "}
               <b style={{ color: it.utilization_pct >= 80 ? GREEN : it.utilization_pct >= 60 ? "#b8860b" : "#c92a2a" }}>
                 {it.utilization_pct}%
@@ -616,9 +811,13 @@ function BusinessSection({ biz }: { biz: CCMBusiness }) {
                 <tbody>
                   {(open ? x.blk!.items : x.blk!.items.slice(0, 5)).map((it, j) => (
                     <tr key={j} className="border-b border-gray-100">
-                      <td className="py-1 pr-2 text-gray-800">{it.name}</td>
+                      <td className="py-1 pr-2 text-gray-800">
+                        {it.name}
+                        {it.group && <span className="ml-1 text-[11px] text-gray-400">{it.group}</span>}
+                      </td>
                       <td className="py-1 pr-2 text-right tabular-nums text-gray-600">
                         {it.latest != null ? it.latest.toLocaleString("ko-KR") : "—"}
+                        {it.unit && <span className="ml-1 text-[11px] text-gray-400">{it.unit}</span>}
                       </td>
                       <td className="py-1 text-right"><ChgChip v={it.chg_1y} /></td>
                     </tr>
