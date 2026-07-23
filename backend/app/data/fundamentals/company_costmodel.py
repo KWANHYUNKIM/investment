@@ -13,11 +13,15 @@
 """
 from __future__ import annotations
 
+import json
+import os
 import re
 import threading
 import time
 
+from app.core.config import get_settings
 from app.data.fundamentals import commodities
+from app.data.fundamentals import joint_costing
 from app.data.fundamentals import unit_economics as ue
 from app.data.infra import store
 
@@ -182,8 +186,12 @@ def list_companies() -> list[dict]:
     개요라 **DART 실측을 조회하지 않는다**(회사당 DuckDB 쿼리 222회 → 목록 4초).
     목록의 원가율/영익은 수작업 KB 추정 평균이고, 정확한 DART 실측값은 회사를
     클릭한 상세(``analyze``)에서 표시한다.
+
+    단, 야간 배치(I1)가 돌아 ``company_costmodels.json`` 이 있으면 그 실측값으로
+    덮어쓴다 — 파일 읽기 한 번이라 목록 속도는 그대로다.
     """
     models = _all_models()
+    batch = (load_batch() or {}).get("companies") or {}
     by_ticker: dict[str, list[tuple[str, dict]]] = {}
     for pid, m in models.items():
         by_ticker.setdefault(m["ticker"], []).append((pid, m))
@@ -192,7 +200,7 @@ def list_companies() -> list[dict]:
     for ticker, items in by_ticker.items():
         mods = [m for _, m in items]
         sector = ue._SECTOR_BY_ID.get(items[0][0], ue.AUTO_SECTOR)
-        out.append({
+        row = {
             "ticker": ticker,
             "company": mods[0]["company"],
             "sector": sector,
@@ -200,7 +208,18 @@ def list_companies() -> list[dict]:
             "cogs_ratio": _avg(mods, "cogs"),   # 추정 평균(빠름) — 상세에서 DART 실측
             "op_margin": _avg(mods, "op"),
             "basis": "개요(추정)",
-        })
+        }
+        b = batch.get(ticker)
+        if b and b.get("basis") == "DART 실측":
+            yr = " · FY%s" % b["year"] if b.get("year") else ""
+            row.update({
+                "cogs_ratio": b["cogs_ratio"],
+                "op_margin": b["op_margin"],
+                "basis": "배치(DART 실측%s)" % yr,
+                "production_type": b.get("production_type"),
+                "verdict": b.get("verdict"),
+            })
+        out.append(row)
     out.sort(key=lambda x: (x["sector"], x["company"]))
     return out
 
@@ -208,6 +227,121 @@ def list_companies() -> list[dict]:
 def sectors() -> list[str]:
     """업종 필터용 유니크 섹터 목록(정렬)."""
     return sorted({c["sector"] for c in list_companies()})
+
+
+# --- I1: 전 종목 야간 배치 + 캐시 -----------------------------------------
+# 목록(레벨1)은 속도 때문에 DART 를 조회하지 않고 수작업 KB 추정 평균을 쓴다.
+# 배치가 밤에 전 종목 ``analyze`` 를 돌려 실측값을 파일에 채워 두면, 목록이 그
+# 실측값으로 덮어써진다(사용자 대기 없음). 주기 결정: **매일 야간 1회**
+# (docs/원가분석_개편계획.md §8) — 재무제표는 분기지만 원자재 시세·차이분해는
+# 매일 바뀌므로 하루 1회가 적정.
+_BATCH_NAME = "company_costmodels.json"
+_batch_cache: dict = {"mtime": None, "data": None}
+_batch_lock = threading.Lock()
+
+
+def _batch_path():
+    return get_settings().data_dir / _BATCH_NAME
+
+
+def _batch_row(a: dict) -> dict:
+    """배치 파일에 남길 회사 1개 요약(전체 analyze 응답은 무겁다)."""
+    v = a.get("variance") or {}
+    ja = a.get("joint_allocation") or {}
+    return {
+        "company": a["company"],
+        "sector": a["sector"],
+        "cogs_ratio": a["summary"]["cogs_ratio"],
+        "op_margin": a["summary"]["op_margin"],
+        "revenue_eok": a["summary"].get("revenue_eok"),
+        "basis": a["basis"]["source"],
+        "year": a["basis"].get("year"),
+        "n_products": len(a.get("products") or []),
+        "production_type": (a.get("production_type") or {}).get("type"),
+        "joint_products": len(ja.get("products") or []),
+        "price_variance_pp": v.get("price_variance_pp"),
+        "efficiency_pp": v.get("efficiency_pp"),
+        "verdict": v.get("verdict"),
+        "recon_status": (a.get("reconciliation") or {}).get("status"),
+        "coverage": a.get("coverage"),
+    }
+
+
+def build_batch(sleep_sec: float | None = None, tickers: list[str] | None = None) -> dict:
+    """전 종목 원가모델을 돌려 ``data/company_costmodels.json`` 을 원자적으로 교체.
+
+    종목마다 DART 사업보고서 파싱이 붙으므로 ``sleep_sec`` 만큼 쉬며 진행한다
+    (DART rate limit 준수). 한 종목이 실패해도 나머지는 계속 간다.
+    """
+    s = get_settings()
+    if sleep_sec is None:
+        sleep_sec = s.costmodel_batch_sleep
+    t0 = time.time()
+    if tickers is None:
+        tickers = sorted({m["ticker"] for m in _all_models().values()})
+
+    rows: dict[str, dict] = {}
+    errors: list[dict] = []
+    for t in tickers:
+        try:
+            rows[t] = _batch_row(analyze(t))
+        except Exception as e:
+            errors.append({"ticker": t, "error": f"{type(e).__name__}: {str(e)[:80]}"})
+        if sleep_sec:
+            time.sleep(sleep_sec)
+
+    payload = {
+        "built_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "as_of": commodities.AS_OF,
+        "n_companies": len(rows),
+        "n_errors": len(errors),
+        "elapsed_sec": round(time.time() - t0, 1),
+        "errors": errors[:20],
+        "companies": rows,
+    }
+    path = _batch_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = f"{path}.tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        json.dump(payload, fh, ensure_ascii=False)
+    os.replace(tmp, path)
+    with _batch_lock:
+        _batch_cache["mtime"] = None      # 다음 조회 때 다시 읽도록
+    return {k: v for k, v in payload.items() if k != "companies"}
+
+
+def load_batch() -> dict | None:
+    """배치 결과 로드(파일 mtime 기준 메모리 캐시). 없으면 None."""
+    path = _batch_path()
+    try:
+        mtime = path.stat().st_mtime
+    except OSError:
+        return None
+    with _batch_lock:
+        if _batch_cache["mtime"] == mtime:
+            return _batch_cache["data"]
+    try:
+        with open(path, encoding="utf-8") as fh:
+            data = json.load(fh)
+    except Exception:
+        return None
+    with _batch_lock:
+        _batch_cache["mtime"] = mtime
+        _batch_cache["data"] = data
+    return data
+
+
+def batch_status() -> dict:
+    """배치 파일 메타(있는지·언제·몇 개·실패 몇 건)."""
+    b = load_batch()
+    if not b:
+        return {"available": False, "path": str(_batch_path())}
+    return {
+        "available": True,
+        "path": str(_batch_path()),
+        **{k: b[k] for k in ("built_at", "as_of", "n_companies", "n_errors", "elapsed_sec") if k in b},
+        "errors": b.get("errors", []),
+    }
 
 
 # --- P1: DART 사업보고서 품목별 매출구성 자동 발굴 -------------------------
@@ -410,6 +544,10 @@ def analyze(ticker: str) -> dict:
     # Phase B: 표준(기준)원가 vs 실제 원가차이 분해(최근 1년)
     variance = _variance(mods, financials_3y)
 
+    # Phase C(C2·C3): 생산유형 태깅 + 결합원가 배분(연산·등급 업종만)
+    ptype = joint_costing.production_type(ticker, sector)
+    joint_allocation = _joint_allocation(ticker, sector, financials_3y, ratios, basis)
+
     # 레벨3 재무제표 근거
     financials_detail = _financials_detail(ticker, ratios, basis)
 
@@ -427,6 +565,8 @@ def analyze(ticker: str) -> dict:
         },
         "financials_3y": financials_3y,          # Phase A
         "variance": variance,                    # Phase B
+        "production_type": ptype,                # C2
+        "joint_allocation": joint_allocation,    # C3
         "products": products,
         "materials": materials,
         "reconciliation": reconciliation,
@@ -438,8 +578,33 @@ def analyze(ticker: str) -> dict:
             "financials": "dart" if basis["source"] == "DART 실측" else "estimate",
             "financials_3y": "dart" if len(financials_3y) >= 2 else "insufficient",
             "variance": "estimate" if variance else "unavailable",
+            "joint_allocation": "estimate" if joint_allocation else (
+                "no-mix" if ptype["is_joint"] else "not-applicable"),
         },
     }
+
+
+def _joint_allocation(ticker: str, sector: str, fin3y: list[dict],
+                      ratios: dict, basis: dict) -> dict | None:
+    """C3: 결합원가(=매출원가) 를 사업보고서 품목 매출비중으로 배분(상대판매가치법).
+
+    매출·매출원가는 DART 3개년 최신연도 우선, 없으면 ``basis`` 의 단년 실측.
+    품목 매출비중이 없으면(파싱 실패) 배분하지 않는다 — 근거 없이 만들지 않는다.
+    """
+    if fin3y:
+        rev = fin3y[0]["revenue_eok"]
+        cogs = rev * fin3y[0]["cogs_ratio"]
+    elif basis.get("sales"):
+        rev = round(basis["sales"] / 1e8)
+        cogs = rev * ratios["cogs"]
+    else:
+        return None
+    # 파싱된 매출구성엔 품목(정유부문·윤활부문)과 판매채널·지역(내수·수출)이 섞여 들어올
+    # 때가 있다. 채널·지역 행을 그대로 두면 같은 매출을 두 번 세어 배분이 망가지므로
+    # 제거하고 남은 품목만 100% 로 재정규화한다(_norm).
+    mix = [p for p in (dart_products(ticker).get("products") or [])
+           if not _CHAN_NAME.search(p.get("name", ""))]
+    return joint_costing.allocate(ticker, sector, cogs, rev, mix)
 
 
 def _company_materials(mods: list[dict], cogs_ratio: float) -> list[dict]:

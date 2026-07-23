@@ -13,6 +13,7 @@ from app.api import admin
 from app.core.auth import require_auth
 from app.core.config import get_settings
 from app.data.fundamentals import fundamentals_crawler
+from app.data.schedulers import costmodel_scheduler
 from app.data.schedulers import growth_scheduler
 from app.data.schedulers import industry_scheduler
 from app.data.schedulers import premarket_scheduler
@@ -69,6 +70,9 @@ def _startup() -> None:
     # 부동산 지도 프리워밍: 국토부 실거래(최신월)+시군구 좌표를 서버 시작 시 미리 받아
     # 디스크 캐시에 채워둔다. 이후 부동산 지도 탭은 캐시에서 즉시 렌더(수집 대기 사라짐).
     realestate_scheduler.start()
+    # 원가모델 전 종목 배치: 매일 야간 1회 company_costmodels.json 을 갱신해
+    # 원가분석 목록이 추정 대신 DART 실측으로 뜨게 한다(장중 부하·rate limit 회피).
+    costmodel_scheduler.start()
 
 
 @app.get("/api/health", tags=["meta"])

@@ -111,6 +111,16 @@ class Settings(BaseSettings):
     realestate_warm: bool = True
     realestate_warm_interval: float = 6 * 3600.0  # 6시간마다 갱신(캐시 TTL 12h보다 짧게)
 
+    # 원가모델 전 종목 배치(I1): 매일 야간 1회 전 종목 analyze 를 돌려
+    # data/company_costmodels.json 을 원자적으로 교체 → 목록(레벨1)이 추정 대신
+    # DART 실측으로 뜬다. 재무제표는 분기 갱신이지만 원자재 시세·차이분해는 매일
+    # 바뀌므로 하루 1회가 적정(docs/원가분석_개편계획.md §8). COSTMODEL_BATCH=false 로 끔.
+    costmodel_batch: bool = True
+    costmodel_batch_hour: int = 3          # 실행 시각(로컬, 24h)
+    costmodel_batch_minute: int = 30
+    costmodel_batch_sleep: float = 1.0     # 종목 간 대기(초) — DART rate limit 완충
+    costmodel_batch_check_interval: float = 600.0  # 실행 시각 도달 여부 점검 주기
+
     @property
     def duckdb_path(self) -> Path:
         return self.data_dir / "market.duckdb"

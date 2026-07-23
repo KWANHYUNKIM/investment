@@ -1054,6 +1054,20 @@ def company_costmodel_endpoint(
         raise HTTPException(404, f"unknown company: {ticker}")
 
 
+@router.get("/costing-education")
+def costing_education_endpoint():
+    """⚪ 원가회계 교육 레이어 — 툴팁 + 해설 카드(정적 콘텐츠)."""
+    from app.data.fundamentals import costing_edu
+    return costing_edu.content()
+
+
+@router.get("/company-costmodel/batch")
+def company_costmodel_batch_status():
+    """(I1) 전 종목 원가모델 야간 배치 상태 — 언제 돌았고 몇 개/몇 건 실패인지."""
+    from app.data.schedulers import costmodel_scheduler
+    return costmodel_scheduler.status()
+
+
 @router.get("/company-products")
 def company_products_endpoint(
     ticker: str = Query(..., description="종목코드, 예: 004370"),

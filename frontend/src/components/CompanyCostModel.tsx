@@ -8,12 +8,43 @@ import {
   CCMMaterial,
   CCMProduct,
   CCMFinYear,
+  CCMJointAllocation,
   AnalystReports,
   CompanyProducts,
+  CostingEducation,
   UnitEconomics as UE,
 } from "@/lib/api";
 
 const GREEN = "#217346";
+
+// ⚪ 교육 레이어(C5) — 정적 콘텐츠라 앱 수명 동안 한 번만 받는다.
+let eduPromise: Promise<CostingEducation> | null = null;
+function useCostingEdu(): CostingEducation | null {
+  const [edu, setEdu] = useState<CostingEducation | null>(null);
+  useEffect(() => {
+    if (!eduPromise) eduPromise = api.costingEducation();
+    let alive = true;
+    eduPromise.then((r) => alive && setEdu(r)).catch(() => {});
+    return () => { alive = false; };
+  }, []);
+  return edu;
+}
+
+// 숫자 옆 ⓘ — 왜 이 값이 근사인지(또는 무엇이 미공시인지) 그 자리에서 설명.
+function Edu({ k, edu }: { k: string; edu: CostingEducation | null }) {
+  const t = edu?.tooltips?.[k];
+  if (!t) return null;
+  return (
+    <span className="group relative ml-1 inline-block">
+      <span className="cursor-help text-[11px] text-gray-400">{t.badge}ⓘ</span>
+      <span className="pointer-events-none absolute left-0 top-full z-30 hidden w-72 rounded border border-gray-300 bg-white p-2 text-left text-[11px] font-normal leading-relaxed text-gray-600 shadow-lg group-hover:block">
+        <b className="text-gray-800">{t.title}</b>
+        <br />
+        {t.body}
+      </span>
+    </span>
+  );
+}
 
 function won(v: number): string {
   return `${Math.round(v).toLocaleString("ko-KR")}원`;
@@ -142,10 +173,18 @@ export function CompanyCostModel() {
           >
             <div>
               <div className="font-semibold text-gray-800">{c.company}</div>
-              <div className="text-[11px] text-gray-400">{c.sector} · {c.n_products}개 품목</div>
+              <div className="text-[11px] text-gray-400">
+                {c.sector} · {c.n_products}개 품목
+                {c.production_type && <span className="ml-1" style={{ color: GREEN }}>· {c.production_type}</span>}
+              </div>
             </div>
             <div className="text-right text-[11px] text-gray-500">
-              <div>원가율 {pct(c.cogs_ratio, 0)}</div>
+              <div>
+                원가율 {pct(c.cogs_ratio, 0)}
+                <span className="ml-1 text-[10px]" style={{ color: c.basis.startsWith("배치") ? GREEN : "#adb5bd" }}>
+                  {c.basis.startsWith("배치") ? "실측" : "추정"}
+                </span>
+              </div>
               <div style={{ color: c.op_margin >= 0 ? GREEN : "#c92a2a" }}>영익 {pct(c.op_margin)}</div>
             </div>
           </button>
@@ -163,9 +202,11 @@ function CompanyDetail({
   showFin: boolean; setShowFin: (v: boolean) => void;
 }) {
   const [openProduct, setOpenProduct] = useState<string>("");
+  const edu = useCostingEdu();
   const s = data.summary;
   const r = data.reconciliation;
   const isEst = data.basis.source !== "DART 실측";
+  const pt = data.production_type;
 
   const reconColor = r.status === "ok" ? GREEN : r.status === "warn" ? "#e8a33d" : r.status === "loss" ? "#7048e8" : "#c92a2a";
   const reconLabel = r.status === "ok" ? "정합" : r.status === "warn" ? "주의" : r.status === "loss" ? "적자기업" : "불일치";
@@ -185,6 +226,16 @@ function CompanyDetail({
         <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[11px] text-gray-500">
           {data.basis.source}{data.basis.year ? ` · FY${data.basis.year}` : ""}
         </span>
+        {pt && (
+          <span
+            className="rounded px-1.5 py-0.5 text-[11px] font-semibold"
+            style={{ color: GREEN, background: "#e9f3ee" }}
+            title={pt.reason ?? pt.archetype}
+          >
+            {pt.type} · {pt.archetype}
+            <Edu k="production_type" edu={edu} />
+          </span>
+        )}
       </div>
 
       {/* 3개년 추세 (Phase A) */}
@@ -285,6 +336,7 @@ function CompanyDetail({
         <section>
           <h3 className="mb-1 text-sm font-bold text-gray-700">
             ③ 표준(기준)원가 vs 실제 — 원가차이 분해 <span className="font-normal text-gray-400">({data.variance.years})</span>
+            <Edu k="variance_basis" edu={edu} />
           </h3>
           <div className="overflow-x-auto">
             <table className="w-full min-w-[520px] text-sm">
@@ -315,9 +367,9 @@ function CompanyDetail({
             </table>
           </div>
           <div className="mt-2 flex flex-wrap items-center gap-x-5 gap-y-1 rounded bg-gray-50 px-3 py-2 text-sm">
-            <span>가격차이(원자재발) <b>{data.variance.price_variance_eok > 0 ? "+" : ""}{data.variance.price_variance_eok.toLocaleString("ko-KR")}억</b> ({data.variance.price_variance_pp > 0 ? "+" : ""}{data.variance.price_variance_pp}%p) <FUChip fu={data.variance.price_fu} /></span>
+            <span>가격차이(원자재발)<Edu k="price_variance" edu={edu} /> <b>{data.variance.price_variance_eok > 0 ? "+" : ""}{data.variance.price_variance_eok.toLocaleString("ko-KR")}억</b> ({data.variance.price_variance_pp > 0 ? "+" : ""}{data.variance.price_variance_pp}%p) <FUChip fu={data.variance.price_fu} /></span>
             <span>실제 원가율변화(1년) <b>{data.variance.actual_change_pp > 0 ? "+" : ""}{data.variance.actual_change_pp}%p</b> <FUChip fu={data.variance.actual_fu} /></span>
-            <span>능률·기타(잔차) <b>{data.variance.efficiency_pp > 0 ? "+" : ""}{data.variance.efficiency_pp}%p</b> <FUChip fu={data.variance.efficiency_fu} /></span>
+            <span>능률·기타(잔차)<Edu k="efficiency_variance" edu={edu} /> <b>{data.variance.efficiency_pp > 0 ? "+" : ""}{data.variance.efficiency_pp}%p</b> <FUChip fu={data.variance.efficiency_fu} /></span>
             {data.variance.cogs_ratio_change_3y_pp != null && (
               <span className="text-gray-500">3년 원가율 {data.variance.cogs_ratio_change_3y_pp > 0 ? "+" : ""}{data.variance.cogs_ratio_change_3y_pp}%p</span>
             )}
@@ -327,9 +379,12 @@ function CompanyDetail({
         </section>
       )}
 
-      {/* ④ 마진 정합성 */}
+      {/* ④ 결합원가 배분 (연산·등급 업종만) */}
+      {data.joint_allocation && <JointAllocationSection ja={data.joint_allocation} edu={edu} />}
+
+      {/* ⑤ 마진 정합성 */}
       <section className="rounded border border-gray-200 bg-gray-50 p-3">
-        <h3 className="mb-2 text-sm font-bold text-gray-700">④ 마진 정합성 검증</h3>
+        <h3 className="mb-2 text-sm font-bold text-gray-700">⑤ 마진 정합성 검증</h3>
         <div className="flex flex-wrap items-center gap-x-6 gap-y-1 text-sm">
           <span>아래서 쌓은 원가 → 추정 영업이익률 <b>{pct(r.bottom_up_op_margin)}</b></span>
           <span>회사 보고 영업이익률 <b>{pct(r.reported_op_margin)}</b></span>
@@ -347,8 +402,11 @@ function CompanyDetail({
         </ul>
       </section>
 
-      {/* ⑤ 애널리스트 리포트 취합 (Tier 1) */}
+      {/* ⑥ 애널리스트 리포트 취합 (Tier 1) */}
       <AnalystReportsSection ticker={data.ticker} company={data.company} verdict={data.variance?.verdict} />
+
+      {/* ⚪ 원가회계 해설 (C5 — 접이식 카드) */}
+      <CostingEduCards edu={edu} />
 
       {/* 레벨3: 재무제표 근거 */}
       <section>
@@ -395,6 +453,156 @@ function CompanyDetail({
         )}
       </section>
     </div>
+  );
+}
+
+// ④ 결합원가 배분 (C3) — 기본 상대판매가치법, 부산품이 있으면 순실현가치법 보조
+function JointAllocationSection({ ja, edu }: { ja: CCMJointAllocation; edu: CostingEducation | null }) {
+  const [alt, setAlt] = useState(false);          // false = 기본값(상대판매가치법)
+  const altOn = alt && ja.alt.available;
+  const altBy = new Map(ja.alt.products.map((p) => [p.name, p]));
+
+  return (
+    <section>
+      <h3 className="mb-1 text-sm font-bold text-gray-700">
+        ④ 결합원가 배분 <span className="font-normal text-gray-400">(연산품 — {ja.method_basis})</span>
+        <Edu k="joint_allocation" edu={edu} />
+      </h3>
+
+      <div className="mb-1 flex flex-wrap items-center gap-2 text-[12px]">
+        <button
+          onClick={() => setAlt(false)}
+          className="rounded border px-2 py-0.5"
+          style={{ borderColor: altOn ? "#d0d5dd" : GREEN, color: altOn ? "#868e96" : GREEN, fontWeight: altOn ? 400 : 700 }}
+        >
+          상대판매가치법 <span className="text-[10px]">(기본)</span>
+        </button>
+        <button
+          onClick={() => ja.alt.available && setAlt(true)}
+          disabled={!ja.alt.available}
+          className="rounded border px-2 py-0.5 disabled:cursor-not-allowed disabled:opacity-50"
+          style={{ borderColor: altOn ? GREEN : "#d0d5dd", color: altOn ? GREEN : "#868e96", fontWeight: altOn ? 700 : 400 }}
+          title={ja.alt.available ? ja.alt.note : ja.alt.reason}
+        >
+          {ja.alt.method}
+        </button>
+        <span className="text-gray-400">
+          결합원가 {ja.joint_cost_eok.toLocaleString("ko-KR")}억
+          {altOn && ` → 부산물 NRV ${ja.alt.byproduct_nrv_eok?.toLocaleString("ko-KR")}억 차감 → ${ja.alt.joint_cost_after_eok?.toLocaleString("ko-KR")}억`}
+        </span>
+      </div>
+
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[560px] text-sm">
+          <thead>
+            <tr className="border-b text-left text-[11px] text-gray-400">
+              <th className="py-1 pr-2">품목</th>
+              <th className="py-1 pr-2">구분<Edu k="byproduct" edu={edu} /></th>
+              <th className="py-1 pr-2 text-right">매출비중</th>
+              <th className="py-1 pr-2 text-right">매출(억)</th>
+              <th className="py-1 pr-2 text-right">배분 결합원가(억)</th>
+              <th className="py-1 text-right">매출총이익률</th>
+            </tr>
+          </thead>
+          <tbody>
+            {ja.products.map((p, i) => {
+              const a = altBy.get(p.name);
+              const alloc = altOn && a ? a.alloc_cogs_eok : p.alloc_cogs_eok;
+              const gm = altOn && a ? a.gross_margin_pct : p.gross_margin_pct;
+              return (
+                <tr key={i} className="border-b border-gray-100">
+                  <td className="py-1 pr-2 text-gray-800">{p.name}</td>
+                  <td className="py-1 pr-2">
+                    <span
+                      className="rounded px-1 text-[10px] font-semibold"
+                      style={p.kind === "부산품"
+                        ? { color: "#7048e8", background: "#f0ebfd" }
+                        : { color: GREEN, background: "#e9f3ee" }}
+                    >
+                      {p.kind}
+                    </span>
+                  </td>
+                  <td className="py-1 pr-2 text-right tabular-nums">{p.sales_pct}%</td>
+                  <td className="py-1 pr-2 text-right tabular-nums text-gray-600">{p.sales_eok.toLocaleString("ko-KR")}</td>
+                  <td className="py-1 pr-2 text-right tabular-nums">
+                    {alloc.toLocaleString("ko-KR")}
+                    {altOn && a && a.delta_eok !== 0 && (
+                      <span className="ml-1 text-[10px]" style={{ color: a.delta_eok < 0 ? "#1971c2" : "#c92a2a" }}>
+                        ({a.delta_eok > 0 ? "+" : ""}{a.delta_eok.toLocaleString("ko-KR")})
+                      </span>
+                    )}
+                  </td>
+                  <td className="py-1 text-right tabular-nums font-semibold" style={{ color: (gm ?? 0) >= 0 ? GREEN : "#c92a2a" }}>
+                    {gm != null ? `${gm}%` : "—"}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      <p className="mt-1 text-[11px] text-gray-400">{ja.source}</p>
+      <ul className="mt-1 list-disc pl-5 text-[11px] text-gray-500">
+        {ja.caveats.map((c, i) => <li key={i}>{c}</li>)}
+        {!ja.alt.available && ja.alt.reason && <li>{ja.alt.reason}</li>}
+        {altOn && ja.alt.note && <li>{ja.alt.note}</li>}
+      </ul>
+    </section>
+  );
+}
+
+// ⚪ 원가회계 해설 (C5) — 분석 화면 하단 접이식 카드(별도 탭으로 빼지 않음)
+function CostingEduCards({ edu }: { edu: CostingEducation | null }) {
+  const [open, setOpen] = useState(false);
+  if (!edu) return null;
+  return (
+    <section>
+      <button onClick={() => setOpen(!open)} className="text-sm font-semibold text-gray-600 hover:text-gray-900">
+        {open ? "▾" : "▸"} 원가회계 해설 — 이 화면이 못 계산하는 것과 그 이유
+      </button>
+      {open && (
+        <div className="mt-2 space-y-3">
+          {edu.cards.map((c) => (
+            <div key={c.id} className="rounded border border-gray-200 p-3">
+              <div className="flex flex-wrap items-baseline gap-2">
+                <h4 className="text-sm font-bold text-gray-700">{c.title}</h4>
+                <span className="text-[11px] text-gray-400">{c.level}</span>
+              </div>
+              <div className="mt-1 space-y-0.5 text-[12px] leading-relaxed text-gray-600">
+                {c.body.map((line, i) => <p key={i}>{line}</p>)}
+              </div>
+              {c.table && (
+                <div className="mt-2 overflow-x-auto">
+                  <table className="w-full min-w-[420px] text-[12px]">
+                    <thead>
+                      <tr className="border-b text-left text-[11px] text-gray-400">
+                        {c.table.head.map((h, i) => <th key={i} className="py-1 pr-3">{h}</th>)}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {c.table.rows.map((row, i) => (
+                        <tr key={i} className="border-b border-gray-100">
+                          {row.map((cell, j) => (
+                            <td key={j} className={`py-1 pr-3 ${j === 0 ? "text-gray-700" : "tabular-nums text-gray-600"}`}>{cell}</td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+              {c.footer && (
+                <ul className="mt-2 list-disc pl-5 text-[11px] text-gray-500">
+                  {c.footer.map((f, i) => <li key={i}>{f}</li>)}
+                </ul>
+              )}
+            </div>
+          ))}
+          <p className="text-[11px] text-gray-400">{edu.note}</p>
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -448,7 +656,7 @@ function AnalystReportsSection({ ticker, company, verdict }: { ticker: string; c
 
   return (
     <section>
-      <h3 className="mb-1 text-sm font-bold text-gray-700">⑤ 애널리스트 리포트 취합 <span className="font-normal text-gray-400">(원문 링크 · 내용 복제 없음)</span></h3>
+      <h3 className="mb-1 text-sm font-bold text-gray-700">⑥ 애널리스트 리포트 취합 <span className="font-normal text-gray-400">(원문 링크 · 내용 복제 없음)</span></h3>
       {loading && <div className="text-[12px] text-gray-400">리포트 취합 중…</div>}
       {data && data.n_reports === 0 && (
         <div className="text-[12px] text-gray-400">최근 애널리스트 리포트를 찾지 못했습니다.</div>

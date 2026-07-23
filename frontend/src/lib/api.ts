@@ -2275,6 +2275,8 @@ export interface CCMCompany {
   cogs_ratio: number;
   op_margin: number;
   basis: string;
+  production_type?: string;   // 야간 배치(I1)가 채운 값 — 없으면 추정 목록
+  verdict?: string;
 }
 export interface CCMProduct {
   id: string;
@@ -2337,6 +2339,63 @@ export interface CCMVariance {
   note: string;
   verdict: string;
 }
+// C2: 생산유형(종합원가 분류) 태그
+export interface CCMProductionType {
+  type: string;
+  archetype: string;
+  is_joint: boolean;
+  basis: string;
+  reason: string | null;
+}
+// C3: 결합원가 배분 (기본 상대판매가치법 · 보조 순실현가치법)
+export interface CCMJointProduct {
+  name: string;
+  kind: "주산품" | "부산품";
+  sales_pct: number;
+  sales_eok: number;
+  alloc_cogs_eok: number;
+  gross_margin_pct: number | null;
+}
+export interface CCMJointAltProduct {
+  name: string;
+  kind: "주산품" | "부산품";
+  alloc_cogs_eok: number;
+  gross_margin_pct: number | null;
+  delta_eok: number;
+}
+export interface CCMJointAllocation {
+  method: string;
+  method_basis: string;
+  production_type: CCMProductionType;
+  source: string;
+  joint_cost_eok: number;
+  revenue_eok: number;
+  byproduct_threshold_pct: number;
+  products: CCMJointProduct[];
+  alt: {
+    method: string;
+    available: boolean;
+    reason?: string;
+    note?: string;
+    byproduct_nrv_eok?: number;
+    joint_cost_after_eok?: number;
+    products: CCMJointAltProduct[];
+  };
+  caveats: string[];
+}
+// C5: ⚪ 원가회계 교육 레이어 (툴팁 + 해설 카드)
+export interface CostingEducation {
+  tooltips: Record<string, { badge: string; title: string; body: string }>;
+  cards: {
+    id: string;
+    title: string;
+    level: string;
+    body: string[];
+    table?: { head: string[]; rows: string[][] };
+    footer?: string[];
+  }[];
+  note: string;
+}
 export interface CompanyCostModel {
   ticker: string;
   company: string;
@@ -2346,6 +2405,8 @@ export interface CompanyCostModel {
   summary: { cogs_ratio: number; sga_ratio: number; op_margin: number; revenue_eok: number | null };
   financials_3y: CCMFinYear[];
   variance: CCMVariance | null;
+  production_type: CCMProductionType;
+  joint_allocation: CCMJointAllocation | null;
   products: CCMProduct[];
   materials: CCMMaterial[];
   reconciliation: CCMReconciliation;
@@ -2585,6 +2646,7 @@ export const api = {
     request<AnalystReports>(`/api/data/analyst-reports?ticker=${encodeURIComponent(ticker)}&company=${encodeURIComponent(company)}`),
   companyProducts: (ticker: string) =>
     request<CompanyProducts>(`/api/data/company-products?ticker=${encodeURIComponent(ticker)}`),
+  costingEducation: () => request<CostingEducation>(`/api/data/costing-education`),
   crisisMeta: () => request<CrisisMeta>(`/api/crisis/meta`),
   crisisSim: (metric: string, crises?: string[]) => {
     const q = new URLSearchParams({ metric });
