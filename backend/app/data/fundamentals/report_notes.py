@@ -31,13 +31,13 @@ from app.data.fundamentals import auto_costmodel as ac
 _BASE = "https://opendart.fss.or.kr/api"
 _MAIN_MAX = 2_000_000        # 이보다 큰 멤버는 본문(사업의 내용) — 주석 파싱에서 제외
 _TTL = 30 * 24 * 3600.0
-_PARSER_VERSION = 4          # 파서 수정 시 올린다 → 옛 결과 캐시를 자동 무효화
+_PARSER_VERSION = 7          # 파서 수정 시 올린다 → 옛 결과 캐시를 자동 무효화
+                             # (v5: TE/TU 셀 · v6·7: 합계행 판별 + 재료비 우선 분류)
 
 _UNIT = (("십억원", 1e9), ("백만원", 1e6), ("천원", 1e3), ("억원", 1e8), ("원", 1.0))
 
 # 「비용의 성격별 분류」 항목 → 원가 3요소
 _CAT = (
-    ("재고변동", ("재공품", "제품")),                       # 변동분 — 비용이 아니라 조정
     ("노무비", ("종업원급여", "급여", "퇴직급여", "복리후생", "주식보상", "인건비")),
     ("재료비", ("원재료", "상품", "재료비", "매입")),
     ("감가상각", ("감가상각", "상각비")),
@@ -95,6 +95,11 @@ def _members(rcept: str) -> dict[str, str]:
 # --- ① 비용의 성격별 분류 --------------------------------------------------
 def _cat_of(name: str) -> str:
     n = name.replace(" ", "")
+    # 재고 '변동'은 비용이 아니라 조정이라 원가 구성에서 뺀다. 다만 POSCO 처럼
+    # 「원재료사용액 및 재고자산의 변동 등」 한 줄로 재료비를 적는 회사가 있어,
+    # **'사용·매입'이 같이 적힌 줄은 변동이 아니라 재료비**로 본다(안 그러면 40조가 사라진다).
+    if "변동" in n and not re.search(r"사용|매입|구입", n):
+        return "재고변동"
     for cat, kws in _CAT:
         if any(k in n for k in kws):
             return cat
@@ -149,12 +154,26 @@ def _parse_at(txt: str, i: int) -> dict | None:
             if not nums:
                 continue
             cur, prev = nums[0], (nums[1] if len(nums) > 1 else None)
-            if re.search(r"^(합\s*계|계|총\s*계)$", name.replace(" ", "")):
+            # '계(*)'·'합계(주1)'처럼 각주가 붙은 합계행을 항목으로 세면 **총비용이 두 배**가
+            # 된다(삼성전자에서 실제로 발생 — 성격별 비용 580조로 잡혔다). 각주부터 뗀다.
+            if re.fullmatch(r"(합계|계|총계|총합계)", re.sub(r"\(.*?\)|[*※\s\d]", "", name)):
                 cur_t, prev_t = cur, (prev or 0.0)
                 continue
             items.append({"name": name, "cat": _cat_of(name),
                           "cur": cur * mult, "prev": (prev * mult) if prev is not None else None})
         if len(items) >= 4:
+            # 합계행 이름이 회사마다 다르다 — '계(*)'(삼성)·'총 영업비용'(LG화학)·
+            # '매출원가 및 판매비와관리비의 합계'(농심). 이름으로 다 잡을 수 없으니
+            # **나머지 항목의 합과 같은 행**을 찾아 합계로 본다(이름과 무관하게 성립).
+            if not cur_t:
+                whole = sum(x["cur"] for x in items)
+                for it in sorted(items, key=lambda x: -abs(x["cur"])):
+                    rest = whole - it["cur"]
+                    if rest > 0 and 0.97 <= it["cur"] / rest <= 1.03:
+                        cur_t = it["cur"] / mult
+                        prev_t = (it["prev"] or 0.0) / mult
+                        items.remove(it)
+                        break
             if not cur_t:                        # 합계 행이 없으면 항목 합으로
                 cur_t = sum(x["cur"] for x in items) / mult
                 prev_t = sum(x["prev"] or 0.0 for x in items) / mult
@@ -286,6 +305,9 @@ def notes(ticker: str, refresh: bool = False) -> dict:
         out["cost_nature"] = {
             "basis": "연결" if len(parsed) > 1 else "단일(연결/별도 구분 불가)",
             "member": name, **s,
+            # 공시된 합계(재고 변동분 포함) — 손익계산서의 매출원가+판관비와 맞대볼 땐 이쪽이다.
+            # total_cost_eok 는 변동분을 뺀 '원가 구성' 기준이라 둘을 섞으면 안 된다.
+            "disclosed_total_eok": round(cn["total_cur"] / 1e8) if cn.get("total_cur") else None,
             "items": [{"name": it["name"], "cat": it["cat"],
                        "amount_eok": round(it["cur"] / 1e8),
                        "prev_eok": round(it["prev"] / 1e8) if it["prev"] else None}

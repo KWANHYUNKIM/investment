@@ -86,8 +86,9 @@ def _fetch_main_xml(rcept: str) -> str | None:
 def _table_rows(tbl: str) -> list[list[str]]:
     out = []
     for tr in re.findall(r'<TR\b.*?</TR>', tbl, re.S | re.I):
+        # TD/TH 외에 <TE>(서식이 정한 추출값)·<TU>(단위값) 셀이 있다 — 빼먹으면 표가 빈다.
         cells = [re.sub(r'\s+', ' ', re.sub(r'<[^>]+>', '', c)).strip()
-                 for c in re.findall(r'<T[DH]\b.*?</T[DH]>', tr, re.S | re.I)]
+                 for c in re.findall(r'<T[DHEU]\b.*?</T[DHEU]>', tr, re.S | re.I)]
         if any(cells):
             out.append(cells)
     return out

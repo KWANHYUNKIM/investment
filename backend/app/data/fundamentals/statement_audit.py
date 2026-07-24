@@ -34,8 +34,13 @@ _SJ_OF = {
     "inventory": ("BS",), "receivable": ("BS",),
     "revenue": ("IS", "CIS"), "cogs": ("IS", "CIS"), "sga": ("IS", "CIS"),
     "op": ("IS", "CIS"), "net": ("IS", "CIS"),
+    "other_op_income": ("IS", "CIS"), "other_op_expense": ("IS", "CIS"),
     "cfo": ("CF",), "cfi": ("CF",), "cff": ("CF",),
     "cash_delta": ("CF",), "cash_begin": ("CF",), "cash_end": ("CF",), "fx": ("CF",),
+    # 아래 5개는 §15 교차검증(X19·X25·X32·X33)이 쓴다 — audit() 자체는 안 쓰지만
+    # 계정 정의를 두 군데 두면 언젠가 어긋나므로 여기 한곳에 모아 둔다.
+    "ppe": ("BS",), "intangible_bs": ("BS",),
+    "tax": ("IS", "CIS"), "pretax": ("IS", "CIS"), "dividend_paid": ("CF",),
 }
 
 # (account_id 후보, account_nm 후보) — DART는 회사마다 계정명이 달라 둘 다로 잡는다.
@@ -53,6 +58,11 @@ _PICK = {
     "op":          (("dart_OperatingIncomeLoss", "ifrs-full_ProfitLossFromOperatingActivities"),
                     ("영업이익", "영업이익(손실)")),
     "net":         (("ifrs-full_ProfitLoss",), ("당기순이익", "당기순이익(손실)", "분기순이익")),
+    # 영업이익에 **기타영업손익**을 넣는 회사가 있다(LG화학: 매출총이익−판관비+기타영업수익=영업이익).
+    # 이걸 빼고 항등식을 보면 멀쩡한 회사가 '손익계산서 불일치'로 찍힌다. '기타영업외수익'과
+    # 헷갈리면 안 되므로 계정명은 정확히 일치시킨다.
+    "other_op_income":  (("dart_OtherOperatingIncome",), ("기타영업수익",)),
+    "other_op_expense": (("dart_OtherOperatingExpenses",), ("기타영업비용",)),
     "cfo":         (("ifrs-full_CashFlowsFromUsedInOperatingActivities",),
                     ("영업활동현금흐름", "영업활동으로인한현금흐름")),
     "cfi":         (("ifrs-full_CashFlowsFromUsedInInvestingActivities",),
@@ -69,6 +79,14 @@ _PICK = {
                     ("기말현금및현금성자산", "기말의현금및현금성자산")),
     "fx":          (("ifrs-full_EffectOfExchangeRateChangesOnCashAndCashEquivalents",),
                     ("현금및현금성자산에대한환율변동효과", "환율변동효과", "외화환산으로인한현금의변동")),
+    "ppe":         (("ifrs-full_PropertyPlantAndEquipment",), ("유형자산",)),
+    "intangible_bs": (("ifrs-full_IntangibleAssetsOtherThanGoodwill",), ("무형자산", "개발비")),
+    "tax":         (("ifrs-full_IncomeTaxExpenseContinuingOperations",),
+                    ("법인세비용", "법인세비용(수익)", "법인세수익")),
+    "pretax":      (("ifrs-full_ProfitLossBeforeTax",),
+                    ("법인세비용차감전순이익", "법인세비용차감전순이익(손실)", "법인세차감전순이익")),
+    "dividend_paid": (("ifrs-full_DividendsPaidClassifiedAsFinancingActivities",),
+                      ("배당금지급", "배당금의지급", "배당금지급액", "현금배당금의지급")),
 }
 
 _SJ_LABEL = {"BS": "재무상태표", "IS": "손익계산서", "CIS": "포괄손익계산서",
@@ -233,7 +251,8 @@ def audit(ticker: str, notes: dict | None = None,
         rev, cogs, sga, op = (v["revenue"].get(y), v["cogs"].get(y),
                               v["sga"].get(y), v["op"].get(y))
         if rev and cogs is not None and sga is not None and op is not None:
-            calc = rev - cogs - sga
+            calc = (rev - cogs - sga
+                    + (v["other_op_income"].get(y) or 0.0) - (v["other_op_expense"].get(y) or 0.0))
             gap = _pct(calc, op)
             checks.append(_chk(
                 "A2", "손익계산서 정합(매출−원가−판관비=영익)",

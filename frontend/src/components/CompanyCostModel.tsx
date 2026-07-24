@@ -18,6 +18,9 @@ import {
   CCMLabor,
   CCMStatementAudit,
   CCMStatementCheck,
+  DartFull,
+  IntegrityCheck,
+  IntegrityScore,
   AnalystReports,
   CompanyProducts,
   CostingEducation,
@@ -218,6 +221,12 @@ export function CompanyCostModel() {
                 </span>
               </div>
               <div style={{ color: c.op_margin >= 0 ? GREEN : "#c92a2a" }}>영익 {pct(c.op_margin)}</div>
+              {c.integrity_pct != null && (
+                <div className="mt-0.5" style={{ color: gradeColor(c.integrity_grade) }}>
+                  진실성 {c.integrity_pct}%
+                  {c.integrity_fail ? <span className="ml-1 text-[10px]">불일치 {c.integrity_fail}</span> : null}
+                </div>
+              )}
             </div>
           </button>
         ))}
@@ -678,6 +687,9 @@ function CompanyDetail({
 
       {loading && <div className="text-sm text-gray-400">불러오는 중…</div>}
 
+      {/* 최상단 — 원가 진실성(§15.1). 소비자에겐 한 숫자, 펼치면 35개 항목 전부 */}
+      {data.integrity && <IntegritySection integ={data.integrity} />}
+
       {/* ① 품목별 원가·영익 */}
       <section>
         <h3 className="mb-1 text-sm font-bold text-gray-700">① 품목별 원가·영업이익 (이 회사가 파는 물건 전체)</h3>
@@ -799,6 +811,9 @@ function CompanyDetail({
       {/* ③-3 단가·물량 실측 (B3·B4) */}
       {data.business?.available && <BusinessSection biz={data.business} />}
 
+      {/* ③-4 사업보고서 전 항목 실측 (§15.2 D1~D12) */}
+      {data.dart_full && <DartFullSections d={data.dart_full} />}
+
       {/* ④ 결합원가 배분 (연산·등급 업종만) */}
       {data.joint_allocation && <JointAllocationSection ja={data.joint_allocation} edu={edu} />}
 
@@ -879,6 +894,302 @@ function CompanyDetail({
         )}
       </section>
     </div>
+  );
+}
+
+// ===== §15 원가 진실성 — 소비자는 한 줄, 전문가는 전 항목 =====
+// 스코어는 "이 회사가 정직한가"가 아니라 **"공시된 숫자들이 서로 맞물리는가"** 다.
+// 그래서 판정만 보여주지 않고 A·B의 출처(절 번호)와 숫자를 항상 같이 적는다.
+const ST_COLOR: Record<string, string> = {
+  ok: GREEN, warn: "#b8860b", fail: "#c92a2a", na: "#adb5bd",
+};
+const ST_LABEL: Record<string, string> = {
+  ok: "일치", warn: "관찰", fail: "불일치", na: "확인불가",
+};
+
+function gradeColor(grade?: string | null): string {
+  if (grade === "양호") return GREEN;
+  if (grade === "보통") return "#b8860b";
+  if (grade === "주의") return "#e8590c";
+  if (grade === "경고") return "#c92a2a";
+  return "#868e96";
+}
+
+function IntegritySection({ integ }: { integ: IntegrityScore }) {
+  const [open, setOpen] = useState(false);
+  const [onlyIssue, setOnlyIssue] = useState(false);
+  if (!integ.available || integ.score_pct == null) {
+    return (
+      <section className="rounded border border-gray-200 bg-gray-50 px-3 py-2 text-[12px] text-gray-500">
+        원가 진실성 — 검증할 수 있는 항목이 없습니다({integ.phrase}).
+      </section>
+    );
+  }
+  const color = gradeColor(integ.grade);
+  const rows = onlyIssue
+    ? integ.checks.filter((c) => c.status === "warn" || c.status === "fail")
+    : integ.checks;
+
+  return (
+    <section className="rounded border" style={{ borderColor: color }}>
+      {/* 레벨 0 — 소비자가 보는 한 줄 */}
+      <div className="px-3 py-2">
+        <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+          <span className="text-sm font-bold text-gray-700">원가 진실성</span>
+          <span className="text-2xl font-bold tabular-nums" style={{ color }}>{integ.score_pct}%</span>
+          <span className="rounded px-1.5 py-0.5 text-[11px] font-bold text-white" style={{ background: color }}>
+            {integ.grade}
+          </span>
+          <span className="text-[12px] text-gray-500">검증범위 {integ.coverage_pct}%</span>
+          {integ.sector_percentile != null && (
+            <span className="text-[12px] text-gray-500">업종 내 {integ.sector_percentile}%ile</span>
+          )}
+          <span className="text-[12px] text-gray-400">
+            {integ.n_total}개 중 {integ.n_ok}개 일치 · {integ.n_warn}개 관찰 · {integ.n_fail}개 불일치 ·
+            {" "}{integ.n_unavailable}개 확인불가
+          </span>
+        </div>
+        <div className="mt-1.5 flex h-2 w-full overflow-hidden rounded bg-gray-100">
+          <div style={{ width: `${integ.score_pct}%`, background: color }} />
+        </div>
+        <p className="mt-1 text-[12px] text-gray-600">{integ.phrase}</p>
+        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
+          <button onClick={() => setOpen(!open)} className="text-[12px] font-semibold" style={{ color: GREEN }}>
+            {open ? "▾ 항목 접기" : `▸ ${integ.n_total}개 항목 전부 보기`}
+          </button>
+          {open && (
+            <label className="flex items-center gap-1 text-[11px] text-gray-500">
+              <input type="checkbox" checked={onlyIssue} onChange={(e) => setOnlyIssue(e.target.checked)} />
+              어긋난 항목만
+            </label>
+          )}
+          {integ.url && (
+            <a href={integ.url} target="_blank" rel="noreferrer" className="text-[11px] text-gray-400 underline">
+              DART 원문
+            </a>
+          )}
+        </div>
+      </div>
+
+      {open && (
+        <div className="border-t border-gray-200 px-3 py-2">
+          {/* 등급별 요약 — 무엇이 더 중한가 */}
+          <div className="mb-2 flex flex-wrap gap-x-5 gap-y-1 text-[11px] text-gray-500">
+            {integ.by_grade.map((g) => (
+              <span key={g.grade}>
+                <b className="text-gray-700">{g.grade}</b> {g.n}항목{" "}
+                <span style={{ color: GREEN }}>{"●".repeat(g.ok)}</span>
+                <span style={{ color: "#b8860b" }}>{"●".repeat(g.warn)}</span>
+                <span style={{ color: "#c92a2a" }}>{"●".repeat(g.fail)}</span>
+                <span style={{ color: "#dee2e6" }}>{"○".repeat(g.na)}</span>
+              </span>
+            ))}
+          </div>
+
+          <div className="space-y-1">
+            {rows.map((c) => <IntegrityRow key={c.code} c={c} />)}
+          </div>
+
+          <p className="mt-2 text-[11px] leading-relaxed text-gray-400">
+            {String(integ.weights.rule ?? "")} · {integ.note}
+          </p>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function IntegrityRow({ c }: { c: IntegrityCheck }) {
+  const [open, setOpen] = useState(false);
+  const color = ST_COLOR[c.status];
+  return (
+    <div className="rounded border border-gray-100" style={{ background: c.status === "na" ? "#fafafa" : "#fff" }}>
+      <button onClick={() => setOpen(!open)} className="flex w-full items-start gap-2 px-2 py-1.5 text-left">
+        <span className="mt-0.5 w-11 shrink-0 rounded text-center text-[10px] font-bold text-white" style={{ background: color }}>
+          {ST_LABEL[c.status]}
+        </span>
+        <span className="w-8 shrink-0 text-[11px] font-semibold text-gray-400">{c.code}</span>
+        <span className="min-w-0 flex-1">
+          <span className="text-[12px] font-semibold text-gray-800">{c.label}</span>
+          <span className="ml-1 text-[10px] text-gray-400">[{c.grade}·가중{c.weight}]</span>
+          <span className="block text-[11px] leading-snug text-gray-600">{c.detail}</span>
+        </span>
+      </button>
+      {open && (
+        <div className="border-t border-gray-100 px-3 py-1.5 text-[11px] leading-relaxed text-gray-500">
+          {(c.source_a || c.source_b) && (
+            <div className="mb-1">
+              {c.source_a && <span>A: {c.source_a}{c.a != null ? ` (${c.a})` : ""}</span>}
+              {c.source_b && <span className="ml-3">B: {c.source_b}{c.b != null ? ` (${c.b})` : ""}</span>}
+              {c.year && <span className="ml-3 text-gray-400">FY{c.year}</span>}
+            </div>
+          )}
+          {c.why && <div className="text-gray-500">{c.why}</div>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ===== §15.2 사업보고서 전 항목 실측 — 지금까지 추정이던 자리를 공시 숫자로 채운 곳 =====
+function eok(won?: number | null): string {
+  if (won == null) return "—";
+  return `${Math.round(won / 1e8).toLocaleString("ko-KR")}억`;
+}
+
+function DartFullSections({ d }: { d: DartFull }) {
+  const [open, setOpen] = useState(false);
+  if (!d.available) return null;
+  const seg = d.segments;
+  const mp = d.materials_purchase;
+  const uc = d.unit_consumption ?? [];
+  const inv = d.inventory;
+  const rp = d.related_party;
+  const am = d.audit_meta;
+
+  return (
+    <section>
+      <h3 className="mb-1 text-sm font-bold text-gray-700">
+        ③-4 사업보고서 전 항목 <span className="font-normal" style={{ color: GREEN }}>실측</span>
+        <span className="font-normal text-gray-400">
+          {" "}— 원재료 매입액·부문 원가율·원단위·재고·특수관계자
+        </span>
+      </h3>
+
+      {/* 부문별 매출·영익 — '부문 원가율 = 회사평균 상속'을 졸업하는 자리 */}
+      {seg && seg.rows.length > 0 && (
+        <div className="mb-3 overflow-x-auto">
+          <div className="mb-0.5 text-[11px] text-gray-400">{seg.source}</div>
+          <table className="w-full min-w-[480px] text-sm">
+            <thead>
+              <tr className="border-b text-left text-[11px] text-gray-400">
+                <th className="py-1 pr-2">사업부문</th>
+                <th className="py-1 pr-2 text-right">매출</th>
+                <th className="py-1 pr-2 text-right">비중</th>
+                <th className="py-1 pr-2 text-right">영업손익</th>
+                <th className="py-1 text-right">영익률</th>
+              </tr>
+            </thead>
+            <tbody>
+              {seg.rows.map((r, i) => (
+                <tr key={i} className="border-b border-gray-100">
+                  <td className="py-1 pr-2 text-gray-800">{r.name}</td>
+                  <td className="py-1 pr-2 text-right tabular-nums">{eok(r.revenue_won)}</td>
+                  <td className="py-1 pr-2 text-right tabular-nums text-gray-500">{r.revenue_pct ?? "—"}%</td>
+                  <td className="py-1 pr-2 text-right tabular-nums">{eok(r.op_won)}</td>
+                  <td className="py-1 text-right tabular-nums font-semibold"
+                      style={{ color: (r.op_margin ?? 0) >= 0 ? GREEN : "#c92a2a" }}>
+                    {r.op_margin != null ? `${(r.op_margin * 100).toFixed(1)}%` : "—"}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* 원단위 — §15.4 매입액 ÷ 단가 ÷ 생산량 */}
+      {uc.length > 0 && (
+        <div className="mb-3 rounded border border-gray-200 bg-gray-50 px-3 py-2">
+          <div className="text-[12px] font-semibold text-gray-700">
+            원단위(原單位) — 제품 하나에 원재료가 얼마나 들어가나
+          </div>
+          {uc.map((u, i) => (
+            <div key={i} className="mt-1 text-[12px] text-gray-600">
+              <b className="text-gray-800">{u.segment} · {u.material}</b>{" "}
+              <span className="font-bold" style={{ color: GREEN }}>{u.u.toLocaleString("ko-KR")} {u.u_unit}</span>
+              <span className="ml-2 text-[11px] text-gray-400">
+                매입 {eok(u.amount_won)} ÷ 단가 {u.unit_price?.toLocaleString("ko-KR")}{u.price_unit} ={" "}
+                {u.qty.toLocaleString("ko-KR")}{u.qty_unit} ÷ 생산 {u.output.toLocaleString("ko-KR")}{u.output_unit}
+              </span>
+              {u.trend.length > 1 && (
+                <span className="ml-2 text-[11px]" style={{ color: u.stable ? GREEN : "#b8860b" }}>
+                  3년 {u.trend.map((t) => t.u).reverse().join(" → ")} {u.stable ? "(안정)" : "(변동)"}
+                </span>
+              )}
+              {u.join !== "품목" && (
+                <span className="ml-2 text-[10px] text-gray-400">
+                  ※ 매입액표와 단가표의 품목명이 달라 {u.join}으로 연결(단가 대표품목: {u.price_item})
+                </span>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      <button onClick={() => setOpen(!open)} className="text-[12px] font-semibold text-gray-600 hover:text-gray-900">
+        {open ? "▾" : "▸"} 원재료 매입액 · 재고 구성 · 특수관계자 · 감사 이력
+      </button>
+
+      {open && (
+        <div className="mt-2 space-y-3">
+          {mp && (
+            <div className="overflow-x-auto">
+              <div className="mb-0.5 text-[11px] text-gray-400">
+                {mp.source} · 합계 {eok(mp.total_won)}
+              </div>
+              <table className="w-full min-w-[480px] text-sm">
+                <thead>
+                  <tr className="border-b text-left text-[11px] text-gray-400">
+                    <th className="py-1 pr-2">부문</th>
+                    <th className="py-1 pr-2">유형</th>
+                    <th className="py-1 pr-2">품목</th>
+                    <th className="py-1 pr-2">용도</th>
+                    <th className="py-1 pr-2 text-right">매입액</th>
+                    <th className="py-1 text-right">비중</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {mp.rows.slice(0, 15).map((r, i) => (
+                    <tr key={i} className="border-b border-gray-100">
+                      <td className="py-1 pr-2 text-gray-500">{r.segment ?? "—"}</td>
+                      <td className="py-1 pr-2 text-gray-500">{r.type ?? "—"}</td>
+                      <td className="py-1 pr-2 text-gray-800">{r.item}</td>
+                      <td className="py-1 pr-2 text-[11px] text-gray-400">{r.use ?? "—"}</td>
+                      <td className="py-1 pr-2 text-right tabular-nums">{eok(r.amount_won)}</td>
+                      <td className="py-1 text-right tabular-nums text-gray-500">{r.pct != null ? `${r.pct}%` : "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {inv && (
+            <div className="text-[12px] text-gray-600">
+              <div className="mb-0.5 text-[11px] text-gray-400">{inv.source}</div>
+              재고 <b>{eok(inv.total_won)}</b>
+              {inv.raw_won != null && <> · 원재료 {eok(inv.raw_won)}</>}
+              {inv.wip_won != null && <> · 재공품 {eok(inv.wip_won)}</>}
+              {inv.fg_won != null && <> · 제품·상품 {eok(inv.fg_won)}</>}
+              {" · "}평가손실충당금 <b style={{ color: (inv.loss_pct ?? 0) > 10 ? "#c92a2a" : "#6b7280" }}>
+                {eok(inv.valuation_loss_won)}{inv.loss_pct != null ? ` (${inv.loss_pct}%)` : ""}
+              </b>
+            </div>
+          )}
+
+          {rp && (
+            <div className="text-[12px] text-gray-600">
+              <div className="mb-0.5 text-[11px] text-gray-400">{rp.source}</div>
+              특수관계자 {rp.n_parties}곳 · 매출 <b>{eok(rp.sales_won)}</b> · 매입 <b>{eok(rp.purchase_won)}</b>
+              <div className="mt-0.5 text-[11px] text-gray-400">
+                {rp.parties.slice(0, 5).map((p) => `${p.name} ${eok(p.sales_won)}`).join(" · ")}
+              </div>
+            </div>
+          )}
+
+          {am?.audit_service && am.audit_service.length > 0 && (
+            <div className="text-[12px] text-gray-600">
+              <div className="mb-0.5 text-[11px] text-gray-400">V-1 외부감사에 관한 사항</div>
+              감사인 {am.auditors?.[0] ?? "—"}
+              {am.auditor_changed && <b style={{ color: "#b8860b" }}> (전기와 다름 — 감사인 변경)</b>}
+              {" · "}
+              {am.audit_service.map((s) => `${s.period} ${s.hours?.toLocaleString("ko-KR") ?? "—"}시간/${s.fee_mn ?? "—"}백만원`).join(" · ")}
+            </div>
+          )}
+        </div>
+      )}
+    </section>
   );
 }
 

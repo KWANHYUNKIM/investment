@@ -1094,6 +1094,34 @@ def report_notes_endpoint(
     return report_notes.notes(ticker, refresh=refresh)
 
 
+@router.get("/dart-full")
+def dart_full_endpoint(
+    ticker: str = Query(..., description="종목코드, 예: 161890"),
+    refresh: bool = Query(False),
+):
+    """(§15.2) 사업보고서 **전 항목** 파싱 — 원재료 매입액·매출실적·영업부문·재고·특수관계자·
+    감사메타·자금조달·연결범위 + 원단위(原單位) 역산."""
+    from app.data.fundamentals import dart_full
+    return dart_full.full(ticker, refresh=refresh)
+
+
+@router.get("/integrity")
+def integrity_endpoint(
+    ticker: str = Query(..., description="종목코드, 예: 161890"),
+    refresh: bool = Query(False, description="사업보고서 파싱 캐시를 무시하고 다시 읽는다"),
+):
+    """(§15.1) 원가 진실성 스코어 — 교차검증 X1~X35 전 항목과 근거(A·B 출처·수치)."""
+    from app.data.fundamentals import (dart_full, integrity, labor_cost,
+                                       report_business, report_notes)
+    d = dart_full.full(ticker, refresh=refresh)
+    nt = report_notes.notes(ticker, refresh=refresh)
+    sep = d.get("separate") or {}
+    return integrity.evaluate(
+        ticker, dfull=d, notes=nt, labor=labor_cost.analyze(ticker),
+        biz=report_business.business(ticker),
+        separate=(sep.get(max(sep)) if sep else None))
+
+
 @router.get("/statement-audit/coverage")
 def statement_audit_coverage_endpoint(
     limit: int = Query(0, description="0=전체"),

@@ -34,7 +34,7 @@ from app.data.fundamentals import auto_costmodel as ac
 _TTL = 30 * 24 * 3600.0
 # 파서를 고치면 올린다. 캐시에 같이 적어두고 다르면 무시 → **옛 파서 결과가 남지 않는다.**
 # (실제로 겪음: 배치가 만든 구버전 캐시 때문에 고친 뒤에도 '백만개'가 품목명으로 남아 있었다)
-_PARSER_VERSION = 2
+_PARSER_VERSION = 3          # v3: TE/TU 셀 인식(서식 표의 데이터가 통째로 비던 문제)
 
 # 품목명이 아니라 '구분' 값 — 이게 이름이 되면 전 품목이 '수입'이 된다.
 _QUALIFIER = re.compile(r"^(수입|국내|내수|수출|해외|직수출|로컬)$")
@@ -80,7 +80,10 @@ def _grid(tbl: str) -> list[list[str]]:
         line: dict[int, str] = {c: v[0] for c, v in carry.items()}
         added: dict[int, list] = {}
         ci = 0
-        for attrs, inner in re.findall(r"<T[DH]\b([^>]*)>(.*?)</T[DH]>", tr, re.S | re.I):
+        # 셀 태그가 TD/TH 만인 게 아니다. DART 서식이 정해 준 표(감사의견·직원현황·자금조달
+        # 등 ACLASS="EXTRACTION")는 **<TE>(추출값)·<TU>(단위값)** 로 온다. TD/TH 만 읽으면
+        # 그런 표는 머리행만 남고 **데이터가 통째로 빈다**(삼성전자 감사의견표에서 실제 발생).
+        for attrs, inner in re.findall(r"<T[DHEU]\b([^>]*)>(.*?)</T[DHEU]>", tr, re.S | re.I):
             while ci in line:
                 ci += 1
             txt = _cell(inner)

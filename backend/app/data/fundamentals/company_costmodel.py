@@ -21,6 +21,8 @@ import time
 
 from app.core.config import get_settings
 from app.data.fundamentals import commodities
+from app.data.fundamentals import dart_full
+from app.data.fundamentals import integrity
 from app.data.fundamentals import joint_costing
 from app.data.fundamentals import labor_cost
 from app.data.fundamentals import report_business
@@ -235,6 +237,9 @@ def list_companies() -> list[dict]:
                 "production_type": b.get("production_type"),
                 "verdict": b.get("verdict"),
             })
+        if b:
+            row.update({k: b.get(k) for k in
+                        ("integrity_pct", "integrity_coverage", "integrity_grade", "integrity_fail")})
         out.append(row)
     out.sort(key=lambda x: (x["sector"], x["company"]))
     return out
@@ -267,6 +272,7 @@ def _batch_row(a: dict) -> dict:
     sa = a.get("statement_audit") or {}
     lb = (a.get("labor") or {}).get("current") or {}
     rn = (a.get("report_notes") or {}).get("audit") or {}
+    ig = a.get("integrity") or {}
     f3 = a.get("financials_3y") or []
     return {
         "company": a["company"],
@@ -294,6 +300,11 @@ def _batch_row(a: dict) -> dict:
         "headcount": lb.get("headcount"),
         "avg_salary": lb.get("avg_salary"),
         "material_ratio_of_cogs": v.get("material_ratio_of_cogs"),
+        # §15 진실성 스코어 — 목록·랭킹에서 배지로 쓰고, 업종 백분위의 모집단이 된다.
+        "integrity_pct": ig.get("score_pct"),
+        "integrity_coverage": ig.get("coverage_pct"),
+        "integrity_grade": ig.get("grade"),
+        "integrity_fail": ig.get("n_fail"),
         "coverage": a.get("coverage"),
     }
 
@@ -604,6 +615,22 @@ def analyze(ticker: str) -> dict:
     except Exception:
         audit = None
 
+    # §15: 사업보고서 전 항목 파싱 → 교차검증 X1~X35 → 원가 진실성 스코어
+    try:
+        dfull = dart_full.full(ticker)
+    except Exception:
+        dfull = None
+    try:
+        sep = (dfull or {}).get("separate") or {}
+        integ = integrity.evaluate(
+            ticker, dfull=dfull, notes=notes, labor=labor, biz=biz,
+            separate=(sep.get(max(sep)) if sep else None))
+    except Exception:
+        integ = None
+    if integ and integ.get("score_pct") is not None:
+        # 절대점수만 보면 수주산업은 늘 하위가 된다(§15.8-2) → 같은 업종 안에서의 위치를 병기.
+        integ["sector_percentile"] = _sector_percentile(sector, integ["score_pct"])
+
     # 레벨3 재무제표 근거
     financials_detail = _financials_detail(ticker, ratios, basis)
 
@@ -627,6 +654,8 @@ def analyze(ticker: str) -> dict:
         "statement_audit": audit,                # 재무제표 3종 감사
         "report_notes": notes,                   # 사업보고서 원문 실측(성격별 비용·감사의견)
         "business": biz,                         # B3·B4 실단가·생산물량·가동률
+        "dart_full": dfull,                      # §15.2 전 항목 파싱(원재료매입·부문·재고·특수관계자…)
+        "integrity": integ,                      # §15.1 원가 진실성 스코어(X1~X35)
         "products": products,
         "materials": materials,
         "reconciliation": reconciliation,
@@ -644,8 +673,20 @@ def analyze(ticker: str) -> dict:
             "statement_audit": "ok" if (audit or {}).get("available") else "unavailable",
             "report_notes": "parsed" if (notes or {}).get("available") else "unavailable",
             "business": "parsed" if (biz or {}).get("available") else "unavailable",
+            "dart_full": ",".join((dfull or {}).get("parsed") or []) or "unavailable",
+            "integrity": "scored" if (integ or {}).get("available") else "unavailable",
         },
     }
+
+
+def _sector_percentile(sector: str, score: int) -> int | None:
+    """같은 업종 안에서 이 진실성 점수가 몇 %ile 인가. 배치 결과가 있어야 계산된다."""
+    b = load_batch() or {}
+    peers = [r.get("integrity_pct") for r in (b.get("companies") or {}).values()
+             if r.get("sector") == sector and r.get("integrity_pct") is not None]
+    if len(peers) < 5:
+        return None
+    return round(sum(1 for p in peers if p <= score) / len(peers) * 100)
 
 
 def _joint_allocation(ticker: str, sector: str, fin3y: list[dict],
