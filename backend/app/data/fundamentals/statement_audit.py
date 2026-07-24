@@ -142,6 +142,66 @@ def _series(df, key: str) -> dict[int, float]:
     return {y: v[1] for y, v in out.items()}
 
 
+def _series_labeled(df, key: str) -> dict[int, tuple[float, str, str]]:
+    """``_series`` 와 같은 규칙이되, **어느 계정을 읽었는지**(계정명·표준코드)까지 돌려준다.
+
+    "이 숫자를 어디서 가져왔나"를 화면에 그대로 보여주려면 금액만으론 부족하다.
+    """
+    ids, names = _PICK[key]
+    d = df[df["sj_div"].isin(_SJ_OF[key])]
+    sub = d[d["account_id"].isin(ids)] if "account_id" in d.columns else d.iloc[0:0]
+    if sub.empty:
+        norm = {_norm(n) for n in names}
+        sub = d[d["account_nm"].map(lambda x: _norm(x) in norm)]
+    if sub.empty:
+        return {}
+    out: dict[int, tuple[int, float, str, str]] = {}
+    for r in sub.to_dict("records"):
+        try:
+            y, amt, ordv = int(r["year"]), float(r["amount"]), int(r.get("ord") or 0)
+        except (TypeError, ValueError):
+            continue
+        if amt != amt:
+            continue
+        cur = out.get(y)
+        if cur is None or (ordv < cur[0] and amt) or (cur[1] == 0 and amt):
+            out[y] = (ordv, amt, str(r.get("account_nm") or ""), str(r.get("account_id") or ""))
+    return {y: (v[1], v[2], v[3]) for y, v in out.items()}
+
+
+# 원장으로 보여줄 계정 — (키, 한글 라벨, 소속 표). 검증이 실제로 읽은 숫자들이다.
+_LEDGER = (
+    ("assets", "자산총계", "재무상태표"), ("liabilities", "부채총계", "재무상태표"),
+    ("equity", "자본총계", "재무상태표"), ("receivable", "매출채권", "재무상태표"),
+    ("inventory", "재고자산", "재무상태표"), ("ppe", "유형자산", "재무상태표"),
+    ("revenue", "매출액", "손익계산서"), ("cogs", "매출원가", "손익계산서"),
+    ("sga", "판매비와관리비", "손익계산서"), ("op", "영업이익", "손익계산서"),
+    ("pretax", "법인세차감전순이익", "손익계산서"), ("tax", "법인세비용", "손익계산서"),
+    ("net", "당기순이익", "손익계산서"),
+    ("cfo", "영업활동현금흐름", "현금흐름표"), ("cfi", "투자활동현금흐름", "현금흐름표"),
+    ("cff", "재무활동현금흐름", "현금흐름표"), ("fx", "환율변동효과", "현금흐름표"),
+    ("cash_begin", "기초현금", "현금흐름표"), ("cash_end", "기말현금", "현금흐름표"),
+    ("dividend_paid", "배당금지급", "현금흐름표"),
+)
+
+
+def _build_ledger(df, years: list[int], basis: dict) -> list[dict]:
+    """검증이 실제로 읽은 **원장**. 연도별로 계정·금액·출처 계정명을 그대로 편다."""
+    labeled = {k: _series_labeled(df, k) for k, _, _ in _LEDGER}
+    out = []
+    for y in years:
+        rows = []
+        for key, label, stmt in _LEDGER:
+            hit = labeled.get(key, {}).get(y)
+            if hit is None:
+                continue
+            amt, nm, aid = hit
+            rows.append({"label": label, "statement": stmt, "eok": _eok(amt),
+                         "won": amt, "account_nm": nm, "account_id": aid})
+        out.append({"year": y, "basis": basis.get(y), "accounts": rows})
+    return out
+
+
 def _eok(v):
     return round(v / 1e8) if v is not None else None
 
@@ -335,6 +395,25 @@ def audit(ticker: str, notes: dict | None = None,
     warn_codes = {c["code"] for c in checks if c["status"] == "warn"} - fail_codes
     fails, warns = len(fail_codes), len(warn_codes)
     score = max(0, 100 - fails * 20 - warns * 7 - (0 if core_ok else 25))
+
+    # 점수를 어떻게 깎았는지 **한 줄도 숨기지 않는다.** 93이라는 숫자만 보여주면 믿을 근거가 없다.
+    deductions = []
+    if not core_ok:
+        deductions.append({"reason": "재무제표 3종 중 누락", "points": -25, "codes": ["C0"]})
+    if fails:
+        deductions.append({"reason": f"이상(fail) {fails}종 × 20점", "points": -fails * 20,
+                           "codes": sorted(fail_codes)})
+    if warns:
+        deductions.append({"reason": f"관찰(warn) {warns}종 × 7점", "points": -warns * 7,
+                           "codes": sorted(warn_codes)})
+    scoring = {
+        "base": 100,
+        "deductions": deductions,
+        "final": score,
+        "formula": "100 − (이상 종류 × 20) − (관찰 종류 × 7) − (3종 누락 시 25). "
+                   "같은 검증이 여러 해 걸려도 '종류' 1건으로 센다(연도 반복=같은 문제).",
+    }
+
     if not core_ok:
         verdict = "재무제표 누락 — 먼저 데이터 적재 필요"
     elif fails:
@@ -353,7 +432,10 @@ def audit(ticker: str, notes: dict | None = None,
         "years": years,
         "checks": checks,
         "score": score,
+        "scoring": scoring,                               # 점수 산식(감점 내역 전부)
+        "ledger": _build_ledger(df, years, basis),        # 검증이 읽은 원장(계정·금액·출처)
         "verdict": verdict,
+        "source": "DART 재무제표(OpenDART fnlttSinglAcntAll, DuckDB 적재분)",
         "note": "정합성 위반은 '의심 제기'이지 확정이 아니다. 업종 특성(수주산업·성장기 "
                 "재고 확충·계절성)으로 설명되는 경우가 많으므로 수치와 함께 판단한다.",
     }

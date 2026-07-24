@@ -2568,6 +2568,25 @@ export interface CCMStatementAudit {
   years?: number[];
   checks: CCMStatementCheck[];
   score: number | null;
+  scoring?: {
+    base: number;
+    deductions: { reason: string; points: number; codes: string[] }[];
+    final: number;
+    formula: string;
+  };
+  ledger?: {
+    year: number;
+    basis: string | null;
+    accounts: {
+      label: string;
+      statement: string;
+      eok: number | null;
+      won: number;
+      account_nm: string;
+      account_id: string;
+    }[];
+  }[];
+  source?: string;
   verdict: string;
   note: string;
 }

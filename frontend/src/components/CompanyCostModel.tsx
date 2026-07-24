@@ -986,6 +986,30 @@ function IntegritySection({ integ }: { integ: IntegrityScore }) {
             ))}
           </div>
 
+          {/* 점수 산식 — 93%가 어디서 나왔는지 가중합을 그대로 편다 */}
+          <div className="mb-2 rounded bg-white px-2 py-1.5 text-[11px] text-gray-600">
+            <b className="text-gray-700">점수 산식</b> — 가중치: {Object.entries(integ.weights)
+              .filter(([k]) => k !== "rule")
+              .map(([k, v]) => `${k} ${v}`).join(" · ")}
+            <div className="mt-0.5 tabular-nums">
+              {integ.by_grade.map((g) => {
+                const w = Number(integ.weights[g.grade] ?? 0);
+                const got = (g.ok * 1 + g.warn * 0.5) * w;
+                const denom = (g.ok + g.warn + g.fail) * w;
+                return denom ? (
+                  <span key={g.grade} className="mr-2">
+                    {g.grade}({g.ok}·{g.warn}·{g.fail}) {got}/{denom}
+                  </span>
+                ) : null;
+              })}
+              {" → "}
+              <b style={{ color: gradeColor(integ.grade) }}>{integ.score_pct}%</b>
+              <span className="ml-1 text-gray-400">
+                (확인불가 {integ.n_unavailable}개는 분모에서 제외 → 검증범위 {integ.coverage_pct}%)
+              </span>
+            </div>
+          </div>
+
           <div className="space-y-1">
             {rows.map((c) => <IntegrityRow key={c.code} c={c} />)}
           </div>
@@ -1570,8 +1594,147 @@ function StatementAuditSection({ audit }: { audit: CCMStatementAudit }) {
       <button onClick={() => setOpen(!open)} className="mt-1 text-[11px] text-gray-500 hover:text-gray-800">
         {open ? "▾ 접기" : `▸ 전체 검증 ${audit.checks.length}건 보기`}
       </button>
+
+      {/* 재무제표 신뢰도를 '어떻게' 조사했는지 — 데이터 출처 → 원장 → 산식까지 전부 편다 */}
+      <AuditProcess audit={audit} />
+
       <p className="mt-1 text-[11px] text-gray-400">{audit.note}</p>
     </section>
+  );
+}
+
+// ⑦-b 조사 과정 전체 공개 — 신뢰도 점수 한 숫자로 끝내지 않는다.
+// "어떤 데이터를 · 어디서 읽어 · 어떻게 검증하고 · 점수를 어떻게 깎았나"를 순서대로 보여준다.
+function AuditProcess({ audit }: { audit: CCMStatementAudit }) {
+  const [open, setOpen] = useState(false);
+  const [yi, setYi] = useState(0);
+  const ledger = audit.ledger ?? [];
+  const sc = audit.scoring;
+  const yr = ledger[yi];
+
+  return (
+    <div className="mt-2">
+      <button
+        onClick={() => setOpen(!open)}
+        className="text-[12px] font-semibold"
+        style={{ color: GREEN }}
+      >
+        {open ? "▾ 조사 과정 접기" : "▸ 이 점수가 어떻게 나왔나 — 조사 과정 전체 보기"}
+      </button>
+
+      {open && (
+        <div className="mt-2 space-y-3 rounded border border-gray-200 bg-gray-50 p-3">
+          {/* 1. 무엇을·어디서 읽었나 */}
+          <div>
+            <div className="text-[12px] font-bold text-gray-700">① 무엇을 어디서 읽었나</div>
+            <p className="text-[11px] text-gray-500">{audit.source ?? "DART 재무제표"}</p>
+            <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-[11px]">
+              {audit.statements.filter((s) => ["BS", "IS", "CIS", "CF", "SCE"].includes(s.sj_div)).map((s) => (
+                <span key={s.sj_div} style={{ color: s.ok ? GREEN : "#c92a2a" }}>
+                  {s.ok ? "●" : "○"} {s.label} {s.ok ? `${s.years.join("·")} / ${s.n_accounts}계정` : "없음"}
+                </span>
+              ))}
+            </div>
+            {audit.basis && (
+              <p className="mt-0.5 text-[11px] text-gray-400">
+                기준: {Object.entries(audit.basis).map(([y, b]) => `FY${y} ${b}`).join(" · ")}
+                {" "}— 한 해 안에서 연결·별도가 섞이면 항등식이 깨지므로 연도마다 한쪽으로 통일합니다.
+              </p>
+            )}
+          </div>
+
+          {/* 2. 읽어온 실제 숫자(원장) */}
+          {ledger.length > 0 && (
+            <div>
+              <div className="flex items-center gap-2">
+                <div className="text-[12px] font-bold text-gray-700">② 읽어온 실제 숫자 (원장)</div>
+                <div className="flex gap-1">
+                  {ledger.map((l, i) => (
+                    <button
+                      key={l.year}
+                      onClick={() => setYi(i)}
+                      className="rounded px-1.5 py-0.5 text-[10px]"
+                      style={i === yi
+                        ? { background: GREEN, color: "#fff", fontWeight: 700 }
+                        : { background: "#e9ecef", color: "#6b7280" }}
+                    >
+                      FY{l.year}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {yr && (
+                <div className="mt-1 overflow-x-auto">
+                  <table className="w-full min-w-[520px] text-[11px]">
+                    <thead>
+                      <tr className="border-b text-left text-gray-400">
+                        <th className="py-0.5 pr-2">계정</th>
+                        <th className="py-0.5 pr-2">표</th>
+                        <th className="py-0.5 pr-2 text-right">금액(억)</th>
+                        <th className="py-0.5">DART 계정명 [표준코드]</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {yr.accounts.map((a, i) => (
+                        <tr key={i} className="border-b border-gray-100">
+                          <td className="py-0.5 pr-2 font-semibold text-gray-700">{a.label}</td>
+                          <td className="py-0.5 pr-2 text-gray-400">{a.statement}</td>
+                          <td className="py-0.5 pr-2 text-right tabular-nums text-gray-700">
+                            {a.eok != null ? a.eok.toLocaleString("ko-KR") : "—"}
+                          </td>
+                          <td className="py-0.5 text-gray-400">
+                            {a.account_nm} <span className="text-gray-300">[{a.account_id}]</span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* 3. 이 숫자들로 무엇을 검증했나 */}
+          <div>
+            <div className="text-[12px] font-bold text-gray-700">③ 이 숫자들로 무엇을 검증했나 (전 항목)</div>
+            <div className="mt-1 space-y-0.5">
+              {audit.checks.map((c, i) => {
+                const cc = c.status === "fail" ? "#c92a2a" : c.status === "warn" ? "#b8860b" : GREEN;
+                return (
+                  <div key={i} className="text-[11px] leading-snug">
+                    <span className="mr-1 font-mono text-gray-400">{c.code}</span>
+                    <span className="font-semibold text-gray-700">{c.label}</span>
+                    <span className="ml-1 font-bold" style={{ color: cc }}>
+                      {c.status === "fail" ? "이상" : c.status === "warn" ? "관찰" : "정상"}
+                    </span>
+                    <span className="ml-1 text-gray-500">{c.detail}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* 4. 점수를 어떻게 깎았나 */}
+          {sc && (
+            <div>
+              <div className="text-[12px] font-bold text-gray-700">④ 점수를 어떻게 깎았나</div>
+              <div className="mt-1 text-[12px] tabular-nums text-gray-700">
+                기본 {sc.base}점
+                {sc.deductions.map((d, i) => (
+                  <span key={i}>
+                    {" "}<span style={{ color: "#c92a2a" }}>{d.points}점</span>
+                    <span className="text-[11px] text-gray-400"> ({d.reason}{d.codes.length ? `: ${d.codes.join(",")}` : ""})</span>
+                  </span>
+                ))}
+                {" = "}<b style={{ color: GREEN }}>{sc.final}점</b>
+                {sc.deductions.length === 0 && <span className="text-[11px] text-gray-400"> (감점 없음)</span>}
+              </div>
+              <p className="mt-0.5 text-[11px] text-gray-400">{sc.formula}</p>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
