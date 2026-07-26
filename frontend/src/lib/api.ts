@@ -2234,6 +2234,80 @@ export interface UEProduct {
   unit: string;
   sector: string;
 }
+// ── 경쟁사 원가·주가·뉴스 비교 (peer-compare) ──────────────────────────
+export interface PeerCostRow {
+  id: string;
+  ticker: string;
+  company: string;
+  product: string;
+  unit: string | null;
+  is_base: boolean;
+  retail_price: number | null;
+  factory_price: number | null;
+  cogs_ratio: number | null;
+  sga_ratio: number | null;
+  op_margin: number | null;
+  profit_per_unit: number | null;
+  material_pct: number | null;
+  process_pct: number | null;
+  basis_source: string | null;
+  top_materials: { item: string; commodity: string | null; chg_1y: number | null; direction: string | null }[];
+  annual_vol: number | null;
+  ret_pct: number | null;
+}
+export interface PeerPrice {
+  dates: string[];
+  series: Record<string, (number | null)[]>;
+  vol: Record<string, number | null>;
+  ret_pct: Record<string, number | null>;
+  meta: Record<string, { company: string; product: string; is_base: boolean }>;
+}
+export interface PeerCompare {
+  product: string;
+  sector: string;
+  as_of: string;
+  window_days: number;
+  peers: PeerCostRow[];
+  price: PeerPrice;
+}
+export interface PeerNewsItem {
+  company: string;
+  ticker: string;
+  scope: "domestic" | "global";
+  title: string | null;
+  link: string | null;
+  source: string | null;
+  ts: number | null;
+}
+export interface PeerNews {
+  product: string;
+  sector: string;
+  companies: { company: string; ticker: string }[];
+  items: PeerNewsItem[];
+}
+export interface PeerGlobalMember {
+  name: string;
+  code: string;
+  market: "KR" | "GLOBAL";
+  country: string | null;
+  market_cap_usd: number | null;
+  op_margin: number | null;
+  change_pct: number | null;
+  is_base: boolean;
+  is_leader?: boolean;
+}
+export interface PeerGlobal {
+  product: string;
+  sector: string;
+  cluster: { key: string; label: string | null } | null;
+  krw_usd: number;
+  members: PeerGlobalMember[];
+  base: { name: string; market_cap_usd: number | null } | null;
+  leader: { name: string; market_cap_usd: number | null } | null;
+  headroom_x: number | null;
+  foreign_enabled: boolean;
+  foreign_missing: number;
+}
 export interface UEWaterfallItem {
   item: string;
   won: number;
@@ -3081,6 +3155,12 @@ export const api = {
     request<DartFull>(`/api/data/dart-full?ticker=${encodeURIComponent(ticker)}${refresh ? "&refresh=true" : ""}`),
   integrity: (ticker: string, refresh = false) =>
     request<IntegrityScore>(`/api/data/integrity?ticker=${encodeURIComponent(ticker)}${refresh ? "&refresh=true" : ""}`),
+  peerCompare: (product: string) =>
+    request<PeerCompare>(`/api/data/peer-compare?product=${encodeURIComponent(product)}`),
+  peerNews: (product: string, per = 6) =>
+    request<PeerNews>(`/api/data/peer-news?product=${encodeURIComponent(product)}&per=${per}`),
+  peerGlobal: (product: string) =>
+    request<PeerGlobal>(`/api/data/peer-global?product=${encodeURIComponent(product)}`),
   crisisMeta: () => request<CrisisMeta>(`/api/crisis/meta`),
   crisisSim: (metric: string, crises?: string[]) => {
     const q = new URLSearchParams({ metric });

@@ -29,11 +29,12 @@ import { RealEstateMap } from "@/components/RealEstateMap";
 import { MarketMovers } from "@/components/MarketMovers";
 import { MarketBriefing } from "@/components/MarketBriefing";
 import { CompanyCostModel } from "@/components/CompanyCostModel";
+import { CompetitorCompare } from "@/components/CompetitorCompare";
 import { DelistingScreener } from "@/components/DelistingScreener";
 import { EarningsQuality } from "@/components/EarningsQuality";
 import { Admin } from "@/components/Admin";
 
-type Tab = "market" | "briefing" | "open" | "movers" | "score" | "watch" | "dividend" | "unitecon" | "delisting" | "eq" | "budget" | "wealth" | "live" | "money" | "korea" | "inst" | "future" | "report" | "industry" | "crisis" | "realestate" | "admin";
+type Tab = "market" | "briefing" | "open" | "movers" | "score" | "watch" | "dividend" | "unitecon" | "peer" | "delisting" | "eq" | "budget" | "wealth" | "live" | "money" | "korea" | "inst" | "future" | "report" | "industry" | "crisis" | "realestate" | "admin";
 
 // ── ERP식 좌측 사이드바: 18개 기능을 6개 모듈로 그룹핑 ────────────────────
 const NAV: { group: string; icon: string; items: { id: Tab; label: string }[] }[] = [
@@ -44,6 +45,7 @@ const NAV: { group: string; icon: string; items: { id: Tab; label: string }[] }[
     { id: "watch", label: "관심·보유" },
     { id: "dividend", label: "배당·실적" },
     { id: "unitecon", label: "원가분석" },
+    { id: "peer", label: "경쟁사 비교" },
     { id: "delisting", label: "관리종목·상폐 경보" },
     { id: "eq", label: "회계 착시 탐지" },
   ] },
@@ -244,6 +246,7 @@ function Home() {
                   </div>
                 )}
                 {tab === "unitecon" && <CompanyCostModel />}
+                {tab === "peer" && <CompetitorCompare />}
                 {tab === "delisting" && <DelistingScreener />}
                 {tab === "eq" && <EarningsQuality />}
                 {tab === "budget" && <BudgetManager />}

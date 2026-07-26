@@ -16,6 +16,7 @@ from app.data.fundamentals import dart
 from app.data.fundamentals import dart_financials
 from app.data.fundamentals import unit_economics
 from app.data.fundamentals import company_costmodel
+from app.data.fundamentals import peer_compare
 from app.data.fundamentals import commodities
 from app.data.news import feed
 from app.data.fundamentals import financials
@@ -1201,3 +1202,37 @@ def analyst_reports_endpoint(
 def commodities_endpoint():
     """원자재 시세 스냅샷 (원가분해 엔진의 가격 소스)."""
     return {"as_of": commodities.AS_OF, "items": commodities.all()}
+
+
+@router.get("/peer-compare")
+def peer_compare_endpoint(
+    product: str = Query(..., description="기준 제품 id, e.g. 004370:sinramyeon"),
+):
+    """같은 업종 경쟁 제품들의 원가구조 + 주가 변동성 비교."""
+    try:
+        return peer_compare.compare(product)
+    except KeyError:
+        raise HTTPException(404, f"unknown product: {product}")
+
+
+@router.get("/peer-news")
+def peer_news_endpoint(
+    product: str = Query(..., description="기준 제품 id"),
+    per: int = Query(default=6, ge=2, le=12),
+):
+    """경쟁군 회사들의 뉴스를 최신순으로 취합. Cached ~5min."""
+    try:
+        return peer_compare.news_compare(product, per=per)
+    except KeyError:
+        raise HTTPException(404, f"unknown product: {product}")
+
+
+@router.get("/peer-global")
+def peer_global_endpoint(
+    product: str = Query(..., description="기준 제품 id"),
+):
+    """같은 제품군의 국내 경쟁사 + 글로벌 리더를 시가총액(USD)으로 비교."""
+    try:
+        return peer_compare.global_compare(product)
+    except KeyError:
+        raise HTTPException(404, f"unknown product: {product}")

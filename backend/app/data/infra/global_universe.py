@@ -160,6 +160,73 @@ CLUSTERS: list[dict] = [
             ("PDD", "PDD(Temu)", "CN"), ("MELI", "MercadoLibre", "AR"), ("MPNGY", "Meituan", "CN"),
         ],
     },
+    {
+        "key": "food_beverage", "label": "음식료 · 음료 · 담배",
+        "desc": "가공식품·음료·주류·담배 글로벌 브랜드",
+        "kr_wics": ["식품", "음료", "담배"],
+        "foreign": [
+            ("KO", "Coca-Cola", "US"), ("PEP", "PepsiCo", "US"), ("NSRGY", "Nestle", "CH"),
+            ("MDLZ", "Mondelez", "US"), ("KHC", "Kraft Heinz", "US"), ("KDP", "Keurig Dr Pepper", "US"),
+            ("GIS", "General Mills", "US"), ("K", "Kellanova", "US"), ("UL", "Unilever", "GB"),
+            ("DANOY", "Danone", "FR"), ("STZ", "Constellation Brands", "US"),
+            ("PM", "Philip Morris", "US"), ("MO", "Altria", "US"), ("BTI", "BAT", "GB"),
+        ],
+    },
+    {
+        "key": "retail", "label": "유통 · 리테일",
+        "desc": "대형마트·백화점·편의점·홈임프루브먼트 오프라인 유통",
+        "kr_wics": ["백화점과일반상점", "식품과기본식료품소매"],
+        "foreign": [
+            ("WMT", "Walmart", "US"), ("COST", "Costco", "US"), ("HD", "Home Depot", "US"),
+            ("LOW", "Lowe's", "US"), ("TGT", "Target", "US"), ("KR", "Kroger", "US"),
+            ("TJX", "TJX", "US"), ("DG", "Dollar General", "US"), ("IDEXY", "Inditex(Zara)", "ES"),
+            ("SVNDY", "Seven&i", "JP"),
+        ],
+    },
+    {
+        "key": "oil_energy", "label": "정유 · 에너지 · 화학",
+        "desc": "석유·가스 메이저와 종합화학·소재",
+        "kr_wics": ["석유와가스", "에너지장비및서비스", "가스유틸리티", "전기유틸리티"],
+        "foreign": [
+            ("XOM", "ExxonMobil", "US"), ("CVX", "Chevron", "US"), ("SHEL", "Shell", "GB"),
+            ("BP", "BP", "GB"), ("TTE", "TotalEnergies", "FR"), ("COP", "ConocoPhillips", "US"),
+            ("SLB", "Schlumberger", "US"), ("ENB", "Enbridge", "CA"), ("PSX", "Phillips 66", "US"),
+            ("LIN", "Linde", "US"), ("DOW", "Dow", "US"), ("BASFY", "BASF", "DE"),
+        ],
+    },
+    {
+        "key": "transport", "label": "운송 · 물류 · 항공",
+        "desc": "항공·해운·택배·철도 물류",
+        "kr_wics": ["항공사", "해운사", "항공화물운송과물류", "도로와철도운송"],
+        "foreign": [
+            ("UPS", "UPS", "US"), ("FDX", "FedEx", "US"), ("AMKBY", "Maersk", "DK"),
+            ("UNP", "Union Pacific", "US"), ("CSX", "CSX", "US"), ("DAL", "Delta", "US"),
+            ("UAL", "United Airlines", "US"), ("LUV", "Southwest", "US"), ("ZIM", "ZIM", "IL"),
+            ("EXPD", "Expeditors", "US"),
+        ],
+    },
+    {
+        "key": "construction", "label": "건설 · 건자재 · 기계",
+        "desc": "건설·건축자재·중장비",
+        "kr_wics": ["건설", "건축자재", "기계", "가구", "가정용기기와용품"],
+        "foreign": [
+            ("CAT", "Caterpillar", "US"), ("DE", "Deere", "US"), ("CRH", "CRH", "IE"),
+            ("VMC", "Vulcan Materials", "US"), ("MLM", "Martin Marietta", "US"),
+            ("SHW", "Sherwin-Williams", "US"), ("MAS", "Masco", "US"), ("URI", "United Rentals", "US"),
+            ("PWR", "Quanta Services", "US"),
+        ],
+    },
+    {
+        "key": "apparel", "label": "의류 · 패션 · 럭셔리",
+        "desc": "스포츠·패션·명품 브랜드",
+        "kr_wics": ["섬유,의류,신발,호화품"],
+        "foreign": [
+            ("NKE", "Nike", "US"), ("LVMUY", "LVMH", "FR"), ("ADDYY", "adidas", "DE"),
+            ("IDEXY", "Inditex(Zara)", "ES"), ("PPRUY", "Kering", "FR"), ("CFRUY", "Richemont", "CH"),
+            ("RL", "Ralph Lauren", "US"), ("TPR", "Tapestry", "US"), ("VFC", "VF Corp", "US"),
+            ("LULU", "Lululemon", "US"),
+        ],
+    },
 ]
 
 
