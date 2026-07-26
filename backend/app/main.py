@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api import auth, backtest, crisis, data, portfolio, screening
 from app.api import admin
+from app.api import ops
 from app.core.auth import require_auth
 from app.core.config import get_settings
 from app.data.fundamentals import fundamentals_crawler
@@ -101,3 +102,5 @@ app.include_router(portfolio.router, dependencies=_protected)
 # 관리자 라우터(엔드포인트별 require_admin) + 방문자 추적(require_auth) 공개 라우터.
 app.include_router(admin.router)
 app.include_router(admin.track_router)
+# Ops 모니터링(스케줄러 상태·DB 저장 현황) — 로컬 운영용, 전역 auth 미적용.
+app.include_router(ops.router)
