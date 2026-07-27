@@ -1,8 +1,9 @@
 """Report domain — per-stock daily report and news lookup.
 
-Layered: router (transport) → service (delegation to ``app.data`` modules).
-No repository: this domain never touches ``app.data.infra.store`` — the report
-and news builders own their own I/O and caching.
+Layered: router (transport) → service (logic) → repository (data sources).
+Phase-2 deepened: the daily-report assembly now lives in ``service`` (moved out
+of the deleted ``app.data.reports.report``); the repository owns access to the
+price store, investor-flow read model, and the news feed.
 """
 from .router import router
 
