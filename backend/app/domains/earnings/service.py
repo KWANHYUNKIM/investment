@@ -11,7 +11,7 @@ from __future__ import annotations
 
 class EarningsService:
     def kospi_earnings(self):
-        from app.data.market import earnings
+        from . import earnings
 
         return earnings.board()
 
@@ -26,6 +26,6 @@ class EarningsService:
         return delisting_scheduler.status()
 
     def earnings_quality(self):
-        from app.data.market import earnings_quality
+        from . import earnings_quality
 
         return earnings_quality.board()

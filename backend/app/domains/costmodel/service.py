@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from app.data.fundamentals import commodities
 from app.data.fundamentals import company_costmodel
-from app.data.fundamentals import peer_compare
+from . import peer_compare
 from app.data.fundamentals import unit_economics
 
 
@@ -74,7 +74,7 @@ class CostmodelService:
 
     # -- education / ranking / future value ---------------------------------
     def costing_education(self) -> dict:
-        from app.data.fundamentals import costing_edu
+        from . import costing_edu
         return costing_edu.content()
 
     def company_costmodel_ranking(self, sector: str | None, limit: int) -> dict:
@@ -100,7 +100,7 @@ class CostmodelService:
         return company_costmodel.dart_products(ticker)
 
     def analyst_reports(self, ticker: str, company: str) -> dict:
-        from app.data.news import naver_research
+        from . import naver_research
         return naver_research.reports(company, ticker)
 
     def commodities(self) -> dict:

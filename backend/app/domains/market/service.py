@@ -12,17 +12,19 @@ from __future__ import annotations
 
 from app.core.errors import NotFoundError
 
-from app.data.market import asset_detail
+# relocated into this domain (phase-2): asset_detail, institutional, stock_score, briefing
+from . import asset_detail
+from . import institutional
+from . import stock_score
+from . import briefing
+# still shared across the app → stay in app.data
 from app.data.macro import crossasset
-from app.data.market import institutional
 from app.data.market import premarket
 from app.data.market import premarket_archive
 from app.data.market import target_price as target_price_mod
 from app.data.market import signals as signals_mod
-from app.data.market import stock_score
 from app.data.market import market_movers
 from app.data.market import movers_archive
-from app.data.market import briefing
 from app.data.news import livepulse
 from app.data.macro import moneyflow
 from app.data.reports import market_report

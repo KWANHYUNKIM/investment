@@ -22,7 +22,7 @@ class MacroService:
         return korea_flow.snapshot()
 
     def korea_diagnosis(self) -> dict:
-        from app.data.macro import korea_diagnosis
+        from . import korea_diagnosis
         return korea_diagnosis.diagnosis()
 
     def realestate_trades(self) -> dict:

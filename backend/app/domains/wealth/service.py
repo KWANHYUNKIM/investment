@@ -9,7 +9,7 @@ on FastAPI.
 """
 from __future__ import annotations
 
-from app.data.market import picks, wealthplan
+from . import picks, wealthplan
 
 
 class WealthService:

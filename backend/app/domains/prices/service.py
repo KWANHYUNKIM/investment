@@ -12,7 +12,7 @@ import time
 from app.core.cache import TTLCache
 from app.core.errors import UpstreamError
 from app.core.numeric import json_float as _f
-from app.data.news import feed
+from . import feed
 
 from .repository import PricesRepository
 from .schemas import LiveResponse, OHLCResponse, PricesResponse, QuoteRow
