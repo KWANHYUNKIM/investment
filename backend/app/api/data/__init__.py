@@ -1,4 +1,10 @@
-"""Data / reference endpoints: what's in the store."""
+"""Data / reference endpoints: what's in the store.
+
+NOTE: the ``prices`` domain has been migrated to the layered
+``app/domains/prices`` package (router→service→repository) and is now wired
+directly in ``app.main``. It is intentionally absent here — this legacy
+aggregate holds only the not-yet-migrated domains (strangler-fig in progress).
+"""
 from __future__ import annotations
 
 from fastapi import APIRouter
@@ -15,7 +21,6 @@ from . import (
     industry,
     macro,
     market,
-    prices,
     report,
     status,
     themes,
@@ -26,7 +31,6 @@ from . import (
 router = APIRouter(prefix="/api/data", tags=["data"])
 
 for _m in (
-    prices,
     status,
     fundamentals,
     global_map,

@@ -11,8 +11,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api import auth, backtest, crisis, data, portfolio, screening
 from app.api import admin
 from app.api import ops
+from app.core import errors, logging as app_logging
 from app.core.auth import require_auth
 from app.core.config import get_settings
+from app.domains.prices import router as prices_router
 from app.data.fundamentals import fundamentals_crawler
 from app.data.schedulers import blog_scheduler
 from app.data.schedulers import costmodel_scheduler
@@ -29,11 +31,14 @@ from app.data.market import crisis as crisis_data
 
 settings = get_settings()
 
+app_logging.setup()
+
 app = FastAPI(
     title="Quant Investment API",
     version="0.1.0",
     description="Screening · Backtesting · Portfolio construction for KR/US equities",
 )
+errors.install(app)
 
 app.add_middleware(
     CORSMiddleware,
@@ -94,6 +99,8 @@ app.include_router(auth.router)
 
 # 나머지 데이터 API는 전부 로그인 필요(외부망 노출 대비).
 _protected = [Depends(require_auth)]
+# 시세 도메인: 레이어드(app/domains/prices)로 이관 완료 — 나머지는 아직 data.router.
+app.include_router(prices_router, dependencies=_protected)
 app.include_router(data.router, dependencies=_protected)
 app.include_router(crisis.router, dependencies=_protected)
 app.include_router(screening.router, dependencies=_protected)
