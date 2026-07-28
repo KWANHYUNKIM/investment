@@ -74,7 +74,7 @@ export function LoginGate({ children }: { children: React.ReactNode }) {
   if (mode === "authed") return <>{children}</>;
   if (mode === "loading")
     return (
-      <div className="flex h-screen items-center justify-center bg-[#fafafa]">
+      <div className="flex h-dvh items-center justify-center bg-[#fafafa]">
         <span className="h-6 w-6 animate-spin rounded-full border-2 border-[#d0d0d0] border-t-[#217346]" />
       </div>
     );
@@ -83,7 +83,7 @@ export function LoginGate({ children }: { children: React.ReactNode }) {
   const cta = { login: "로그인", register: "가입하기", findId: "아이디 찾기", resetPw: "비밀번호 변경" }[mode];
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[#f3f2f1] p-4">
+    <div className="flex min-h-dvh items-center justify-center bg-[#f3f2f1] p-4">
       <div className="w-full max-w-sm overflow-hidden rounded-xl border border-[#d0d0d0] bg-white shadow">
         <div className="bg-[#217346] px-5 py-4 text-white">
           <div className="text-lg font-bold">투자 자산 관리</div>

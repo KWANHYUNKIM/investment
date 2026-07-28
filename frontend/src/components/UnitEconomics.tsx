@@ -131,7 +131,7 @@ export function UnitEconomics() {
           원가 분해 중…
         </div>
       ) : (
-        <div className="max-h-[calc(100vh-190px)] overflow-auto p-4">
+        <div className="sm:max-h-[calc(100dvh-190px)] overflow-auto p-4">
           {loading && <div className="mb-2 text-xs text-[#888]">갱신 중…</div>}
 
           {/* 헤더 요약 */}

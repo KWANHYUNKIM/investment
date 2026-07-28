@@ -131,9 +131,11 @@ export function IndustryMap() {
         </span>
       </div>
 
-      <div className="flex min-h-[70vh]">
+      {/* 좁은 화면에서는 목록을 위, 상세를 아래로 쌓는다. 330px 를 상시 떼어주면 폰에서
+          상세가 못 읽을 폭으로 남는다. 목록은 높이를 제한하고 자체 스크롤을 유지한다. */}
+      <div className="flex min-h-[70dvh] flex-col lg:flex-row">
         {/* ── left: industry list ─────────────────────────────── */}
-        <aside className="flex w-[330px] shrink-0 flex-col border-r border-[#d0d0d0] bg-[#fafafa]">
+        <aside className="flex max-h-[45dvh] w-full shrink-0 flex-col border-b border-[#d0d0d0] bg-[#fafafa] lg:max-h-none lg:w-[330px] lg:border-b-0 lg:border-r">
           <div className="border-b border-[#d0d0d0] bg-[#f3f2f1] p-2">
             <input
               value={q}

@@ -76,9 +76,10 @@ export function FutureTheme() {
         )}
       </div>
 
-      <div className="flex min-h-[72vh]">
+      {/* 좁은 화면: 목록 위 / 상세 아래로 쌓기 */}
+      <div className="flex min-h-[72dvh] flex-col lg:flex-row">
         {/* left: theme list */}
-        <aside className="flex w-[320px] shrink-0 flex-col border-r border-[#d0d0d0] bg-[#faf9fc]">
+        <aside className="flex max-h-[45dvh] w-full shrink-0 flex-col border-b border-[#d0d0d0] bg-[#faf9fc] lg:max-h-none lg:w-[320px] lg:border-b-0 lg:border-r">
           <div className="border-b border-[#d0d0d0] bg-[#eef0ee] px-3 py-1.5 text-[11px] font-semibold text-[#1f5132]">
             메가트렌드 (모멘텀순)
           </div>

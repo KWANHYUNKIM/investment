@@ -203,7 +203,7 @@ export function CompetitorCompare() {
           이 제품과 같은 업종({data.sector})으로 비교할 경쟁 제품이 없습니다.
         </div>
       ) : (
-        <div className="max-h-[calc(100vh-150px)] space-y-6 overflow-auto p-4">
+        <div className="sm:max-h-[calc(100dvh-150px)] space-y-6 overflow-auto p-4">
           {loading && <div className="text-xs text-[#888]">갱신 중…</div>}
 
           {/* ① 원가 구조 비교 ─────────────────────────────────────── */}

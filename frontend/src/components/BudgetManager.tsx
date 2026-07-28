@@ -233,7 +233,7 @@ export function BudgetManager() {
         {!s ? (
           <div className="py-16 text-center text-sm text-[#888]">불러오는 중…</div>
         ) : (
-          <div className="max-h-[calc(100vh-210px)] overflow-auto p-3">
+          <div className="sm:max-h-[calc(100dvh-210px)] overflow-auto p-3">
             {/* 요약 카드 */}
             <div className="mb-3 grid grid-cols-3 gap-2 text-center">
               <div className="rounded bg-[#fafafa] px-2 py-2">

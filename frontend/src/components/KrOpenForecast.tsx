@@ -122,7 +122,7 @@ export function KrOpenForecast() {
 
   return (
     <Sheet right={<span className="text-xs text-white/80">{at && `업데이트 ${at}`}</span>}>
-      <div className="max-h-[calc(100vh-190px)] overflow-y-auto p-4">
+      <div className="sm:max-h-[calc(100dvh-190px)] overflow-y-auto p-4">
         {/* ── 결론 배너 ─────────────────────────────── */}
         <div className="mb-4 rounded-md border border-[#e5e5e5] bg-[#fafafa] p-4">
           <div className="flex flex-wrap items-center gap-3">

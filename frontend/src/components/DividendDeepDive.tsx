@@ -229,7 +229,7 @@ export function DividendDeepDive() {
             {cl ? (
               <div>
                 <div className="mb-2 border-l-4 border-[#217346] pl-2 text-sm font-bold text-[#217346]">배당 투자 전 체크리스트</div>
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
                   <MetricCard title="매출" m={cl.revenue} />
                   <MetricCard title="순이익" m={cl.net_income} />
                   <MetricCard title="영업현금흐름" m={cl.op_cash_flow} />

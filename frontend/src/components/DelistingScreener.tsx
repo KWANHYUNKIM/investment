@@ -131,7 +131,7 @@ export function DelistingScreener() {
             />
           </div>
 
-          <div className="max-h-[calc(100vh-240px)] overflow-auto">
+          <div className="sm:max-h-[calc(100dvh-240px)] overflow-auto">
             <table className="w-full text-[12px]">
               <thead className="sticky top-0 z-10 bg-[#f5f5f5] text-left text-[10px] uppercase tracking-wide text-[#999]">
                 <tr className="border-b border-[#e5e5e5]">

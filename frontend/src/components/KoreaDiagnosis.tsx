@@ -67,7 +67,7 @@ export function KoreaDiagnosis() {
       </div>
 
       {/* 축별 진단 */}
-      <div className="mt-3 grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="mt-3 grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
         {d.axes.map((a) => (
           <div key={a.key} className="rounded-lg border border-[#eaeaea] p-3" style={{ background: STATUS_BG[a.status] }}>
             <div className="flex items-center justify-between">
