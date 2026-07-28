@@ -22,7 +22,23 @@ from __future__ import annotations
 import copy
 import json
 import os
+import re
 from typing import Any
+
+from app.core.config import get_settings
+
+_UNSAFE = re.compile(r"[^A-Za-z0-9_.\-]")
+
+
+def user_path(prefix: str, user: str | None) -> str:
+    """계정별 데이터 파일 경로 — ``data/<prefix>_<user>.json``.
+
+    사용자가 준 이름이 그대로 **파일 이름의 일부가 되므로** 경로에 쓸 수 없는 문자를
+    전부 ``_`` 로 바꾼다(``../`` 같은 경로 탈출과 구분자 주입 차단). 네 모듈이
+    (watchlist·income·budget·wealthplan) 이 정화기를 각자 복사해 갖고 있었는데, 성격상
+    한쪽만 고쳐지면 그 파일만 조용히 위험해지므로 한 곳에 둔다.
+    """
+    return str(get_settings().data_dir / f"{prefix}_{_UNSAFE.sub('_', user or 'default')}.json")
 
 
 def read_json(path: str | os.PathLike, default: Any = None) -> Any:

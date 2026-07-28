@@ -24,6 +24,7 @@ import zipfile
 
 import requests
 
+from app.data.fundamentals.dart_cache import ReportCache
 from app.core.config import get_settings
 from app.core.numeric import parse_accounting_number
 from app.data.fundamentals.dart import _load_corp_map, enabled
@@ -31,8 +32,8 @@ from app.data.fundamentals import auto_costmodel as ac
 
 _BASE = "https://opendart.fss.or.kr/api"
 _MAIN_MAX = 2_000_000        # 이보다 큰 멤버는 본문(사업의 내용) — 주석 파싱에서 제외
-_TTL = 30 * 24 * 3600.0
 _PARSER_VERSION = 7          # 파서 수정 시 올린다 → 옛 결과 캐시를 자동 무효화
+_CACHE = ReportCache("notes", version=_PARSER_VERSION)
                              # (v5: TE/TU 셀 · v6·7: 합계행 판별 + 재료비 우선 분류)
 
 _UNIT = (("십억원", 1e9), ("백만원", 1e6), ("천원", 1e3), ("억원", 1e8), ("원", 1.0))
@@ -44,11 +45,6 @@ _CAT = (
     ("감가상각", ("감가상각", "상각비")),
 )
 
-
-def _cache_path(ticker: str):
-    d = get_settings().data_dir / "dart_business"
-    d.mkdir(parents=True, exist_ok=True)
-    return d / f"notes_{ticker}.json"
 
 
 def _flat(s: str) -> str:
@@ -241,16 +237,9 @@ def _parse_audit(txt: str) -> dict | None:
 # --- 공개 API ---------------------------------------------------------------
 def notes(ticker: str, refresh: bool = False) -> dict:
     """사업보고서 원문 기반 실측 묶음. 실패해도 available=False 로 조용히 반환."""
-    cp = _cache_path(ticker)
-    if cp.exists() and not refresh:
-        try:
-            d = json.loads(cp.read_text(encoding="utf-8"))
-            if time.time() - d.get("_ts", 0) < _TTL and d.get("_v") == _PARSER_VERSION:
-                d.pop("_ts", None)
-                d.pop("_v", None)
-                return d
-        except Exception:
-            pass
+    hit = _CACHE.get(ticker, refresh=refresh)
+    if hit is not None:
+        return hit
 
     out = {"ticker": ticker, "available": False, "rcept": None,
            "cost_nature": None, "audit": None,
@@ -310,9 +299,4 @@ def notes(ticker: str, refresh: bool = False) -> dict:
             break
 
     out["available"] = bool(out["cost_nature"] or out["audit"])
-    try:
-        cp.write_text(json.dumps({**out, "_ts": time.time(), "_v": _PARSER_VERSION},
-                                 ensure_ascii=False), encoding="utf-8")
-    except Exception:
-        pass
-    return out
+    return _CACHE.put(ticker, out)

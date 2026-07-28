@@ -10,8 +10,7 @@ from __future__ import annotations
 import re
 import threading
 
-from app.core.config import get_settings
-from app.core.jsonstore import read_json, write_json
+from app.core.jsonstore import read_json, user_path, write_json
 
 _lock = threading.Lock()
 
@@ -115,12 +114,9 @@ def categorize(merchant: str) -> str:
     return "기타"
 
 
-def _safe_user(user: str) -> str:
-    return re.sub(r"[^A-Za-z0-9_.\-]", "_", user or "default")
-
 
 def _path(user: str) -> str:
-    return str(get_settings().data_dir / f"budget_{_safe_user(user)}.json")
+    return user_path("budget", user)
 
 
 def _load(user: str) -> dict:

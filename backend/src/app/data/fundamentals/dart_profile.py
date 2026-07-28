@@ -15,17 +15,15 @@ import time
 
 import requests
 
+from app.data.fundamentals.dart_cache import ReportCache
 from app.core.config import get_settings
 from app.data.fundamentals.dart import _load_corp_map, _float, enabled
 
 _BASE = "https://opendart.fss.or.kr/api"
-_TTL = 30 * 24 * 3600.0  # 30일
+# version 은 파서를 고칠 때 올린다 — 예전엔 이 모듈에 버전 검사가 없어서
+# 파서를 고쳐도 한 달간 옛 결과가 나왔다.
+_CACHE = ReportCache("profile", version=1)
 
-
-def _cache_path(ticker: str):
-    d = get_settings().data_dir / "dart_business"
-    d.mkdir(parents=True, exist_ok=True)
-    return d / f"profile_{ticker}.json"
 
 
 def _latest_fy() -> int:
@@ -90,14 +88,9 @@ def profile(ticker: str) -> dict:
              "revenue": None, "cogs": None, "op": None, "sga": None, "year": None}
     if not enabled():
         return empty
-    cp = _cache_path(ticker)
-    if cp.exists():
-        try:
-            d = json.loads(cp.read_text(encoding="utf-8"))
-            if time.time() - d.get("_ts", 0) < _TTL:
-                return {k: d.get(k) for k in empty}
-        except Exception:
-            pass
+    hit = _CACHE.get(ticker)
+    if hit is not None:
+        return {k: hit.get(k) for k in empty}
     corp = _load_corp_map().get(ticker)
     if not corp:
         return empty
@@ -116,8 +109,4 @@ def profile(ticker: str) -> dict:
                    sga=(rev - (cogs or 0) - (op or 0)) if rev else None, year=year)
     out.update(headcount=head or None, annual_labor=labor or None,
                avg_salary=(labor // head) if (head and labor) else None)
-    try:
-        cp.write_text(json.dumps({**out, "_ts": time.time()}, ensure_ascii=False), encoding="utf-8")
-    except Exception:
-        pass
-    return out
+    return _CACHE.put(ticker, out)

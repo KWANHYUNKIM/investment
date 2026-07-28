@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 
@@ -95,3 +96,38 @@ def test_various_payloads_survive(tmp_path, payload) -> None:
     p = tmp_path / "a.json"
     write_json(p, payload)
     assert read_json(p, "SENTINEL") == payload
+
+
+# --- user_path: 사용자 이름이 파일명이 되는 자리의 정화기 --------------------
+def test_user_path_shape(monkeypatch, tmp_path) -> None:
+    from app.core import config, jsonstore
+
+    monkeypatch.setattr(jsonstore, "get_settings", lambda: config.Settings(data_dir=tmp_path))
+    assert jsonstore.user_path("watchlist", "admin") == str(tmp_path / "watchlist_admin.json")
+
+
+@pytest.mark.parametrize(("user", "expect"), [
+    ("admin", "admin"),
+    ("", "default"),                 # 빈 값·None 은 기본 계정으로
+    (None, "default"),
+    ("a/../b", "a_.._b"),            # 경로 탈출 차단 — 구분자가 사라진다
+    ("a\\b", "a_b"),
+    ("us er", "us_er"),
+    ("홍길동", "___"),                  # ASCII 밖은 글자당 하나씩 치환
+    ("a:b*c?", "a_b_c_"),            # 윈도우 금지문자
+])
+def test_user_path_sanitizes(monkeypatch, tmp_path, user, expect) -> None:
+    """네 모듈이 각자 갖고 있던 _safe_user 의 동작을 그대로 고정한다."""
+    from app.core import config, jsonstore
+
+    monkeypatch.setattr(jsonstore, "get_settings", lambda: config.Settings(data_dir=tmp_path))
+    assert jsonstore.user_path("x", user) == str(tmp_path / f"x_{expect}.json")
+
+
+def test_user_path_never_escapes_data_dir(monkeypatch, tmp_path) -> None:
+    from app.core import config, jsonstore
+
+    monkeypatch.setattr(jsonstore, "get_settings", lambda: config.Settings(data_dir=tmp_path))
+    for evil in ("../../etc/passwd", r"..\..\win.ini", "/abs/path", r"C:\x"):
+        p = Path(jsonstore.user_path("x", evil))
+        assert p.parent == tmp_path        # 항상 data_dir 바로 아래

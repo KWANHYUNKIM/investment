@@ -24,12 +24,15 @@ import time
 
 import requests
 
+from app.data.fundamentals.dart_cache import ReportCache
 from app.core.config import get_settings
 from app.data.fundamentals.dart import _load_corp_map, enabled
 from app.data.infra import store
 
 _BASE = "https://opendart.fss.or.kr/api"
-_TTL = 30 * 24 * 3600.0          # 30일 (사업보고서는 연 1회)
+# version 은 파서를 고칠 때 올린다 — 예전엔 이 모듈에 버전 검사가 없어서
+# 파서를 고쳐도 한 달간 옛 결과가 나왔다.
+_CACHE = ReportCache("labor", version=1)
 _WORK_HOURS = 2000               # 연근로시간 상수(식6 분모) — 개편계획 §8 열린질문
 
 # 공시 행 중 '합계' 성격(= 부문 행과 중복 계상되므로 부문에서 제외)
@@ -42,11 +45,6 @@ _JOB_EXACT = ("생산", "제조", "사무", "영업", "관리", "연구", "기�
 _MFG_KW = ("생산", "제조", "기능", "현장", "공장", "기술", "정비")
 _RND_KW = ("연구", "개발")
 
-
-def _cache_path(ticker: str):
-    d = get_settings().data_dir / "dart_business"
-    d.mkdir(parents=True, exist_ok=True)
-    return d / f"labor_{ticker}.json"
 
 
 def _int(s) -> int:
@@ -195,14 +193,9 @@ def _emp_year(corp: str, year: int) -> dict | None:
 
 def labor_3y(ticker: str) -> list[dict]:
     """최근 3개 사업연도 인건비 실측(내림차순). 디스크 캐시. 실패 시 []."""
-    cp = _cache_path(ticker)
-    if cp.exists():
-        try:
-            d = json.loads(cp.read_text(encoding="utf-8"))
-            if time.time() - d.get("_ts", 0) < _TTL:
-                return d.get("years") or []
-        except Exception:
-            pass
+    hit = _CACHE.get(ticker)
+    if hit is not None:
+        return hit.get("years") or []
     if not enabled():
         return []
     corp = _load_corp_map().get(ticker)
@@ -217,11 +210,7 @@ def labor_3y(ticker: str) -> list[dict]:
             out.append(d)
         if len(out) >= 3:
             break
-    try:
-        cp.write_text(json.dumps({"years": out, "_ts": time.time()}, ensure_ascii=False),
-                      encoding="utf-8")
-    except Exception:
-        pass
+    _CACHE.put(ticker, {"years": out})
     return out
 
 

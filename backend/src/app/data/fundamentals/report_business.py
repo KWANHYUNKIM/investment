@@ -27,15 +27,16 @@ import json
 import re
 import time
 
+from app.data.fundamentals.dart_cache import ReportCache
 from app.core.config import get_settings
 from app.core.numeric import parse_accounting_number
 from app.data.fundamentals.dart import _load_corp_map, enabled
 from app.data.fundamentals import auto_costmodel as ac
 
-_TTL = 30 * 24 * 3600.0
 # 파서를 고치면 올린다. 캐시에 같이 적어두고 다르면 무시 → **옛 파서 결과가 남지 않는다.**
 # (실제로 겪음: 배치가 만든 구버전 캐시 때문에 고친 뒤에도 '백만개'가 품목명으로 남아 있었다)
 _PARSER_VERSION = 3          # v3: TE/TU 셀 인식(서식 표의 데이터가 통째로 비던 문제)
+_CACHE = ReportCache("business", version=_PARSER_VERSION)
 
 # 품목명이 아니라 '구분' 값 — 이게 이름이 되면 전 품목이 '수입'이 된다.
 _QUALIFIER = re.compile(r"^(수입|국내|내수|수출|해외|직수출|로컬)$")
@@ -48,11 +49,6 @@ _UNIT_CELL = re.compile(
     r"|^(천|백만|억|만)?\s*(배럴|톤|상자|포|개|대|매|본|kg|KG|MT|리터|ℓ|㎥|원)$")
 _NUMERIC_NAME = re.compile(r"^[\d,.\s%()-]+$")
 
-
-def _cache_path(ticker: str):
-    d = get_settings().data_dir / "dart_business"
-    d.mkdir(parents=True, exist_ok=True)
-    return d / f"business_{ticker}.json"
 
 
 def _flat(s: str) -> str:
@@ -299,17 +295,9 @@ def _parse_output_series(txt: str) -> list[dict]:
 # --- 공개 API ---------------------------------------------------------------
 def business(ticker: str, refresh: bool = False) -> dict:
     """(B3·B4) 사업보고서 「사업의 내용」 실측 — 단가 변동 + 생산 물량·가동률."""
-    cp = _cache_path(ticker)
-    if cp.exists() and not refresh:
-        try:
-            d = json.loads(cp.read_text(encoding="utf-8"))
-            if (time.time() - d.get("_ts", 0) < _TTL
-                    and d.get("_v") == _PARSER_VERSION):
-                d.pop("_ts", None)
-                d.pop("_v", None)
-                return d
-        except Exception:
-            pass
+    hit = _CACHE.get(ticker, refresh=refresh)
+    if hit is not None:
+        return hit
 
     out = {"ticker": ticker, "available": False, "price_trend": [], "utilization": [],
            "output_series": [],
@@ -345,12 +333,7 @@ def business(ticker: str, refresh: bool = False) -> dict:
     out["available"] = bool(out["price_trend"] or out["utilization"] or out["output_series"])
     if not out["available"]:
         out["reason"] = "가격변동추이·생산실적 표 미공시 또는 파싱 실패"
-    try:
-        cp.write_text(json.dumps({**out, "_ts": time.time(), "_v": _PARSER_VERSION},
-                                 ensure_ascii=False), encoding="utf-8")
-    except Exception:
-        pass
-    return out
+    return _CACHE.put(ticker, out)
 
 
 def volume_check(biz: dict | None, fin3y: list[dict] | None) -> dict | None:

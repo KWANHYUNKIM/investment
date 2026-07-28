@@ -27,21 +27,17 @@ import json
 import re
 import time
 
+from app.data.fundamentals.dart_cache import ReportCache
 from app.core.config import get_settings
 from app.data.fundamentals import dart_doc as dd
 from app.data.fundamentals.dart import enabled
 
-_TTL = 30 * 24 * 3600.0
 _PARSER_VERSION = 3          # v3: 2단 헤더(연도 아래 금액/비중) 열 선별
+_CACHE = ReportCache("full", version=_PARSER_VERSION)
 
 _SEG_KEYS = ("사업부문", "부문", "구분")
 _NOISE = re.compile(r"^(합계|소계|계|총계|-|—|주\d*|비고)$")
 
-
-def _cache_path(ticker: str):
-    d = get_settings().data_dir / "dart_business"
-    d.mkdir(parents=True, exist_ok=True)
-    return d / f"full_{ticker}.json"
 
 
 def _clean(s: str) -> str:
@@ -1056,16 +1052,9 @@ def _separate(ticker: str) -> dict:
 # --- 공개 API -------------------------------------------------------------------
 def full(ticker: str, refresh: bool = False) -> dict:
     """사업보고서 전 항목 파싱 결과(디스크 캐시). 실패해도 available=False 로 조용히 반환."""
-    cp = _cache_path(ticker)
-    if cp.exists() and not refresh:
-        try:
-            d = json.loads(cp.read_text(encoding="utf-8"))
-            if time.time() - d.get("_ts", 0) < _TTL and d.get("_v") == _PARSER_VERSION:
-                d.pop("_ts", None)
-                d.pop("_v", None)
-                return d
-        except Exception:
-            pass
+    hit = _CACHE.get(ticker, refresh=refresh)
+    if hit is not None:
+        return hit
 
     out: dict = {"ticker": ticker, "available": False, "sections_found": [],
                  "source": "DART 사업보고서 전 항목(§15.2 매핑)"}
@@ -1145,9 +1134,4 @@ def full(ticker: str, refresh: bool = False) -> dict:
     if not out["available"]:
         out["reason"] = "전 항목 파싱 실패(서식 상이)"
 
-    try:
-        cp.write_text(json.dumps({**out, "_ts": time.time(), "_v": _PARSER_VERSION},
-                                 ensure_ascii=False), encoding="utf-8")
-    except Exception:
-        pass
-    return out
+    return _CACHE.put(ticker, out)
