@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { api, UEProduct, UnitEconomics as UE, UEWaterfallItem } from "@/lib/api";
+import { useApiData } from "@/lib/useApiData";
 
 const GREEN = "#217346";
 
@@ -38,9 +39,8 @@ function DirChip({ dir, chg }: { dir?: string | null; chg?: number | null }) {
 export function UnitEconomics() {
   const [products, setProducts] = useState<UEProduct[]>([]);
   const [sel, setSel] = useState<string>("");
-  const [data, setData] = useState<UE | null>(null);
-  const [err, setErr] = useState("");
-  const [loading, setLoading] = useState(false);
+  // 제품 목록 실패는 listErr, 개별 원가분해 실패는 훅의 error 로 나뉜다.
+  const [listErr, setListErr] = useState("");
   const [sectorFilter, setSectorFilter] = useState<string>("전체");
 
   useEffect(() => {
@@ -51,21 +51,15 @@ export function UnitEconomics() {
         setProducts(r.products);
         if (r.products.length) setSel(r.products[0].id);
       })
-      .catch((e) => alive && setErr(e?.message ?? "제품 목록 실패"));
+      .catch((e) => alive && setListErr(e?.message ?? "제품 목록 실패"));
     return () => { alive = false; };
   }, []);
 
-  useEffect(() => {
-    if (!sel) return;
-    let alive = true;
-    setLoading(true);
-    setErr("");
-    api.unitEconomics(sel)
-      .then((r) => alive && setData(r))
-      .catch((e) => alive && setErr(e?.message ?? "원가분해 실패"))
-      .finally(() => alive && setLoading(false));
-    return () => { alive = false; };
-  }, [sel]);
+  const { data, loading, error: dataErr } = useApiData<UE>(
+    () => api.unitEconomics(sel),
+    sel,
+    { enabled: !!sel },
+  );
 
   const s = data?.summary;
   const retail = s?.retail_price ?? 1;
@@ -123,8 +117,8 @@ export function UnitEconomics() {
         </div>
       </div>
 
-      {err && !data ? (
-        <div className="py-20 text-center text-sm text-rose-600">{err}</div>
+      {(listErr || dataErr) && !data ? (
+        <div className="py-20 text-center text-sm text-rose-600">{listErr || dataErr}</div>
       ) : !data || !s ? (
         <div className="flex flex-col items-center gap-3 py-24 text-sm text-[#888]">
           <span className="h-7 w-7 animate-spin rounded-full border-2 border-[#d0d0d0] border-t-[#217346]" />

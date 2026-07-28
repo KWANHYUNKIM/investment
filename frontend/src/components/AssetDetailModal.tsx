@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, AssetDetail, AssetConstituent, ConstituentQuote } from "@/lib/api";
+import { useApiData } from "@/lib/useApiData";
 
 // KR convention: red = up, blue = down.
 const RED = "#c92a2a";
@@ -39,19 +40,10 @@ export function AssetDetailModal({
   onClose: () => void;
   asOf?: string; // 과거 날짜면 그날 장 마감으로 고정
 }) {
-  const [d, setD] = useState<AssetDetail | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState("");
-
-  useEffect(() => {
-    setLoading(true);
-    setErr("");
-    api
-      .assetDetail(assetKey, asOf)
-      .then(setD)
-      .catch((e) => setErr(e?.message ?? "불러오지 못했습니다."))
-      .finally(() => setLoading(false));
-  }, [assetKey, asOf]);
+  const { data: d, error: err, loading } = useApiData<AssetDetail>(
+    () => api.assetDetail(assetKey, asOf),
+    `${assetKey} ${asOf ?? ""}`,
+  );
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();

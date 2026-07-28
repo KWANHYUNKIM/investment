@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { api, FutureTheme as FT, FutureThemeIndexItem, FutureThemeMember, FutureThemesStatus } from "@/lib/api";
+import { useApiData } from "@/lib/useApiData";
 
 const RED = "#c92a2a";
 const BLUE = "#1971c2";
@@ -33,7 +34,6 @@ function pct(v: number | null | undefined): string {
 export function FutureTheme() {
   const [themes, setThemes] = useState<FutureThemeIndexItem[]>([]);
   const [selected, setSelected] = useState("");
-  const [detail, setDetail] = useState<FT | null>(null);
   const [status, setStatus] = useState<FutureThemesStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
@@ -50,11 +50,11 @@ export function FutureTheme() {
     api.futureThemesStatus().then(setStatus).catch(() => {});
   }, []);
 
-  useEffect(() => {
-    if (!selected) return;
-    setDetail(null);
-    api.futureTheme(selected).then(setDetail).catch(() => setDetail(null));
-  }, [selected]);
+  const { data: detail } = useApiData<FT>(
+    () => api.futureTheme(selected),
+    selected,
+    { enabled: !!selected },
+  );
 
   if (err) return <div className="py-20 text-center text-sm text-rose-600">{err}</div>;
 

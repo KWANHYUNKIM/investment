@@ -10,6 +10,7 @@ import {
   ThemeItem,
 } from "@/lib/api";
 import { GlobalMap } from "./GlobalMap";
+import { useApiData } from "@/lib/useApiData";
 
 const RED = "#c92a2a";
 const BLUE = "#1971c2";
@@ -57,9 +58,7 @@ export function IndustryMap() {
   const [view, setView] = useState<"kr" | "global">("kr");
   const [index, setIndex] = useState<IndustryIndexItem[]>([]);
   const [selected, setSelected] = useState<string>("");
-  const [detail, setDetail] = useState<IndustryDetailResponse | null>(null);
   const [loadingIdx, setLoadingIdx] = useState(true);
-  const [loadingDetail, setLoadingDetail] = useState(false);
   const [q, setQ] = useState("");
   const [err, setErr] = useState("");
 
@@ -74,15 +73,11 @@ export function IndustryMap() {
       .finally(() => setLoadingIdx(false));
   }, []);
 
-  useEffect(() => {
-    if (!selected) return;
-    setLoadingDetail(true);
-    api
-      .industry(selected)
-      .then(setDetail)
-      .catch(() => setDetail(null))
-      .finally(() => setLoadingDetail(false));
-  }, [selected]);
+  const { data: detail, loading: loadingDetail } = useApiData<IndustryDetailResponse>(
+    () => api.industry(selected),
+    selected,
+    { enabled: !!selected },
+  );
 
   const filtered = useMemo(() => {
     const n = q.trim().toLowerCase();

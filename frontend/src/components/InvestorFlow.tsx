@@ -1,38 +1,18 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { api, InvestorRow } from "@/lib/api";
 import { manShares, toneClass } from "@/lib/format";
+import { useApiData } from "@/lib/useApiData";
 import type { PickedStock } from "./NewsPanel";
 
 export function InvestorFlow({ stock }: { stock: PickedStock | null }) {
-  const [rows, setRows] = useState<InvestorRow[]>([]);
-  const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    if (!stock?.ticker) {
-      setRows([]);
-      return;
-    }
-    let alive = true;
-    const load = async () => {
-      setLoading(true);
-      try {
-        const r = await api.investors(stock.ticker);
-        if (alive) setRows(r.rows);
-      } catch {
-        if (alive) setRows([]);
-      } finally {
-        if (alive) setLoading(false);
-      }
-    };
-    load();
-    const id = setInterval(load, 60000);
-    return () => {
-      alive = false;
-      clearInterval(id);
-    };
-  }, [stock?.ticker]);
+  const ticker = stock?.ticker ?? "";
+  const { data, loading } = useApiData<InvestorRow[]>(
+    () => api.investors(ticker).then((r) => r.rows),
+    ticker,
+    { enabled: !!ticker, pollMs: 60000 },
+  );
+  const rows = data ?? [];
 
   if (!stock) return null;
 

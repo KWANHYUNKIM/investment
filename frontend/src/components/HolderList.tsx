@@ -1,29 +1,16 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { api, HoldersResponse } from "@/lib/api";
+import { useApiData } from "@/lib/useApiData";
 import type { PickedStock } from "./NewsPanel";
 
 export function HolderList({ stock }: { stock: PickedStock | null }) {
-  const [data, setData] = useState<HoldersResponse | null>(null);
-  const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    if (!stock?.ticker) {
-      setData(null);
-      return;
-    }
-    let alive = true;
-    setLoading(true);
-    api
-      .holders(stock.ticker)
-      .then((d) => alive && setData(d))
-      .catch(() => alive && setData(null))
-      .finally(() => alive && setLoading(false));
-    return () => {
-      alive = false;
-    };
-  }, [stock?.ticker]);
+  const ticker = stock?.ticker ?? "";
+  const { data, loading } = useApiData<HoldersResponse>(
+    () => api.holders(ticker),
+    ticker,
+    { enabled: !!ticker },
+  );
 
   if (!stock) return null;
 

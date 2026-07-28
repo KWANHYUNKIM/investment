@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   Bar,
   BarChart,
@@ -14,6 +14,7 @@ import {
 import { api, OHLC, DartFinancials, DartStatement, TargetPrice } from "@/lib/api";
 import { Spinner, Empty } from "./ui";
 import { won, UP, DOWN, toneClass, arrow } from "@/lib/format";
+import { useApiData } from "@/lib/useApiData";
 
 type Row = {
   date: string;
@@ -72,42 +73,10 @@ export function StockDetail({
   sector: string | null;
   onClose: () => void;
 }) {
-  const [data, setData] = useState<OHLC | null>(null);
-  const [loading, setLoading] = useState(true);
   const [period, setPeriod] = useState(2); // default 6개월
-  const [fin, setFin] = useState<DartFinancials | null>(null);
-  const [finLoading, setFinLoading] = useState(true);
-  const [tp, setTp] = useState<TargetPrice | null>(null);
-  const [tpLoading, setTpLoading] = useState(true);
-
-  useEffect(() => {
-    setLoading(true);
-    api
-      .ohlc({ ticker })
-      .then(setData)
-      .catch(() => setData(null))
-      .finally(() => setLoading(false));
-  }, [ticker]);
-
-  useEffect(() => {
-    setFinLoading(true);
-    setFin(null);
-    api
-      .dartFinancials(ticker)
-      .then(setFin)
-      .catch(() => setFin(null))
-      .finally(() => setFinLoading(false));
-  }, [ticker]);
-
-  useEffect(() => {
-    setTpLoading(true);
-    setTp(null);
-    api
-      .targetPrice(ticker)
-      .then(setTp)
-      .catch(() => setTp(null))
-      .finally(() => setTpLoading(false));
-  }, [ticker]);
+  const { data, loading } = useApiData<OHLC>(() => api.ohlc({ ticker }), ticker);
+  const { data: fin, loading: finLoading } = useApiData<DartFinancials>(() => api.dartFinancials(ticker), ticker);
+  const { data: tp, loading: tpLoading } = useApiData<TargetPrice>(() => api.targetPrice(ticker), ticker);
 
   const rows: Row[] = useMemo(() => {
     if (!data) return [];

@@ -2,26 +2,21 @@
 
 import { useEffect, useState } from "react";
 import { api, Holder, ReportResponse } from "@/lib/api";
+import { useApiData } from "@/lib/useApiData";
 import { won, toneClass, arrow, manShares, tone, UP, DOWN } from "@/lib/format";
 import type { PickedStock } from "./NewsPanel";
 
 export function ReportModal({ stock, onClose }: { stock: PickedStock; onClose: () => void }) {
-  const [rep, setRep] = useState<ReportResponse | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [holders, setHolders] = useState<Holder[]>([]);
-
-  useEffect(() => {
-    setLoading(true);
-    api
-      .report(stock.ticker, stock.name ?? undefined)
-      .then(setRep)
-      .catch(() => setRep(null))
-      .finally(() => setLoading(false));
-    api
-      .holders(stock.ticker)
-      .then((d) => setHolders(d.holders))
-      .catch(() => setHolders([]));
-  }, [stock.ticker, stock.name]);
+  const key = `${stock.ticker} ${stock.name ?? ""}`;
+  const { data: rep, loading } = useApiData<ReportResponse>(
+    () => api.report(stock.ticker, stock.name ?? undefined),
+    key,
+  );
+  const { data: holderData } = useApiData<Holder[]>(
+    () => api.holders(stock.ticker).then((d) => d.holders),
+    stock.ticker,
+  );
+  const holders = holderData ?? [];
 
   // Close on Escape.
   useEffect(() => {
