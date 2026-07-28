@@ -273,7 +273,7 @@ export function ExcelGrid({ onPickStock }: { onPickStock: (row: GridRow) => void
               key={s}
               onClick={() => { setSheet(s); setLimit(200); }}
               aria-pressed={sheet === s}
-              className={`border-r border-[#e2e2e2] px-3 py-2 text-xs last:border-r-0 ${
+              className={`min-h-11 border-r border-[#e2e2e2] px-3.5 text-xs last:border-r-0 ${
                 sheet === s ? "bg-[#217346] font-semibold text-white" : "text-[#4a4a4a]"
               }`}
             >
@@ -285,7 +285,7 @@ export function ExcelGrid({ onPickStock }: { onPickStock: (row: GridRow) => void
         <button
           onClick={refresh}
           disabled={polling}
-          className="rounded border border-[#cdcdcd] bg-white px-2.5 py-2 text-xs text-[#217346] hover:bg-[#eef6f0] disabled:opacity-50 lg:py-1"
+          className="min-h-11 rounded border border-[#cdcdcd] bg-white px-2.5 text-xs text-[#217346] hover:bg-[#eef6f0] disabled:opacity-50 lg:min-h-0 lg:py-1"
         >
           {polling ? "계산 중…" : "↻ 새로고침"}
         </button>

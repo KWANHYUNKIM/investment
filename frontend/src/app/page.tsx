@@ -115,6 +115,9 @@ function Sidebar({
 
   return (
     <aside
+      /* 폰에서 이 패널은 화면 바닥에 붙으므로 홈 인디케이터만큼 아래를 비워야 마지막 시트가
+         깔리지 않는다. 데스크톱에서는 static 이라 값이 0 이어도 무해하다. */
+      style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
       className={[
         "z-40 flex flex-col border-[#d7ddd9] bg-[#f3f5f4] transition-transform duration-200 motion-reduce:transition-none",
         // 폰: ⊞ 로 여는 '모든 시트' — 아래에서 올라온다
@@ -129,7 +132,7 @@ function Sidebar({
       <div className="sticky top-0 flex items-center justify-between border-b border-[#d7ddd9] bg-[#f3f5f4] px-3 py-2.5 lg:hidden">
         <span className="text-[13px] font-bold text-[#3d4c43]">모든 시트</span>
         <button onClick={closeDrawer} aria-label="목록 닫기"
-          className="flex h-8 w-8 items-center justify-center text-sm text-[#5a6b60]">✕</button>
+          className="-mr-2 flex h-11 w-11 items-center justify-center text-sm text-[#5a6b60]">✕</button>
       </div>
 
       {/* 아이콘 레일 — 데스크톱 접힘 전용 */}
@@ -156,8 +159,9 @@ function Sidebar({
               <button onClick={() => toggle(g.group)}
                 className="flex w-full items-center gap-1.5 px-3 py-2.5 text-left text-[11px] font-bold text-[#5a6b60] hover:text-[#217346] lg:py-1.5">
                 {/* 아이콘은 데스크톱 전용. 폰 화면에 이모지가 남으면 그것만으로 '앱'처럼 읽혀
-                    제목표시줄의 위장이 깨진다. 접힌 레일에서는 아이콘이 유일한 단서라 거기선 남긴다. */}
-                <span className="hidden text-xs lg:inline">{g.icon}</span>
+                    제목표시줄의 위장이 깨진다. 접힌 레일에서는 아이콘이 유일한 단서라 거기선 남긴다.
+                    그룹 이름이 바로 옆에 있으므로 아이콘은 읽어 줄 필요가 없다. */}
+                <span aria-hidden className="hidden text-xs lg:inline">{g.icon}</span>
                 <span className="flex-1">{g.group}</span>
                 <span className="text-[9px] text-[#aab4ae]">{isClosed ? "▸" : "▾"}</span>
               </button>
@@ -167,7 +171,9 @@ function Sidebar({
                     const active = tab === it.id;
                     return (
                       <button key={it.id} onClick={() => go(it.id)}
-                        className={`flex items-center border-l-[3px] py-2 pl-6 pr-3 text-left text-[13px] transition lg:py-1.5 ${
+                        /* 폰에서는 이 목록이 시트탭 다음으로 자주 눌리는 면이라 44px 를 채운다.
+                           데스크톱 사이드바는 엑셀 밀도 그대로. */
+                        className={`flex min-h-11 items-center border-l-[3px] py-2 pl-6 pr-3 text-left text-[13px] transition lg:min-h-0 lg:py-1.5 ${
                           active
                             ? "border-[#217346] bg-white font-semibold text-[#217346]"
                             : "border-transparent text-[#4a4a4a] hover:bg-[#e9efeb]"
