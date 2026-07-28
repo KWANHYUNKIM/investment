@@ -39,6 +39,22 @@ MVVM 을 쓰지 않는다 — 웹 백엔드는 계층 분리가 자연스럽다.
 설정의 `data_dir="../data"` 와 `.env` 가 CWD 기준 상대경로이기 때문이다.
 하위패키지 구성과 테스트는 [backend/README.md](backend/README.md).
 
+### frontend/ — Next.js App Router (src 레이아웃)
+```
+frontend/src/
+├── app/          layout.tsx · page.tsx (탭 셸) · globals.css
+├── components/   탭·패널 컴포넌트
+└── lib/
+    ├── api/      백엔드 타입드 클라이언트 — 도메인별 모듈
+    │   ├── client.ts   베이스 URL·토큰·request()·ApiError
+    │   ├── index.ts    타입 재수출 + 도메인별 부분 객체를 api 하나로 조립
+    │   └── market.ts · macro.ts · costmodel.ts · wealth.ts · …
+    └── format.ts
+```
+`lib/api/` 의 구획은 **백엔드 `app/domains/` 와 같은 경계**다. 호출부는
+`import { api, type Foo } from "@/lib/api"` 한 줄로 예전과 동일하게 쓴다 —
+`index.ts` 가 조립 지점이라 도메인 파일을 늘리거나 옮겨도 호출부는 안 바뀐다.
+
 ### gui/ — MVC + Qt Model/View (데스크톱의 표준)
 ```
 gui/
