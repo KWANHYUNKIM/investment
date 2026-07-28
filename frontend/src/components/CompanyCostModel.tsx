@@ -1841,10 +1841,16 @@ function CostingEduCards({ edu }: { edu: CostingEducation | null }) {
   return (
     <section>
       <button onClick={() => setOpen(!open)} className="text-sm font-semibold text-gray-600 hover:text-gray-900">
-        {open ? "▾" : "▸"} 원가회계 해설 — 이 화면이 못 계산하는 것과 그 이유
+        {open ? "▾" : "▸"} 원가회계 해설 — 공시로 계산되는 것과, 안 되는 것(그 이유)
       </button>
       {open && (
         <div className="mt-2 space-y-3">
+          <p className="rounded bg-gray-50 px-3 py-2 text-[12px] leading-relaxed text-gray-600">
+            이 칸은 <b>오류가 아니라 해설</b>입니다. 원가회계에는 회사 내부자료가 있어야만 계산되는
+            항목이 있는데, 우리는 DART 공시(외부 데이터)만 씁니다. 그래서 <b>무엇까지 계산했고
+            무엇은 왜 못 하는지</b>를 숨기지 않고 적어 둡니다(회사 수치를 지어내지 않는다는 원칙).
+            아래 예제 숫자는 특정 회사 값이 아니라 교과서형 가상 예제입니다.
+          </p>
           {edu.cards.map((c) => (
             <div key={c.id} className="rounded border border-gray-200 p-3">
               <div className="flex flex-wrap items-baseline gap-2">
