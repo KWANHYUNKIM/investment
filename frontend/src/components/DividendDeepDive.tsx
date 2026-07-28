@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { api, DividendStock, DividendDetail, DDMetric, DDCrisis, RoyaltyRow } from "@/lib/api";
+import { useApiData } from "@/lib/useApiData";
 
 const GREEN = "#217346";
 const RED = "#c0392b";
@@ -115,9 +116,11 @@ export function DividendDeepDive() {
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
   const [ticker, setTicker] = useState<string | null>(null);
-  const [d, setD] = useState<DividendDetail | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [err, setErr] = useState("");
+  const { data: d, loading, error: err } = useApiData<DividendDetail>(
+    () => api.dividendDetail(ticker as string),
+    ticker ?? "",
+    { enabled: !!ticker },
+  );
 
   useEffect(() => { api.dividendUniverse().then((r) => setUni(r.stocks)).catch(() => {}); }, []);
   useEffect(() => {
@@ -150,14 +153,9 @@ export function DividendDeepDive() {
     return list;
   }, [q, uni, usUni, market]);
 
-  useEffect(() => {
-    if (!ticker) return;
-    setLoading(true); setErr(""); setD(null);
-    api.dividendDetail(ticker).then(setD).catch((e) => setErr(e?.message ?? "불러오기 실패")).finally(() => setLoading(false));
-  }, [ticker]);
 
   const pick = (t: string, name: string) => { setQ(name); setOpen(false); setTicker(t); };
-  const switchMarket = (m: "KR" | "US") => { setMarket(m); setQ(""); setTicker(null); setD(null); };
+  const switchMarket = (m: "KR" | "US") => { setMarket(m); setQ(""); setTicker(null); };
 
   const cur: Currency = d?.currency ?? "KRW";
   const dv = d?.dividend;

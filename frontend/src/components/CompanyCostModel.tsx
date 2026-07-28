@@ -26,6 +26,7 @@ import {
   CostingEducation,
   UnitEconomics as UE,
 } from "@/lib/api";
+import { useApiData } from "@/lib/useApiData";
 
 const GREEN = "#217346";
 
@@ -100,10 +101,11 @@ export function CompanyCostModel() {
   const [sectorFilter, setSectorFilter] = useState("전체");
   const [q, setQ] = useState("");
   const [sel, setSel] = useState<string>("");           // 선택 회사 ticker
-  const [data, setData] = useState<CCM | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [err, setErr] = useState("");
-  const [showFin, setShowFin] = useState(false);
+  // 회사 목록 실패는 listErr, 개별 회사 분석 실패는 훅의 error 로 나뉜다.
+  const [listErr, setListErr] = useState("");
+  // 재무제표 근거 펼침은 '어느 회사에서 폈는지'로 들고 있다. 회사를 바꾸면 자동으로
+  // 접히므로 로딩 이펙트에서 setShowFin(false) 를 부를 필요가 없다.
+  const [finFor, setFinFor] = useState("");
   const [view, setView] = useState<"list" | "rank" | "future">("list");
 
   useEffect(() => {
@@ -114,22 +116,17 @@ export function CompanyCostModel() {
         setCompanies(r.companies);
         setSectors(r.sectors);
       })
-      .catch((e) => alive && setErr(e?.message ?? "회사 목록 실패"));
+      .catch((e) => alive && setListErr(e?.message ?? "회사 목록 실패"));
     return () => { alive = false; };
   }, []);
 
-  useEffect(() => {
-    if (!sel) { setData(null); return; }
-    let alive = true;
-    setLoading(true);
-    setErr("");
-    setShowFin(false);
-    api.companyCostModel(sel)
-      .then((r) => alive && setData(r))
-      .catch((e) => alive && setErr(e?.message ?? "회사 분석 실패"))
-      .finally(() => alive && setLoading(false));
-    return () => { alive = false; };
-  }, [sel]);
+  const { data, loading, error: dataErr } = useApiData<CCM>(
+    () => api.companyCostModel(sel),
+    sel,
+    { enabled: !!sel },
+  );
+  const showFin = finFor === sel;
+  const setShowFin = (v: boolean) => setFinFor(v ? sel : "");
 
   const filtered = useMemo(() => {
     const kw = q.trim();
@@ -197,7 +194,7 @@ export function CompanyCostModel() {
         <span className="text-xs text-gray-400">{filtered.length}개 회사</span>
       </div>
 
-      {err && <div className="text-sm text-red-600">{err}</div>}
+      {(listErr || dataErr) && <div className="text-sm text-red-600">{listErr || dataErr}</div>}
 
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
         {filtered.map((c) => (
@@ -245,22 +242,13 @@ const FV_LABEL: Record<string, string> = {
 function FutureValueView({
   sector, onSector, onPick,
 }: { sector: string; onSector: (s: string) => void; onPick: (t: string) => void }) {
-  const [data, setData] = useState<FutureValueBoard | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [err, setErr] = useState("");
   const [onlyLoss, setOnlyLoss] = useState(false);
   const [open, setOpen] = useState("");
 
-  useEffect(() => {
-    let alive = true;
-    setLoading(true);
-    setErr("");
-    api.futureValue(sector, onlyLoss)
-      .then((r) => alive && setData(r))
-      .catch((e) => alive && setErr(e?.message ?? "미래가치 계산 실패"))
-      .finally(() => alive && setLoading(false));
-    return () => { alive = false; };
-  }, [sector, onlyLoss]);
+  const { data, loading, error: err } = useApiData<FutureValueBoard>(
+    () => api.futureValue(sector, onlyLoss),
+    `${sector}|${onlyLoss}`,
+  );
 
   if (loading && !data) return <div className="text-sm text-gray-400">미래가치 계산 중… (전 종목 재무제표 스캔)</div>;
   if (err) return <div className="text-sm text-red-600">{err}</div>;
@@ -448,21 +436,12 @@ function CostRankingView({
 }: {
   sector: string; sectors: string[]; onSector: (s: string) => void; onPick: (t: string) => void;
 }) {
-  const [data, setData] = useState<CostRanking | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [err, setErr] = useState("");
   const [open, setOpen] = useState<string>("");
 
-  useEffect(() => {
-    let alive = true;
-    setLoading(true);
-    setErr("");
-    api.costRanking(sector)
-      .then((r) => alive && setData(r))
-      .catch((e) => alive && setErr(e?.message ?? "랭킹 실패"))
-      .finally(() => alive && setLoading(false));
-    return () => { alive = false; };
-  }, [sector]);
+  const { data, loading, error: err } = useApiData<CostRanking>(
+    () => api.costRanking(sector),
+    sector,
+  );
 
   if (loading && !data) return <div className="text-sm text-gray-400">원가 경쟁력 계산 중…</div>;
   if (err) return <div className="text-sm text-red-600">{err}</div>;
@@ -1896,13 +1875,7 @@ function CostingEduCards({ edu }: { edu: CostingEducation | null }) {
 
 // ① 보강: DART 사업보고서 품목별 매출구성(P1) — 있으면 표시
 function DartProductMix({ ticker }: { ticker: string }) {
-  const [data, setData] = useState<CompanyProducts | null>(null);
-  useEffect(() => {
-    let alive = true;
-    setData(null);
-    api.companyProducts(ticker).then((r) => alive && setData(r)).catch(() => {});
-    return () => { alive = false; };
-  }, [ticker]);
+  const { data } = useApiData<CompanyProducts>(() => api.companyProducts(ticker), ticker);
 
   if (!data || data.coverage !== "parsed" || data.products.length === 0) return null;
   const max = Math.max(...data.products.map((p) => p.pct), 1);
@@ -1928,19 +1901,10 @@ function DartProductMix({ ticker }: { ticker: string }) {
 
 // ⑤ 애널리스트 리포트 취합 (Tier 1: 제목·증권사·날짜·원문 링크 = 사실+링크만)
 function AnalystReportsSection({ ticker, company, verdict }: { ticker: string; company: string; verdict?: string }) {
-  const [data, setData] = useState<AnalystReports | null>(null);
-  const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    let alive = true;
-    setLoading(true);
-    setData(null);
-    api.analystReports(ticker, company)
-      .then((r) => alive && setData(r))
-      .catch(() => {})
-      .finally(() => alive && setLoading(false));
-    return () => { alive = false; };
-  }, [ticker, company]);
+  const { data, loading } = useApiData<AnalystReports>(
+    () => api.analystReports(ticker, company),
+    `${ticker}|${company}`,
+  );
 
   return (
     <section>

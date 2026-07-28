@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { api, NewsItem, NewsResponse } from "@/lib/api";
+import { useApiData } from "@/lib/useApiData";
 import { ago } from "@/lib/format";
 
 export type PickedStock = { ticker: string; name: string | null; sector: string | null };
@@ -13,41 +14,19 @@ export function NewsPanel({
   stock: PickedStock | null;
   onOpenChart: () => void;
 }) {
-  const [news, setNews] = useState<NewsResponse | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [updated, setUpdated] = useState("");
-  const [now, setNow] = useState(() => Date.now());
-
-  useEffect(() => {
-    if (!stock?.name) {
-      setNews(null);
-      return;
-    }
-    let alive = true;
-    const load = async () => {
-      setLoading(true);
-      try {
-        const r = await api.news(stock.name as string);
-        if (alive) {
-          setNews(r);
-          setNow(Date.now());
-          setUpdated(
-            new Date().toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", second: "2-digit" }),
-          );
-        }
-      } catch {
-        if (alive) setNews({ domestic: [], global: [], cached: false });
-      } finally {
-        if (alive) setLoading(false);
-      }
-    };
-    load();
-    const id = setInterval(load, 60000); // 자동 재계산 (60초)
-    return () => {
-      alive = false;
-      clearInterval(id);
-    };
-  }, [stock?.name]);
+  // "몇 분 전" 표시에 받아온 시각이 필요하다. 훅은 값 하나만 들고 있으므로
+  // fetcher 가 응답과 시각을 같이 묶어서 돌려준다 — 별도 상태를 두지 않아도 된다.
+  const name = stock?.name ?? "";
+  const { data, loading } = useApiData<{ news: NewsResponse; at: number }>(
+    () => api.news(name).then((news) => ({ news, at: Date.now() })),
+    name,
+    { enabled: !!name, pollMs: 60000 }, // 자동 재계산 (60초)
+  );
+  const news = data?.news ?? null;
+  const now = data?.at ?? Date.now();
+  const updated = data
+    ? new Date(data.at).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", second: "2-digit" })
+    : "";
 
   return (
     <aside className="flex min-h-0 flex-1 flex-col bg-white">

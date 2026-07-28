@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, Movers, MoversHistoryItem, Mover, MoverSector } from "@/lib/api";
+import { useApiData } from "@/lib/useApiData";
 
 const GREEN = "#c0392b"; // 한국식: 상승=빨강
 const BLUE = "#1c64c4";  // 하락=파랑
@@ -62,23 +63,28 @@ function SectorRow({ s, maxAbs }: { s: MoverSector; maxAbs: number }) {
 }
 
 export function MarketMovers() {
-  const [d, setD] = useState<Movers | null>(null);
-  const [hist, setHist] = useState<MoversHistoryItem[]>([]);
-  const [busy, setBusy] = useState(false);
   const [showHist, setShowHist] = useState(false);
-  const timer = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const load = useCallback((refresh = false) => {
-    setBusy(true);
-    api.movers(refresh).then(setD).catch(() => {}).finally(() => setBusy(false));
-    api.moversHistory(60).then((r) => setHist(r.items)).catch(() => {});
-  }, []);
-
-  useEffect(() => {
-    load();
-    timer.current = setInterval(() => load(false), 60000); // 60초마다 자동 갱신
-    return () => { if (timer.current) clearInterval(timer.current); };
-  }, [load]);
+  // 새로고침 버튼만 서버 재계산(refresh=true)을 요청한다. 자동 갱신(60초)은 캐시를 읽는다.
+  // 플래그를 ref 에 두는 이유: 이 값이 바뀌었다고 다시 받을 일은 없고, 다음 요청 한 번에만
+  // 실려야 하기 때문이다.
+  const force = useRef(false);
+  const { data: d, loading: busy, reload } = useApiData<Movers>(
+    () => {
+      const f = force.current;
+      force.current = false;
+      return api.movers(f);
+    },
+    "",
+    { pollMs: 60000 }, // 60초마다 자동 갱신
+  );
+  const { data: histData } = useApiData<MoversHistoryItem[]>(
+    () => api.moversHistory(60).then((r) => r.items),
+    "",
+    { pollMs: 60000 },
+  );
+  const hist = histData ?? [];
+  const refresh = () => { force.current = true; reload(); };
 
   const maxSec = d ? Math.max(1, ...[...d.sectors_up, ...d.sectors_down].map((s) => Math.abs(s.avg_change_pct))) : 1;
 
@@ -100,7 +106,7 @@ export function MarketMovers() {
             </div>
           )}
           {d && <span className="text-[10px] text-[#aaa]">{d.generated_at}</span>}
-          <button onClick={() => load(true)} disabled={busy} className="rounded bg-[#217346] px-3 py-1 text-xs font-semibold text-white hover:bg-[#1b5e3a] disabled:opacity-50">{busy ? "분석 중…" : "↻ 새로고침"}</button>
+          <button onClick={refresh} disabled={busy} className="rounded bg-[#217346] px-3 py-1 text-xs font-semibold text-white hover:bg-[#1b5e3a] disabled:opacity-50">{busy ? "분석 중…" : "↻ 새로고침"}</button>
         </div>
       </div>
 
