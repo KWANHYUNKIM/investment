@@ -150,7 +150,9 @@ export function ExcelGrid({ onPickStock }: { onPickStock: (row: GridRow) => void
   const [sortKey, setSortKey] = useState<keyof GridRow>("volume");
   const [desc, setDesc] = useState(true);
   const [limit, setLimit] = useState(200);
-  const [selCell, setSelCell] = useState<{ r: number; c: number }>({ r: 0, c: 0 });
+  // 선택한 열은 인덱스가 아니라 키로 들고 있는다. 폰에서 열이 빠지면 인덱스는 가리키는
+  // 대상이 바뀌므로, 읽을 때 잘라내면 고른 적 없는 열이 선택된 것처럼 보인다.
+  const [selCell, setSelCell] = useState<{ r: number; key: keyof GridRow }>({ r: 0, key: COLS[0].key });
 
   // 폰에서는 열을 줄이고 행번호 칸을 없앤다. 첫 열(종목명)은 항상 틀 고정.
   const phone = useIsPhone();
@@ -243,8 +245,15 @@ export function ExcelGrid({ onPickStock }: { onPickStock: (row: GridRow) => void
     setLimit(200);
   }
 
-  // 폰 전환으로 열이 줄면 선택 위치가 범위를 벗어날 수 있다.
-  const selColIdx = Math.min(selCell.c, cols.length - 1);
+  // 시장(전체/KOSPI/KOSDAQ)은 폭에 따라 두 곳에서 고른다 — 좁으면 도구모음의 분할 버튼,
+  // 넓으면 하단 시트탭. 목록이 통째로 바뀌므로 어느 쪽이든 펼쳐둔 행 수를 되돌린다.
+  const pickBoard = (s: string) => {
+    setSheet(s);
+    setLimit(200);
+  };
+
+  // 고른 열이 지금 폭에서 숨겨졌으면 첫 열로 되돌린다.
+  const selColIdx = Math.max(0, cols.findIndex((c) => c.key === selCell.key));
   const selCol = cols[selColIdx];
   const selRow = shown[selCell.r];
   const nameBox = selRow ? `${colLetter(selColIdx)}${selCell.r + 2}` : "—";
@@ -271,7 +280,7 @@ export function ExcelGrid({ onPickStock }: { onPickStock: (row: GridRow) => void
           {(["전체", "KOSPI", "KOSDAQ"] as const).map((s) => (
             <button
               key={s}
-              onClick={() => { setSheet(s); setLimit(200); }}
+              onClick={() => pickBoard(s)}
               aria-pressed={sheet === s}
               className={`min-h-11 border-r border-[#e2e2e2] px-3.5 text-xs last:border-r-0 ${
                 sheet === s ? "bg-[#217346] font-semibold text-white" : "text-[#4a4a4a]"
@@ -418,7 +427,7 @@ export function ExcelGrid({ onPickStock }: { onPickStock: (row: GridRow) => void
 
                     if (c.type === "date" || c.type === "text") {
                       return (
-                        <div key={c.key} style={{ width: colW(c), ...stickPos }} onClick={() => setSelCell({ r: ri, c: ci })}
+                        <div key={c.key} style={{ width: colW(c), ...stickPos }} onClick={() => setSelCell({ r: ri, key: c.key })}
                           className={`${base} ${ring} ${stick} justify-center text-[#555]`}>
                           {raw ?? "—"}
                         </div>
@@ -427,7 +436,7 @@ export function ExcelGrid({ onPickStock }: { onPickStock: (row: GridRow) => void
                     if (c.type === "code" || c.type === "name") {
                       return (
                         <div key={c.key} style={{ width: colW(c), ...stickPos }}
-                          onClick={() => { setSelCell({ r: ri, c: ci }); onPickStock(row); }}
+                          onClick={() => { setSelCell({ r: ri, key: c.key }); onPickStock(row); }}
                           className={`${base} ${ring} ${stick} cursor-pointer ${c.type === "name" ? "justify-start" : "justify-center"} font-medium text-[#1155cc] underline decoration-[#1155cc]/30 underline-offset-2 hover:decoration-[#1155cc]`}>
                           {raw ?? "—"}
                         </div>
@@ -441,7 +450,7 @@ export function ExcelGrid({ onPickStock }: { onPickStock: (row: GridRow) => void
                     return (
                       <div key={c.key}
                         style={{ width: colW(c), ...(v != null ? cellStyle(c.type, v) : {}), ...flashBg }}
-                        onClick={() => setSelCell({ r: ri, c: ci })}
+                        onClick={() => setSelCell({ r: ri, key: c.key })}
                         className={`${base} ${ring} justify-end ${v == null ? "text-[#ccc]" : ""}`}>
                         {v == null ? "—" : cellText(c.type, v)}
                       </div>
@@ -473,12 +482,7 @@ export function ExcelGrid({ onPickStock }: { onPickStock: (row: GridRow) => void
           return (
             <button
               key={s}
-              onClick={() => {
-                if (clickable) {
-                  setSheet(s);
-                  setLimit(200);
-                }
-              }}
+              onClick={() => { if (clickable) pickBoard(s); }}
               className={`shrink-0 whitespace-nowrap border border-b-0 px-4 py-1.5 ${
                 active ? "border-[#d0d0d0] bg-white font-semibold text-[#217346]" : "border-transparent text-[#666] hover:bg-[#e8e8e8]"
               } ${!clickable ? "opacity-60" : ""}`}
