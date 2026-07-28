@@ -35,6 +35,9 @@ param(
 $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $Backend = Join-Path $Root "backend"
+# src 레이아웃 — app·scripts 패키지는 backend\src. 단, Push-Location 은 계속 backend 로
+# (설정의 data_dir="../data" 와 .env 가 CWD 기준 상대경로라서).
+$Src = Join-Path $Backend "src"
 $Python = Join-Path $Backend ".venv\Scripts\python.exe"
 $Serve = Join-Path $PSScriptRoot "serve.ps1"
 $LogDir = Join-Path $Root "data\logs"
@@ -45,7 +48,7 @@ function Invoke-Py {
     $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
     $log = Join-Path $LogDir "$Label-$stamp.log"
     Write-Host "▶ $Label 시작 — 로그 $log"
-    $env:PYTHONPATH = $Backend
+    $env:PYTHONPATH = $Src
     $env:PYTHONUNBUFFERED = "1"
     Push-Location $Backend
     try {

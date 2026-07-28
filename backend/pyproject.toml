@@ -8,7 +8,16 @@ requires-python = ">=3.10"
 [project.optional-dependencies]
 dev = ["pytest>=8"]
 
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+# src 레이아웃 — 패키지는 src/ 아래에만 있다. 덕분에 tests/ 나 data/ 가 실수로
+# 배포 패키지에 섞이지 않고, `pip install -e .` 이 이름 충돌 없이 동작한다.
+where = ["src"]
+
 [tool.pytest.ini_options]
-# backend/ 에서 `pytest` 만 쳐도 app 패키지를 찾도록 경로 추가(PYTHONPATH 불필요).
-pythonpath = ["."]
+# backend/ 에서 `pytest` 만 쳐도 src/ 의 app·scripts 를 찾도록 경로 추가(PYTHONPATH 불필요).
+pythonpath = ["src"]
 testpaths = ["tests"]

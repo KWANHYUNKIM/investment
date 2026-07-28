@@ -97,10 +97,12 @@
 ## 파이썬 스크립트 단독 실행
 
 PowerShell 없이(또는 다른 OS에서) 쓰려면 `backend\` 에서 직접 돌린다.
+**src 레이아웃**이므로 `PYTHONPATH` 는 `backend\src`, 작업 디렉터리는 `backend` 다
+(설정의 `data_dir="../data"` 와 `.env` 가 CWD 기준 상대경로).
 
 ```powershell
 cd backend
-$env:PYTHONPATH = (Resolve-Path .).Path
+$env:PYTHONPATH = (Resolve-Path .\src).Path
 & .\.venv\Scripts\python.exe -m scripts.verify_parsers --tickers 004370,005490
 & .\.venv\Scripts\python.exe -m scripts.audit_report --top 30 --json ..\data\audit_report.json
 & .\.venv\Scripts\python.exe -m scripts.build_delisting
@@ -114,3 +116,4 @@ $env:PYTHONPATH = (Resolve-Path .).Path
 | **`.ps1` 인코딩** | 한글 주석이 깨지며 `Missing closing ')'` 파서 에러 | 이 폴더의 `.ps1` 은 **UTF-8 BOM** 으로 저장(PS 5.1 은 BOM 없으면 ANSI 로 읽음) |
 | **터미널 종료 시 서버 동반 사망** | 백그라운드로 띄운 서버가 타임아웃에 같이 죽음 | `Start-Process` 세션 분리 기동 |
 | **DuckDB 잠금** | 서버 startup `IOException` / 배치 실패 | `serve.ps1` 대기, `batch.ps1` 정지→실행→재기동 |
+| **src 레이아웃에서 CWD 를 src 로 옮김** | `ModuleNotFoundError` 는 안 나지만 `data_dir="../data"` 가 `backend\data` 를 가리켜 **빈 DB 를 새로 만든다** | `PYTHONPATH`(=`backend\src`)만 바꾸고 CWD 는 `backend` 유지 |

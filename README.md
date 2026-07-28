@@ -16,20 +16,27 @@ investment/
 
 ## 구성요소별 구조와 패턴
 
-### backend/ — 계층형 (웹 백엔드의 표준)
+### backend/ — src 레이아웃 + 계층형 (웹 백엔드의 표준)
 ```
-backend/app/
-├── api/        라우터(HTTP 입출력)          ← 표현 계층
-├── data/       수집/가공 — 도메인별 하위패키지 ← 데이터/서비스 계층
-│   ├── infra/ loaders/ macro/ market/ fundamentals/
-│   └── intel/ news/ reports/ schedulers/
-├── quant/      계산 로직(metrics, backtest)  ← 도메인 계층
-├── models/     Pydantic 스키마               ← 데이터 모델
-├── core/       설정(config)
-└── main.py     앱 진입점
+backend/
+├── src/            ← import 대상 패키지는 전부 여기 (src 레이아웃)
+│   ├── app/
+│   │   ├── api/        라우터(HTTP 입출력)          ← 표현 계층
+│   │   ├── domains/    도메인별 router·service·repository
+│   │   ├── data/       수집/가공 — 도메인별 하위패키지 ← 데이터/서비스 계층
+│   │   │   ├── infra/ loaders/ macro/ market/ fundamentals/
+│   │   │   └── intel/ news/ reports/ schedulers/
+│   │   ├── quant/      계산 로직(metrics, backtest)  ← 도메인 계층
+│   │   ├── models/     Pydantic 스키마               ← 데이터 모델
+│   │   ├── core/       설정(config)
+│   │   └── main.py     앱 진입점
+│   └── scripts/    데이터 적재·배치 CLI
+└── tests/          테스트 (패키지 아님 — src 밖)
 ```
-요청 흐름: `api(라우터) → data/quant(서비스·도메인) → models(스키마)`.
+요청 흐름: `api·domains(라우터) → data/quant(서비스·도메인) → models(스키마)`.
 MVVM 을 쓰지 않는다 — 웹 백엔드는 계층 분리가 자연스럽다.
+`src/` 는 **sys.path 에만** 올린다. 작업 디렉터리는 `backend/` 그대로여야 하는데,
+설정의 `data_dir="../data"` 와 `.env` 가 CWD 기준 상대경로이기 때문이다.
 하위패키지 구성과 테스트는 [backend/README.md](backend/README.md).
 
 ### gui/ — MVC + Qt Model/View (데스크톱의 표준)
@@ -58,8 +65,8 @@ Qt 가 모델↔뷰 동기화를 내장 제공하므로 바인더를 직접 만�
 모든 Python 명령은 **프로젝트 루트**에서, backend 가상환경의 파이썬으로 실행한다.
 
 ```powershell
-# 백엔드 (별도 터미널, backend\ 에서)
-& backend\.venv\Scripts\python.exe -m uvicorn app.main:app --reload
+# 백엔드 (별도 터미널, backend\ 에서 — src 레이아웃이라 --app-dir 필요)
+& .venv\Scripts\python.exe -m uvicorn app.main:app --app-dir src --reload
 
 # 웹 프론트엔드 (frontend\ 에서)
 npm install; npm run dev

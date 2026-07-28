@@ -36,6 +36,9 @@ param(
 $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $Backend = Join-Path $Root "backend"
+# src 레이아웃 — app·scripts 패키지는 backend\src 아래에 있다. 작업 디렉터리는 계속
+# backend 로 두어야 한다(설정의 data_dir="../data" 와 .env 가 CWD 기준 상대경로).
+$Src = Join-Path $Backend "src"
 $Python = Join-Path $Backend ".venv\Scripts\python.exe"
 $LogOut = Join-Path $Root "data\uvicorn.log"
 $LogErr = Join-Path $Root "data\uvicorn.err.log"
@@ -134,7 +137,7 @@ function Start-Server {
         Write-Host "배치 종료 확인"
     }
 
-    $env:PYTHONPATH = $Backend
+    $env:PYTHONPATH = $Src
     $env:PYTHONUNBUFFERED = "1"
     $p = Start-Process -FilePath $Python `
         -ArgumentList "-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", "$Port" `
