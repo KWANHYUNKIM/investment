@@ -57,7 +57,17 @@ export function useApiData<T>(
           if (alive) setSettled({ key: reqKey, data: d });
         })
         .catch((e: unknown) => {
-          if (alive) setSettled({ key: reqKey, error: e instanceof Error ? e.message : "불러오지 못했습니다." });
+          if (!alive) return;
+          const message = e instanceof Error ? e.message : "불러오지 못했습니다.";
+          // 같은 요청을 다시 받다가(폴링·reload) 실패한 것이라면 보던 값을 지우지 않는다.
+          // 30초·60초 주기로 받는 화면에서 한 번 끊겼다고 패널이 비어 버리면, 실제로는
+          // 직전 값이 아직 쓸모 있는데도 다음 성공까지 아무것도 못 보게 된다.
+          // key 가 바뀐 경우(다른 종목)는 그대로 비운다 — 남의 값을 보여주면 안 되므로.
+          setSettled((prev) => ({
+            key: reqKey,
+            data: prev.key === reqKey ? prev.data : undefined,
+            error: message,
+          }));
         });
     run();
     if (!pollMs) return () => { alive = false; };
