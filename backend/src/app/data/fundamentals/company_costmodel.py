@@ -217,7 +217,7 @@ def list_companies() -> list[dict]:
     out = []
     for ticker, items in by_ticker.items():
         mods = [m for _, m in items]
-        sector = ue._SECTOR_BY_ID.get(items[0][0], ue.AUTO_SECTOR)
+        sector = ue.SECTOR_BY_ID.get(items[0][0], ue.AUTO_SECTOR)
         row = {
             "ticker": ticker,
             "company": mods[0]["company"],
@@ -515,7 +515,7 @@ def analyze(ticker: str) -> dict:
     company = items[0][1]["company"]
     mods = [m for _, m in items]
     ratios, basis = _company_ratios(ticker, mods)
-    sector = ue._SECTOR_BY_ID.get(items[0][0], ue.AUTO_SECTOR)
+    sector = ue.SECTOR_BY_ID.get(items[0][0], ue.AUTO_SECTOR)
 
     # ① 품목별 원가·영익 — 기존 teardown 재사용
     products: list[dict] = []

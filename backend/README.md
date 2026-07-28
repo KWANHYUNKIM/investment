@@ -37,11 +37,29 @@ backend/
 | `loaders/` | krx, naver, us (외부 시세 로더) |
 | `macro/` | ecos, macro, rates, money_supply, money_analysis, moneyflow, realeconomy, realestate, rent, korea_flow, crossasset |
 | `market/` | brokers, investor, institutional, foreign_view, naver_sector, asset_detail, crisis |
-| `fundamentals/` | dart, dart_financials, financials, fundamentals_crawler, finnhub |
+| `fundamentals/` | dart, dart_financials, financials, fundamentals_crawler, finnhub, unit_economics, company_costmodel + `products/` |
 | `intel/` | global_intel, global_map, industry, industry_research, futuretheme, insight |
 | `news/` | news, feed, livepulse |
 | `reports/` | report, market_report, daily_archive |
-| `schedulers/` | growth_scheduler, industry_scheduler, price_scheduler, report_scheduler |
+| `schedulers/` | `runner.py`(공용 러너) + *_scheduler 10종 |
+
+### `fundamentals/products/` — 원가분해 지식베이스 (데이터만)
+
+제품 230품목의 원가 구성(유통마진·원재료 믹스·폴백 비율)은 **업종별 모듈**에 나눠 둔
+순수 데이터다. 예전엔 이게 `unit_economics.py` 안에 3,458줄 리터럴로 들어가 있어서
+그 파일의 88%가 데이터였다(3,900줄 중 로직은 220줄). 품목을 추가할 땐 해당 업종
+모듈 하나만 고친다. 업종 순서 = `products/__init__.py` 의 `_MODULES` 순서이고, 그게
+곧 화면 드롭다운 순서다.
+
+### `schedulers/runner.py` — 스케줄러 공용 러너
+
+10종의 스케줄러는 하는 일만 다르고 껍데기(데몬 스레드·기동 대기·무한 루프·예외
+삼키기·ticks/last_run/last_error 기록·설정에서 주기 읽기)는 같았다. 그 35줄이 모듈마다
+복붙되어 있던 것을 `runner.Scheduler` 로 모았다. 각 모듈에 남는 것은 `_state` 선언과
+`_tick()`, 그리고 러너 배선뿐이다.
+
+`api/ops.py` 와 `main.py` 는 스케줄러 **모듈**의 `status()`/`start()` 를 호출하므로,
+각 모듈은 그 두 이름을 계속 내보낸다(`status = _sched.status`).
 
 ## 실행 / 테스트
 
