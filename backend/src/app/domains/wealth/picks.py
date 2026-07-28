@@ -14,6 +14,7 @@ import threading
 import time
 import urllib.request
 
+from app.core.numeric import json_float
 from app.data.infra import store
 from app.data.market import dividends
 
@@ -24,21 +25,13 @@ _UA = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
 _DIV_TAX = 0.154
 
 
-def _num(v):
-    try:
-        v = float(v)
-        return None if v != v else v
-    except (TypeError, ValueError):
-        return None
-
-
 # --- 배당주 추천 (점수화) --------------------------------------------------
 def _financials_map() -> dict:
     fins = store.financials_latest()
     out = {}
     if fins is not None and not fins.empty:
         for r in fins.to_dict("records"):
-            out[r.get("ticker")] = {"op_yoy": _num(r.get("op_yoy")), "op_margin": _num(r.get("op_margin"))}
+            out[r.get("ticker")] = {"op_yoy": json_float(r.get("op_yoy")), "op_margin": json_float(r.get("op_margin"))}
     return out
 
 
@@ -103,11 +96,11 @@ def dividend_picks(top: int = 12) -> dict:
             continue
         t = r["ticker"]
         f = rich.get(t, {})
-        pbr = _num(f.get("pbr"))
-        mcap = _num(f.get("market_cap"))
-        fratio = _num(f.get("foreign_ratio"))
-        roe = _num(r.get("roe"))
-        per = _num(r.get("per"))
+        pbr = json_float(f.get("pbr"))
+        mcap = json_float(f.get("market_cap"))
+        fratio = json_float(f.get("foreign_ratio"))
+        roe = json_float(r.get("roe"))
+        per = json_float(r.get("per"))
         op_yoy = (fin.get(t) or {}).get("op_yoy")
         sector = r.get("sector") or ""
         is_reit = ("리츠" in (r.get("name") or "")) or ("부동산" in sector)

@@ -25,6 +25,7 @@ import zipfile
 import requests
 
 from app.core.config import get_settings
+from app.core.numeric import parse_accounting_number
 from app.data.fundamentals.dart import _load_corp_map, enabled
 from app.data.fundamentals import auto_costmodel as ac
 
@@ -52,22 +53,6 @@ def _cache_path(ticker: str):
 
 def _flat(s: str) -> str:
     return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", s))
-
-
-def _num(s: str) -> float | None:
-    """'(29,436,673)' → -29436673. 숫자 없으면 None."""
-    t = (s or "").strip()
-    if not t or not re.search(r"\d", t):
-        return None
-    neg = t.startswith("(") and t.endswith(")")
-    m = re.search(r"-?\d[\d,]*", t)
-    if not m:
-        return None
-    try:
-        v = float(m.group(0).replace(",", ""))
-    except ValueError:
-        return None
-    return -v if (neg or t.lstrip().startswith("-")) else v
 
 
 def _members(rcept: str) -> dict[str, str]:
@@ -149,7 +134,7 @@ def _parse_at(txt: str, i: int) -> dict | None:
                 continue
             if re.fullmatch(r"구\s*분|과\s*목|항\s*목", name):      # 헤더행('제 58(당) 기'에 숫자가 있어 걸림)
                 continue
-            nums = [_num(c) for c in r[1:]]
+            nums = [parse_accounting_number(c) for c in r[1:]]
             nums = [n for n in nums if n is not None]
             if not nums:
                 continue

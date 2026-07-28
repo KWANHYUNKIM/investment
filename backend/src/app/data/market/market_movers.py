@@ -14,6 +14,7 @@ import threading
 import time
 
 from app.core.config import get_settings
+from app.core.numeric import json_float
 from app.data.infra import store
 from app.data.news import news
 
@@ -25,14 +26,6 @@ _SYSTEM = ("너는 한국 주식시장 애널리스트다. 주어진 급등락 �
            "과장·투자권유는 하지 않는다. 반드시 JSON만 출력한다.")
 
 
-def _num(v):
-    try:
-        v = float(v)
-        return None if v != v else v
-    except (TypeError, ValueError):
-        return None
-
-
 def _liquid_rows(min_value: float = 1_000_000_000):
     """거래대금(종가×거래량) min_value 이상인 KR 종목 records + 실제 업종."""
     q = store.latest_quotes(market="KR")
@@ -41,16 +34,16 @@ def _liquid_rows(min_value: float = 1_000_000_000):
     secmap = store.sector_map()
     rows = []
     for r in q.to_dict("records"):
-        close = _num(r.get("close"))
-        vol = _num(r.get("volume"))
-        prev = _num(r.get("prev_close"))
+        close = json_float(r.get("close"))
+        vol = json_float(r.get("volume"))
+        prev = json_float(r.get("prev_close"))
         if close is None or vol is None or not prev:
             continue
         chg = (close / prev - 1.0) * 100.0
         value = close * vol
         if value < min_value:
             continue
-        c1m = _num(r.get("close_1m"))
+        c1m = json_float(r.get("close_1m"))
         rows.append({
             "ticker": r["ticker"], "name": r.get("name"),
             "sector": secmap.get(r["ticker"]) or r.get("sector"),

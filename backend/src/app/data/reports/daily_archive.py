@@ -25,6 +25,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from app.core.config import get_settings
+from app.core.numeric import json_float
 from app.data.macro import crossasset
 from app.data.market import foreign_view
 from app.data.intel import insight
@@ -35,19 +36,6 @@ from app.data.macro import rates
 from app.data.infra import store
 
 _lock = threading.Lock()
-
-
-# --------------------------------------------------------------------------- #
-# Per-stock builders
-# --------------------------------------------------------------------------- #
-def _num(v) -> float | None:
-    try:
-        if v is None:
-            return None
-        f = float(v)
-        return None if f != f else f
-    except (TypeError, ValueError):
-        return None
 
 
 def _slim(r: dict) -> dict:
@@ -89,15 +77,15 @@ def _bulk_stock(row: dict, flow: dict | None) -> dict:
     (valuation, momentum, foreign-ratio move) so it stays cheap at ~2,800 stocks.
     """
     chg = row.get("change_pct")
-    # _num() may return None for NaN even when the raw value isn't None, so guard
+    # json_float() may return None for NaN even when the raw value isn't None, so guard
     # on the cleaned numbers (not the raw flow values) to avoid None - float.
-    fr = _num(flow.get("foreign_ratio")) if flow else None
-    fr_prev = _num(flow.get("foreign_ratio_prev")) if flow else None
+    fr = json_float(flow.get("foreign_ratio")) if flow else None
+    fr_prev = json_float(flow.get("foreign_ratio_prev")) if flow else None
     fr_delta = (fr - fr_prev) if (fr is not None and fr_prev is not None) else None
     sig = {
-        "individual": _num(flow.get("individual")) if flow else None,
-        "foreign": _num(flow.get("foreigner")) if flow else None,
-        "organ": _num(flow.get("organ")) if flow else None,
+        "individual": json_float(flow.get("individual")) if flow else None,
+        "foreign": json_float(flow.get("foreigner")) if flow else None,
+        "organ": json_float(flow.get("organ")) if flow else None,
         "foreign_ratio": fr,
         "foreign_ratio_delta": fr_delta,
         "change_pct": chg,

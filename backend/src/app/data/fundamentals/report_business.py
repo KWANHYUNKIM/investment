@@ -28,6 +28,7 @@ import re
 import time
 
 from app.core.config import get_settings
+from app.core.numeric import parse_accounting_number
 from app.data.fundamentals.dart import _load_corp_map, enabled
 from app.data.fundamentals import auto_costmodel as ac
 
@@ -102,21 +103,6 @@ def _grid(tbl: str) -> list[list[str]]:
         out.append([line.get(i, "") for i in range(w)])
     w = max((len(r) for r in out), default=0)
     return [r + [""] * (w - len(r)) for r in out]
-
-
-def _num(s: str) -> float | None:
-    t = (s or "").strip()
-    if not t or t in ("-", "—") or not re.search(r"\d", t):
-        return None
-    neg = t.startswith("(") and t.endswith(")")
-    m = re.search(r"-?\d[\d,]*\.?\d*", t)
-    if not m:
-        return None
-    try:
-        v = float(m.group(0).replace(",", ""))
-    except ValueError:
-        return None
-    return -v if neg else v
 
 
 def _period(cell: str) -> str | None:
@@ -208,7 +194,7 @@ def _parse_series(grid: list[list[str]]) -> list[dict] | None:
             continue
         vals = {}
         for ci, p in periods.items():
-            v = _num(row[ci]) if ci < len(row) else None
+            v = parse_accounting_number(row[ci]) if ci < len(row) else None
             if v is not None:
                 vals[p] = v
         if len(vals) >= 2:
@@ -274,13 +260,13 @@ def _parse_utilization(txt: str) -> list[dict]:
             items = []
             for row in grid[1:]:
                 name, group, _u = _row_label(row, n_label)
-                u = _num(row[col["util"]]) if col["util"] < len(row) else None
+                u = parse_accounting_number(row[col["util"]]) if col["util"] < len(row) else None
                 if not name or u is None or not (0 < u <= 200):
                     continue
                 items.append({
                     "name": name, "group": group,
-                    "capacity": _num(row[col["capacity"]]) if col.get("capacity", 99) < len(row) else None,
-                    "output": _num(row[col["output"]]) if col.get("output", 99) < len(row) else None,
+                    "capacity": parse_accounting_number(row[col["capacity"]]) if col.get("capacity", 99) < len(row) else None,
+                    "output": parse_accounting_number(row[col["output"]]) if col.get("output", 99) < len(row) else None,
                     "utilization_pct": round(u, 1),
                     "is_total": bool(_TOTAL.match(name.replace(" ", ""))),
                 })

@@ -15,6 +15,7 @@ import time
 import pandas as pd
 import FinanceDataReader as fdr
 
+from app.core.numeric import json_float
 from app.data.infra import store
 from app.data.market import naver_sector
 from app.data.fundamentals import financials
@@ -22,16 +23,6 @@ from app.data.fundamentals import financials
 _lock = threading.Lock()
 _cache: dict = {"ts": 0.0, "data": None}
 TTL = 1800.0  # 30 min for the grouped view
-
-
-def _num(v) -> float | None:
-    try:
-        if v is None:
-            return None
-        f = float(v)
-        return None if f != f else f
-    except (TypeError, ValueError):
-        return None
 
 
 def _marcap_map() -> dict[str, float]:
@@ -44,7 +35,7 @@ def _marcap_map() -> dict[str, float]:
             continue
         for r in df.itertuples(index=False):
             code = getattr(r, "Code", None)
-            mc = _num(getattr(r, "Marcap", None))
+            mc = json_float(getattr(r, "Marcap", None))
             if code and mc:
                 out[str(code)] = mc
     return out
@@ -135,17 +126,17 @@ def industries(min_members: int = 2) -> list[dict]:
                 "region": rec.get("region"),
                 "representative": rec.get("representative"),
                 "homepage": rec.get("homepage"),
-                "market_cap": _num(rec.get("market_cap")),
+                "market_cap": json_float(rec.get("market_cap")),
                 "change_pct": mv.get("change_pct"),
                 "fy": f.get("period"),
-                "sales": _num(f.get("sales")),
-                "op_profit": _num(f.get("op_profit")),
-                "net_income": _num(f.get("net_income")),
-                "op_margin": _num(f.get("op_margin")),
-                "op_yoy": _num(f.get("op_yoy")),
-                "per": _num(vu.get("per")),
-                "pbr": _num(vu.get("pbr")),
-                "roe": _num(vu.get("roe")),
+                "sales": json_float(f.get("sales")),
+                "op_profit": json_float(f.get("op_profit")),
+                "net_income": json_float(f.get("net_income")),
+                "op_margin": json_float(f.get("op_margin")),
+                "op_yoy": json_float(f.get("op_yoy")),
+                "per": json_float(vu.get("per")),
+                "pbr": json_float(vu.get("pbr")),
+                "roe": json_float(vu.get("roe")),
             }
         )
 

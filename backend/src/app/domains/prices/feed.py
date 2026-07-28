@@ -21,6 +21,7 @@ import time
 import FinanceDataReader as fdr
 
 from app.core.config import get_settings
+from app.core.numeric import json_float
 
 _lock = threading.Lock()
 # Settled base snapshot from upstream (the anchor the ticks walk around).
@@ -35,16 +36,6 @@ _rng = random.Random(20260615)
 _STEP_SIGMA = 0.0018      # ~0.18% typical step
 _REVERT = 0.04            # pull back toward the settled price each step
 _MAX_DRIFT = 0.06         # never wander more than ±6% from the settled anchor
-
-
-def _num(v) -> float | None:
-    try:
-        if v is None:
-            return None
-        f = float(v)
-        return None if f != f else f  # drop NaN
-    except (TypeError, ValueError):
-        return None
 
 
 def _tick_size(price: float) -> int:
@@ -80,10 +71,10 @@ def _fetch() -> list[dict]:
                     "ticker": str(code),
                     "name": getattr(r, "Name", None),
                     "sector": board,
-                    "price": _num(getattr(r, "Close", None)),
-                    "change": _num(getattr(r, chg_col, None)) if chg_col else None,
-                    "change_pct": _num(getattr(r, pct_col, None)) if pct_col else None,
-                    "volume": _num(getattr(r, "Volume", None)),
+                    "price": json_float(getattr(r, "Close", None)),
+                    "change": json_float(getattr(r, chg_col, None)) if chg_col else None,
+                    "change_pct": json_float(getattr(r, pct_col, None)) if pct_col else None,
+                    "volume": json_float(getattr(r, "Volume", None)),
                 }
             )
     return rows

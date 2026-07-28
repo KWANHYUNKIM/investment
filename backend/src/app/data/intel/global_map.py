@@ -9,6 +9,7 @@ from __future__ import annotations
 import threading
 import time
 
+from app.core.numeric import json_float
 from app.data.intel import industry
 from app.data.infra import store
 from app.data.fundamentals import finnhub
@@ -19,17 +20,6 @@ from app.data.intel import global_intel
 _lock = threading.Lock()
 _cache: dict = {"ts": 0.0, "data": None}
 TTL = 600.0
-
-
-def _num(v) -> float | None:
-    """JSON-safe float — pandas NaN(빈 셀)을 None으로. (해외 데이터 직렬화 보호)"""
-    try:
-        if v is None:
-            return None
-        f = float(v)
-        return None if f != f else f
-    except (TypeError, ValueError):
-        return None
 
 
 def _krw_usd() -> float:
@@ -46,24 +36,24 @@ def _kr_members_by_wics() -> dict[str, list[dict]]:
 
 def _eok_to_usd(v, krw: float):
     """억원 → USD."""
-    n = _num(v)
+    n = json_float(v)
     return n * 1e8 * krw if n is not None else None
 
 
 def _unify_kr(m: dict, krw: float, fmap: dict, fund: dict, bs: dict) -> dict:
-    cap = _num(m.get("market_cap"))
+    cap = json_float(m.get("market_cap"))
     tk = m.get("ticker")
     f = fmap.get(tk, {})
     fu = fund.get(tk, {})
     b = bs.get(tk, {})
-    sales = _num(f.get("sales"))
-    op = _num(f.get("op_profit"))
-    ni = _num(f.get("net_income"))
+    sales = json_float(f.get("sales"))
+    op = json_float(f.get("op_profit"))
+    ni = json_float(f.get("net_income"))
     net_margin = round(ni / sales * 100, 2) if (sales and ni is not None) else None
-    debt, equity = _num(b.get("부채총계")), _num(b.get("자본총계"))
+    debt, equity = json_float(b.get("부채총계")), json_float(b.get("자본총계"))
     de = round(debt / equity * 100, 1) if (debt is not None and equity) else None
     # 투자효율 — DART 자산총계(원) 기준. 매출/이익은 억원이라 자산도 억원으로 환산.
-    assets_eok = (lambda a: a / 1e8 if a else None)(_num(b.get("자산총계")))
+    assets_eok = (lambda a: a / 1e8 if a else None)(json_float(b.get("자산총계")))
     roa = round(ni / assets_eok * 100, 1) if (ni is not None and assets_eok) else None
     asset_turn = round(sales / assets_eok, 2) if (sales is not None and assets_eok) else None
     # ROIC 근사: 세후영업이익(법인세 22% 가정) / 총자산. (무료 데이터로 순차입금 분리 불가 → 총자산 기준 근사)
@@ -74,17 +64,17 @@ def _unify_kr(m: dict, krw: float, fmap: dict, fund: dict, bs: dict) -> dict:
         "revenue_usd": _eok_to_usd(sales, krw),
         "op_profit_usd": _eok_to_usd(op, krw),
         "net_income_usd": _eok_to_usd(ni, krw),
-        "op_margin": _num(f.get("op_margin")), "net_margin": net_margin,
+        "op_margin": json_float(f.get("op_margin")), "net_margin": net_margin,
         "gross_margin": None,
-        "roe": _num(fu.get("roe")), "debt_equity": de,
-        "pe": _num(fu.get("per")), "pb": _num(fu.get("pbr")),
-        "div_yield": _num(fu.get("div_yield")),
+        "roe": json_float(fu.get("roe")), "debt_equity": de,
+        "pe": json_float(fu.get("per")), "pb": json_float(fu.get("pbr")),
+        "div_yield": json_float(fu.get("div_yield")),
         "roic": roic, "roa": roa, "asset_turnover": asset_turn,
         "ev_ebitda": None, "rev_growth": None, "eps_growth": None,
         "rev_cagr5y": None, "interest_cov": None,
-        "op_yoy": _num(f.get("yoy")),
+        "op_yoy": json_float(f.get("yoy")),
         "fy": f.get("period"),
-        "change_pct": _num(m.get("change_pct")),
+        "change_pct": json_float(m.get("change_pct")),
         "note": m.get("products"),
         "profile": global_intel.profile_for(m.get("name")),
     }
@@ -104,25 +94,25 @@ def _unify_foreign(sym: str, label: str, country: str, fin: dict | None) -> dict
     return {
         "market": "GL", "code": sym, "name": _clean_str(f.get("name")) or label,
         "country": _clean_str(f.get("country")) or country,
-        "market_cap_usd": _num(f.get("market_cap_usd")),
-        "revenue_usd": _num(f.get("revenue_usd")),
-        "op_profit_usd": _num(f.get("op_profit_usd")),
-        "net_income_usd": _num(f.get("net_income_usd")),
-        "op_margin": _num(f.get("op_margin")), "net_margin": _num(f.get("net_margin")),
-        "gross_margin": _num(f.get("gross_margin")),
-        "roe": _num(f.get("roe")),
+        "market_cap_usd": json_float(f.get("market_cap_usd")),
+        "revenue_usd": json_float(f.get("revenue_usd")),
+        "op_profit_usd": json_float(f.get("op_profit_usd")),
+        "net_income_usd": json_float(f.get("net_income_usd")),
+        "op_margin": json_float(f.get("op_margin")), "net_margin": json_float(f.get("net_margin")),
+        "gross_margin": json_float(f.get("gross_margin")),
+        "roe": json_float(f.get("roe")),
         # Finnhub totalDebt/totalEquity는 배수 → 한국 부채비율(%)과 단위 맞추려 ×100.
-        "debt_equity": (lambda x: round(x * 100, 1) if x is not None else None)(_num(f.get("debt_equity"))),
-        "pe": _num(f.get("pe")), "pb": _num(f.get("pb")),
-        "div_yield": _num(f.get("div_yield")),
-        "roic": _num(f.get("roic")), "roa": _num(f.get("roa")),
-        "asset_turnover": _num(f.get("asset_turnover")),
-        "ev_ebitda": _num(f.get("ev_ebitda")),
-        "rev_growth": _num(f.get("rev_growth")), "eps_growth": _num(f.get("eps_growth")),
-        "rev_cagr5y": _num(f.get("rev_cagr5y")), "interest_cov": _num(f.get("interest_cov")),
+        "debt_equity": (lambda x: round(x * 100, 1) if x is not None else None)(json_float(f.get("debt_equity"))),
+        "pe": json_float(f.get("pe")), "pb": json_float(f.get("pb")),
+        "div_yield": json_float(f.get("div_yield")),
+        "roic": json_float(f.get("roic")), "roa": json_float(f.get("roa")),
+        "asset_turnover": json_float(f.get("asset_turnover")),
+        "ev_ebitda": json_float(f.get("ev_ebitda")),
+        "rev_growth": json_float(f.get("rev_growth")), "eps_growth": json_float(f.get("eps_growth")),
+        "rev_cagr5y": json_float(f.get("rev_cagr5y")), "interest_cov": json_float(f.get("interest_cov")),
         "op_yoy": None,
         "fy": None,
-        "change_pct": _num(f.get("change_pct")),
+        "change_pct": json_float(f.get("change_pct")),
         "note": _clean_str(f.get("industry")),
         "profile": global_intel.profile_for(label) or global_intel.profile_for(_clean_str(f.get("name"))),
     }

@@ -11,6 +11,7 @@ from __future__ import annotations
 import threading
 import time
 
+from app.core.numeric import json_float
 from app.data.infra import store
 
 _lock = threading.Lock()
@@ -22,24 +23,14 @@ _MIN_AMT = 30.0         # 의미있는 순매수 금액 임계(억)
 _TOPN = 25              # 매집/이탈 각 상위 개수
 
 
-def _num(v) -> float | None:
-    try:
-        if v is None:
-            return None
-        f = float(v)
-        return None if f != f else f
-    except (TypeError, ValueError):
-        return None
-
-
 def _why(behavior: str, price_chg: float | None, net: float, foreign_net: float, sig: dict) -> list[str]:
     """기관이 왜 담았/던졌는지 추정 문장(規則 기반)."""
     out: list[str] = []
-    per = _num(sig.get("per"))
-    pbr = _num(sig.get("pbr"))
-    roe = _num(sig.get("roe"))
-    pfh = _num(sig.get("pct_from_high"))
-    ret_1m = _num(sig.get("ret_1m"))
+    per = json_float(sig.get("per"))
+    pbr = json_float(sig.get("pbr"))
+    roe = json_float(sig.get("roe"))
+    pfh = json_float(sig.get("pct_from_high"))
+    ret_1m = json_float(sig.get("ret_1m"))
     fr_word = "외국인도 동반 순매도" if foreign_net < 0 else "외국인은 순매수(엇갈림)" if foreign_net > 0 else ""
 
     if behavior in ("이탈·분산", "손절 추정"):
@@ -143,9 +134,9 @@ def _assemble() -> dict:
             "max_buy": max_buy,
             "max_sell": max_sell,
             "behavior": behavior,
-            "change_pct": _num(sig.get("change_pct")),
-            "per": _num(sig.get("per")), "pbr": _num(sig.get("pbr")),
-            "ret_1m": _num(sig.get("ret_1m")), "pct_from_high": _num(sig.get("pct_from_high")),
+            "change_pct": json_float(sig.get("change_pct")),
+            "per": json_float(sig.get("per")), "pbr": json_float(sig.get("pbr")),
+            "ret_1m": json_float(sig.get("ret_1m")), "pct_from_high": json_float(sig.get("pct_from_high")),
             "why": _why(behavior, price_chg, net, foreign_net, sig),
         }
         records.append(rec)

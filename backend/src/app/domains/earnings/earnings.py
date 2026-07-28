@@ -8,19 +8,12 @@ from __future__ import annotations
 import threading
 import time
 
+from app.core.numeric import json_float
 from app.data.infra import store
 
 _lock = threading.Lock()
 _cache: dict = {"ts": 0.0, "data": None}
 TTL = 600.0
-
-
-def _num(v):
-    try:
-        f = float(v)
-        return None if f != f else f
-    except (TypeError, ValueError):
-        return None
 
 
 def _meta_map() -> dict:
@@ -31,7 +24,7 @@ def _meta_map() -> dict:
     secmap = store.sector_map()
     for r in q.to_dict("records"):
         out[r["ticker"]] = {"name": r.get("name"), "sector": secmap.get(r["ticker"]) or r.get("sector"),
-                            "close": _num(r.get("close")), "volume": _num(r.get("volume"))}
+                            "close": json_float(r.get("close")), "volume": json_float(r.get("volume"))}
     return out
 
 
@@ -51,13 +44,13 @@ def _build() -> dict:
             rows.append({
                 "ticker": t, "name": m.get("name"), "sector": m.get("sector"),
                 "period": str(r.get("period")),
-                "sales": _num(r.get("sales")),               # 매출액 (억원)
-                "op_profit": _num(r.get("op_profit")),       # 영업이익 (억원)
-                "net_income": _num(r.get("net_income")),     # 순이익 (억원)
-                "op_margin": _num(r.get("op_margin")),       # 영업이익률 (%)
-                "op_yoy": _num(r.get("op_yoy")),             # 영업이익 전년比 (%)
-                "per": _num(f.get("per")), "pbr": _num(f.get("pbr")), "roe": _num(f.get("roe")),
-                "market_cap": _num(f.get("market_cap")),     # 시가총액 (억원)
+                "sales": json_float(r.get("sales")),               # 매출액 (억원)
+                "op_profit": json_float(r.get("op_profit")),       # 영업이익 (억원)
+                "net_income": json_float(r.get("net_income")),     # 순이익 (억원)
+                "op_margin": json_float(r.get("op_margin")),       # 영업이익률 (%)
+                "op_yoy": json_float(r.get("op_yoy")),             # 영업이익 전년比 (%)
+                "per": json_float(f.get("per")), "pbr": json_float(f.get("pbr")), "roe": json_float(f.get("roe")),
+                "market_cap": json_float(f.get("market_cap")),     # 시가총액 (억원)
                 "close": m.get("close"),
             })
 

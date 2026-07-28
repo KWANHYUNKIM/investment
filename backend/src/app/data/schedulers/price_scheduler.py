@@ -22,6 +22,7 @@ import time
 import pandas as pd
 import FinanceDataReader as fdr
 
+from app.core.numeric import json_float
 from app.data.infra import store
 from app.data.schedulers import runner
 
@@ -36,16 +37,6 @@ _state = {
 }
 
 
-def _num(v) -> float | None:
-    try:
-        if v is None:
-            return None
-        f = float(v)
-        return None if f != f else f  # drop NaN
-    except (TypeError, ValueError):
-        return None
-
-
 def _board_rows(board: str, snap_date) -> tuple[list[dict], list[dict]]:
     """Return (price_rows, security_rows) for one board's current snapshot."""
     df = fdr.StockListing(board)
@@ -55,7 +46,7 @@ def _board_rows(board: str, snap_date) -> tuple[list[dict], list[dict]]:
         code = getattr(r, "Code", None)
         if not code:
             continue
-        close = _num(getattr(r, "Close", None))
+        close = json_float(getattr(r, "Close", None))
         if close is None or close <= 0:
             continue  # suspended / no print today — skip rather than store a 0 bar
         ticker = str(code)
@@ -64,11 +55,11 @@ def _board_rows(board: str, snap_date) -> tuple[list[dict], list[dict]]:
                 "market": "KR",
                 "ticker": ticker,
                 "date": snap_date,
-                "open": _num(getattr(r, "Open", None)),
-                "high": _num(getattr(r, "High", None)),
-                "low": _num(getattr(r, "Low", None)),
+                "open": json_float(getattr(r, "Open", None)),
+                "high": json_float(getattr(r, "High", None)),
+                "low": json_float(getattr(r, "Low", None)),
                 "close": close,
-                "volume": _num(getattr(r, "Volume", None)),
+                "volume": json_float(getattr(r, "Volume", None)),
             }
         )
         sec_rows.append(

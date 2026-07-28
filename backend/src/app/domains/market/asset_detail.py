@@ -12,6 +12,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 import FinanceDataReader as fdr
 
+from app.core.numeric import json_float
 from app.data.macro.crossasset import _ASSETS
 
 # key -> 자산 메타 (crossasset 정의 재사용).
@@ -28,16 +29,6 @@ _listing_cache: dict[str, tuple[float, list]] = {}
 LISTING_TTL = 3600.0  # 1시간 (구성종목 목록은 거의 안 변함)
 
 
-def _num(v) -> float | None:
-    try:
-        if v is None:
-            return None
-        f = float(v)
-        return None if f != f else f
-    except (TypeError, ValueError):
-        return None
-
-
 def _history(df, n: int = 30) -> list[dict]:
     df = df.dropna(subset=["Close"]).copy()
     df["__chg"] = df["Close"].pct_change() * 100.0
@@ -47,12 +38,12 @@ def _history(df, n: int = 30) -> list[dict]:
         out.append(
             {
                 "date": str(idx)[:10],
-                "open": _num(row.get("Open")),
-                "high": _num(row.get("High")),
-                "low": _num(row.get("Low")),
-                "close": _num(row.get("Close")),
-                "change_pct": round(c, 2) if (c := _num(row.get("__chg"))) is not None else None,
-                "volume": _num(row.get("Volume")),
+                "open": json_float(row.get("Open")),
+                "high": json_float(row.get("High")),
+                "low": json_float(row.get("Low")),
+                "close": json_float(row.get("Close")),
+                "change_pct": round(c, 2) if (c := json_float(row.get("__chg"))) is not None else None,
+                "volume": json_float(row.get("Volume")),
             }
         )
     return out
@@ -172,8 +163,8 @@ def asset_detail(key: str, as_of: str | None = None) -> dict | None:
     change = (last.get("close") - prev_close) if (last.get("close") is not None and prev_close is not None) else None
 
     win = df.tail(252)
-    hi52 = _num(win["High"].max()) if "High" in win.columns else None
-    lo52 = _num(win["Low"].min()) if "Low" in win.columns else None
+    hi52 = json_float(win["High"].max()) if "High" in win.columns else None
+    lo52 = json_float(win["Low"].min()) if "Low" in win.columns else None
 
     constituents: list[dict] = []
     total_constituents = 0

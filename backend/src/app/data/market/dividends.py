@@ -11,19 +11,12 @@ from __future__ import annotations
 import threading
 import time
 
+from app.core.numeric import json_float
 from app.data.infra import store
 
 _lock = threading.Lock()
 _cache: dict = {"ts": 0.0, "data": None}
 TTL = 600.0
-
-
-def _num(v):
-    try:
-        v = float(v)
-        return None if v != v else v
-    except (TypeError, ValueError):
-        return None
 
 
 def _meta_map() -> dict:
@@ -34,7 +27,7 @@ def _meta_map() -> dict:
     secmap = store.sector_map()  # 실제 업종(WICS); securities.sector는 시장명
     for r in q.to_dict("records"):
         out[r["ticker"]] = {"name": r.get("name"), "sector": secmap.get(r["ticker"]) or r.get("sector"),
-                            "close": _num(r.get("close")), "volume": _num(r.get("volume"))}
+                            "close": json_float(r.get("close")), "volume": json_float(r.get("volume"))}
     return out
 
 
@@ -50,7 +43,7 @@ def _build() -> dict:
     # --- 고배당 ---
     div_rows = []
     for t, f in funds.items():
-        dy = _num(f.get("div_yield"))
+        dy = json_float(f.get("div_yield"))
         m = meta.get(t, {})
         if dy is None or dy <= 0 or dy > 20:  # 20% 초과는 데이터 이상치(특별배당·구주가)로 제외
             continue
@@ -59,7 +52,7 @@ def _build() -> dict:
         div_rows.append({
             "ticker": t, "name": m.get("name"), "sector": m.get("sector"),
             "close": m.get("close"), "div_yield": round(dy, 2),
-            "per": _num(f.get("per")), "roe": _num(f.get("roe")),
+            "per": json_float(f.get("per")), "roe": json_float(f.get("roe")),
         })
     div_rows.sort(key=lambda r: -(r["div_yield"] or 0))
 
@@ -68,7 +61,7 @@ def _build() -> dict:
     if fins is not None and not fins.empty:
         for r in fins.to_dict("records"):
             t = r.get("ticker")
-            yoy = _num(r.get("op_yoy"))
+            yoy = json_float(r.get("op_yoy"))
             m = meta.get(t, {})
             if yoy is None:
                 continue
@@ -77,8 +70,8 @@ def _build() -> dict:
             earn_rows.append({
                 "ticker": t, "name": m.get("name"), "sector": m.get("sector"),
                 "close": m.get("close"), "period": str(r.get("period")),
-                "op_yoy": yoy, "op_margin": _num(r.get("op_margin")),
-                "op_profit": _num(r.get("op_profit")),
+                "op_yoy": yoy, "op_margin": json_float(r.get("op_margin")),
+                "op_profit": json_float(r.get("op_profit")),
             })
         earn_rows.sort(key=lambda r: -(r["op_yoy"] or 0))
 
@@ -124,7 +117,7 @@ def _build_universe() -> dict:
         if not name:
             continue
         f = funds.get(t, {})
-        dy = _num(f.get("div_yield"))
+        dy = json_float(f.get("div_yield"))
         # 배당수익률 20% 초과는 데이터 이상치(특별배당·구주가)로 배제, 음수는 0 처리
         if dy is not None and (dy < 0 or dy > 20):
             dy = None

@@ -58,7 +58,7 @@ def _row_nums(row: list[str], cols: dict[int, str]) -> dict[str, float]:
     out = {}
     for ci, label in cols.items():
         if ci < len(row):
-            v = dd._num(row[ci])
+            v = dd.cell_num(row[ci])
             if v is not None:
                 out[label] = v
     return out
@@ -104,7 +104,7 @@ def _materials_purchase(sec: str) -> dict | None:
         item = _clean(r[c_item]) if c_item < len(r) else ""
         segn = _clean(r[c_seg]) if (c_seg is not None and c_seg < len(r)) else ""
         typ = _clean(r[c_type]) if (c_type is not None and c_type < len(r)) else ""
-        amt = dd._num(r[c_amt]) if c_amt < len(r) else None
+        amt = dd.cell_num(r[c_amt]) if c_amt < len(r) else None
         if amt is None:
             continue
         if dd.is_total(item) or dd.is_total(segn):
@@ -117,9 +117,9 @@ def _materials_purchase(sec: str) -> dict | None:
             "segment": segn or None, "type": typ or None, "item": item,
             "use": _clean(r[c_use]) if (c_use is not None and c_use < len(r)) else None,
             "amount_won": amt * mult,
-            "amounts": {y: dd._num(r[ci]) * mult for ci, y in amt_cols.items()
-                        if ci < len(r) and dd._num(r[ci]) is not None},
-            "pct": dd._num(r[c_pct]) if (c_pct is not None and c_pct < len(r)) else None,
+            "amounts": {y: dd.cell_num(r[ci]) * mult for ci, y in amt_cols.items()
+                        if ci < len(r) and dd.cell_num(r[ci]) is not None},
+            "pct": dd.cell_num(r[c_pct]) if (c_pct is not None and c_pct < len(r)) else None,
         })
     if not rows:
         return None
@@ -159,8 +159,8 @@ def _material_prices(sec: str) -> dict | None:
         item = _clean(r[c_item]) if c_item < len(r) else ""
         if not item or _NOISE.match(item):
             continue
-        vals = {y: dd._num(r[ci]) for ci, y in yrs.items()
-                if ci < len(r) and dd._num(r[ci]) is not None}
+        vals = {y: dd.cell_num(r[ci]) for ci, y in yrs.items()
+                if ci < len(r) and dd.cell_num(r[ci]) is not None}
         if not vals:
             continue
         typ = _clean(r[c_type]) if (c_type is not None and c_type < len(r)) else None
@@ -205,8 +205,8 @@ def _production(sec: str, kind: str) -> list[dict]:
                 name = _clean(r[c_seg]) if (c_seg is not None and c_seg < len(r)) else ""
                 if not name or dd.is_total(name):
                     continue
-                vals = {y: dd._num(r[ci]) for ci, y in yrs.items()
-                        if ci < len(r) and dd._num(r[ci]) is not None}
+                vals = {y: dd.cell_num(r[ci]) for ci, y in yrs.items()
+                        if ci < len(r) and dd.cell_num(r[ci]) is not None}
                 if not vals:
                     continue
                 out.append({
@@ -255,8 +255,8 @@ def _sales_mix(sec: str) -> dict | None:
     _QUAL = ("수출", "내수", "소계", "합계", "계", "국내", "해외")
     for r in g[hdr + 1:]:
         labels = [_clean(c) for c in r[:first_val]]
-        vals = {y: dd._num(r[ci]) for ci, y in yrs.items()
-                if ci < len(r) and dd._num(r[ci]) is not None}
+        vals = {y: dd.cell_num(r[ci]) for ci, y in yrs.items()
+                if ci < len(r) and dd.cell_num(r[ci]) is not None}
         if not vals:
             continue
         qual = next((x for x in reversed(labels) if x in _QUAL), None)
@@ -345,7 +345,7 @@ def _segments(nt: str | None) -> dict | None:
                     continue
                 rec = segs.setdefault(name, {"name": name})
                 for ri, key in metrics.items():
-                    v = dd._num(g[ri][ci]) if ci < len(g[ri]) else None
+                    v = dd.cell_num(g[ri][ci]) if ci < len(g[ri]) else None
                     if v is not None and (key + "_won") not in rec:
                         rec[key + "_won"] = v * mult
             for rec in segs.values():
@@ -370,11 +370,11 @@ def _segments(nt: str | None) -> dict | None:
             name = _clean(r[0]) if r else ""
             if not name or dd.is_total(name) or _NOISE.match(name):
                 continue
-            rev = dd._num(r[c_rev]) if c_rev < len(r) else None
+            rev = dd.cell_num(r[c_rev]) if c_rev < len(r) else None
             if rev is None:
                 continue
             rows.append({"name": name, "revenue_won": rev * mult,
-                         "op_won": (dd._num(r[c_op]) * mult) if (c_op < len(r) and dd._num(r[c_op]) is not None) else None})
+                         "op_won": (dd.cell_num(r[c_op]) * mult) if (c_op < len(r) and dd.cell_num(r[c_op]) is not None) else None})
         if len(rows) >= 2:
             return _seg_out(rows, mult)
     return None
@@ -417,13 +417,13 @@ def _inventory(nt: str | None) -> dict | None:
         name = _clean(r[0]) if r else ""
         if not name:
             continue
-        nums = [dd._num(c) for c in r[1:]]
+        nums = [dd.cell_num(c) for c in r[1:]]
         nums = [n for n in nums if n is not None]
         if not nums:
             continue
-        gross = dd._num(r[c_gross]) if (c_gross is not None and c_gross < len(r)) else nums[0]
-        loss = dd._num(r[c_loss]) if (c_loss is not None and c_loss < len(r)) else None
-        book = dd._num(r[c_book]) if (c_book is not None and c_book < len(r)) else (
+        gross = dd.cell_num(r[c_gross]) if (c_gross is not None and c_gross < len(r)) else nums[0]
+        loss = dd.cell_num(r[c_loss]) if (c_loss is not None and c_loss < len(r)) else None
+        book = dd.cell_num(r[c_book]) if (c_book is not None and c_book < len(r)) else (
             (gross + loss) if (gross is not None and loss is not None) else gross)
         if dd.is_total(name):
             gross_total, book_total = (gross or 0) * mult, (book or 0) * mult
@@ -491,8 +491,8 @@ def _other_financial(sec: str) -> dict:
                 label = _clean(hdr[ci])
                 if not label or dd.is_total(label):
                     continue
-                amt = dd._num(amt_row[ci]) if (amt_row and ci < len(amt_row)) else None
-                pc = dd._num(pct_row[ci]) if (pct_row and ci < len(pct_row)) else None
+                amt = dd.cell_num(amt_row[ci]) if (amt_row and ci < len(amt_row)) else None
+                pc = dd.cell_num(pct_row[ci]) if (pct_row and ci < len(pct_row)) else None
                 if amt is None and pc is None:
                     continue
                 buckets.append({"bucket": label, "amount_won": (amt * mult) if amt is not None else None,
@@ -523,8 +523,8 @@ def _other_financial(sec: str) -> dict:
         stale = None
         if g and len(g) <= 8 and re.search(r"체화|장기", dd.head_text(g) + dd._flat(near[:600])):
             mult = dd.unit_won(near[:1500], 1e3)
-            tot = next((dd._num(c) for r in g for c in r[1:]
-                        if dd.is_total(_clean(r[0])) and dd._num(c)), None)
+            tot = next((dd.cell_num(c) for r in g for c in r[1:]
+                        if dd.is_total(_clean(r[0])) and dd.cell_num(c)), None)
             stale = (tot * mult) if tot else None
         out.setdefault("inventory_audit", {})["stale_won"] = stale
 
@@ -557,9 +557,9 @@ def _other_financial(sec: str) -> dict:
                         break
                     if dd.is_total(name) or "부채" in name:
                         continue
-                    lv3 += (dd._num(r[c3]) or 0) if c3 < len(r) else 0
+                    lv3 += (dd.cell_num(r[c3]) or 0) if c3 < len(r) else 0
                     if ctot is not None and ctot < len(r):
-                        tot += dd._num(r[ctot]) or 0
+                        tot += dd.cell_num(r[ctot]) or 0
                 out["fair_value"] = {
                     "level3_won": lv3 * mult, "total_won": (tot * mult) if tot else None,
                     "level3_pct": round(lv3 / tot * 100, 1) if tot else None,
@@ -578,7 +578,7 @@ def _other_financial(sec: str) -> dict:
                 tot_row = next((r for r in g[1:] if dd.is_total(_clean(r[0]))), None)
                 if tot_row:
                     out["inventory_3y"] = {
-                        "total_by_year": {y: (dd._num(tot_row[ci]) or 0) * mult
+                        "total_by_year": {y: (dd.cell_num(tot_row[ci]) or 0) * mult
                                           for ci, y in yrs.items() if ci < len(tot_row)},
                         "unit_won": mult, "source": "III-8-다 재고자산 보유현황",
                     }
@@ -610,8 +610,8 @@ def _related_party(nt: str | None) -> dict | None:
     for r in g[hdr_i + 1:]:
         labels = [_clean(c) for c in r[:first_val]]
         name = _clean(r[c_name]) if c_name < len(r) else ""
-        s = dd._num(r[c_sale]) if (c_sale is not None and c_sale < len(r)) else None
-        b = dd._num(r[c_buy]) if (c_buy is not None and c_buy < len(r)) else None
+        s = dd.cell_num(r[c_sale]) if (c_sale is not None and c_sale < len(r)) else None
+        b = dd.cell_num(r[c_buy]) if (c_buy is not None and c_buy < len(r)) else None
         if s is None and b is None:
             continue
         # 합계행을 같이 더하면 총액이 정확히 두 배가 된다(실제로 발생) → 라벨 어디든 '합계'면 버린다.
@@ -661,10 +661,10 @@ def _intangible(nt: str | None) -> dict | None:
         # 헤더로 잡히면 그걸 쓰고, 못 잡으면 최대값(대개 취득원가)임을 basis 로 밝힌다.
         hdr_i = dd.header_row(g, ("장부금액", "기말", "취득원가")) or 0
         c_book = dd.col_of(g[hdr_i], "기말장부금액", "장부금액", "기말")
-        v = dd._num(dev[c_book]) if (c_book is not None and c_book < len(dev)) else None
+        v = dd.cell_num(dev[c_book]) if (c_book is not None and c_book < len(dev)) else None
         basis = "장부금액"
         if v is None:
-            nums = [n for n in (dd._num(c) for c in dev[1:]) if n is not None]
+            nums = [n for n in (dd.cell_num(c) for c in dev[1:]) if n is not None]
             if not nums:
                 continue
             v, basis = max(nums), "표 내 최대값(장부금액 열 미식별)"
@@ -686,7 +686,7 @@ def _rnd(sec: str | None) -> dict | None:
         for r in g:
             nm = re.sub(r"\s+", "", r[0] or "")
             if re.search(r"연구개발비용계|연구개발비계|합계|연구개발비용합계", nm):
-                nums = [dd._num(c) for c in r[1:]]
+                nums = [dd.cell_num(c) for c in r[1:]]
                 nums = [n for n in nums if n is not None]
                 if nums:
                     total = max(nums) * mult
@@ -750,7 +750,7 @@ def _consolidation(nt_general: str | None, nt_comb: str | None, sec38: str | Non
             amt = re.search(r"이전대가[^\d]{0,40}([\d,]{4,})", flat)
             mult = dd.unit_won(nt_comb, 1e3)
             out["acquiree"] = _clean(who.group(1)) if who else None
-            out["consideration_won"] = (dd._num(amt.group(1)) * mult) if amt else None
+            out["consideration_won"] = (dd.cell_num(amt.group(1)) * mult) if amt else None
             out["detail"] = "사업결합 있음" + (f" — 취득: {out['acquiree']}" if out["acquiree"] else "")
     if nt_general:
         flat = dd._flat(nt_general)
@@ -826,8 +826,8 @@ def _audit_meta(sec: str | None) -> dict | None:
                 per = _clean(r[0]) if r else ""
                 if not per or "기" not in per:
                     continue
-                hours = next((dd._num(r[j]) for j in reversed(time_cols) if j < len(r) and dd._num(r[j])), None)
-                fee = next((dd._num(r[j]) for j in reversed(fee_cols) if j < len(r) and dd._num(r[j])), None)
+                hours = next((dd.cell_num(r[j]) for j in reversed(time_cols) if j < len(r) and dd.cell_num(r[j])), None)
+                fee = next((dd.cell_num(r[j]) for j in reversed(fee_cols) if j < len(r) and dd.cell_num(r[j])), None)
                 if hours or fee:
                     rows.append({"period": per, "hours": hours, "fee_mn": fee})
             if rows:
@@ -868,7 +868,7 @@ def _facilities(sec: str | None) -> dict | None:
     out: dict = {"note": _clean(flat[:200]), "source": "II-3-마 생산설비의 현황"}
     if mv:
         mult = dict((("천원", 1e3), ("백만원", 1e6), ("억원", 1e8), ("원", 1.0)))[mv.group(2)]
-        out["book_value_won"] = dd._num(mv.group(1)) * mult
+        out["book_value_won"] = dd.cell_num(mv.group(1)) * mult
     return out
 
 
@@ -893,7 +893,7 @@ def _orders(sec: str | None) -> dict | None:
     c_bal = dd.col_of(g[hdr_i], "수주잔고")
     bal = None
     if c_bal is not None:
-        vals = [dd._num(r[c_bal]) for r in g[hdr_i + 1:] if c_bal < len(r)]
+        vals = [dd.cell_num(r[c_bal]) for r in g[hdr_i + 1:] if c_bal < len(r)]
         vals = [v for v in vals if v is not None]
         if vals:
             bal = max(vals) * mult

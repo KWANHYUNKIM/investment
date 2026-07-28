@@ -33,7 +33,10 @@ from app.data.fundamentals import auto_costmodel as ac
 from app.data.fundamentals.dart import _load_corp_map, enabled
 # 병합셀(COLSPAN/ROWSPAN)을 펼쳐 직사각형 격자로 만드는 파서는 §14에서 이미 검증됐다.
 # 같은 문서를 읽는 이상 구현이 둘이면 언젠가 어긋난다 → 하나만 쓴다.
-from app.data.fundamentals.report_business import _cell, _flat, _grid, _num  # noqa: F401
+from app.data.fundamentals.report_business import _cell, _flat, _grid  # noqa: F401
+# 셀 숫자 읽기(회계 표기: 콤마·괄호음수·소수점)는 core 로 승격됐다. dart_full 이
+# ``dd.cell_num`` 으로 쓰므로 여기서 이름만 다시 내보낸다.
+from app.core.numeric import parse_accounting_number as cell_num  # noqa: F401
 
 _BASE = "https://opendart.fss.or.kr/api"
 _MAIN_MIN = 2_000_000        # 이보다 크면 본문(사업의 내용) — 주석 멤버가 아니다

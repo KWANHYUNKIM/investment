@@ -9,6 +9,7 @@ from __future__ import annotations
 import threading
 import time
 
+from app.core.numeric import json_float
 from app.data.macro import ecos
 
 _lock = threading.Lock()
@@ -24,14 +25,6 @@ _STATUS = {
 }
 
 
-def _num(v):
-    try:
-        f = float(v)
-        return None if f != f else f
-    except (TypeError, ValueError):
-        return None
-
-
 def _by_key(inds: list[dict]) -> dict:
     return {i["key"]: i for i in inds}
 
@@ -43,7 +36,7 @@ def _dir(ind: dict | None, lag: int = 12, eps: float = 0.05) -> str | None:
     ser = ind.get("series") or []
     if len(ser) <= lag:
         return None
-    cur, prev = _num(ser[-1]["v"]), _num(ser[-1 - lag]["v"])
+    cur, prev = json_float(ser[-1]["v"]), json_float(ser[-1 - lag]["v"])
     if cur is None or prev is None:
         return None
     if cur > prev + eps:
@@ -61,7 +54,7 @@ def _axis(key, title, status, headline, detail, metrics):
 
 def _growth_axis(ind):
     g = ind.get("gdp")
-    y = _num(g and g.get("yoy"))
+    y = json_float(g and g.get("yoy"))
     if y is None:
         return _axis("growth", "성장 (경기)", "na", "GDP 자료 대기", "", [])
     if y >= 3:
@@ -81,7 +74,7 @@ def _growth_axis(ind):
 
 def _price_axis(ind):
     cpi = ind.get("cpi"); ppi = ind.get("ppi")
-    c = _num(cpi and cpi.get("yoy")); p = _num(ppi and ppi.get("yoy"))
+    c = json_float(cpi and cpi.get("yoy")); p = json_float(ppi and ppi.get("yoy"))
     if c is None:
         return _axis("price", "물가 (인플레이션)", "na", "CPI 자료 대기", "", [])
     if c < 1.5:
@@ -101,7 +94,7 @@ def _price_axis(ind):
 
 def _external_axis(ind):
     ca = ind.get("current_account"); res = ind.get("reserves")
-    last = _num(ca and ca.get("span", {}).get("last"))
+    last = json_float(ca and ca.get("span", {}).get("last"))
     if last is None:
         return _axis("external", "대외 (경상·외환)", "na", "경상수지 자료 대기", "", [])
     surplus = last >= 0
@@ -112,7 +105,7 @@ def _external_axis(ind):
     else:
         s, h = "warn", f"경상수지 {last}억달러 — 적자(대외 취약)"
     m = [{"k": "경상수지(월)", "v": f"{last:+.0f}억$"}]
-    rv = _num(res and res.get("span", {}).get("last"))
+    rv = json_float(res and res.get("span", {}).get("last"))
     if rv is not None:
         m.append({"k": "외환보유액", "v": f"{rv:,.0f}억$"})
     return _axis("external", "대외 (경상·외환)", s, h,
@@ -121,7 +114,7 @@ def _external_axis(ind):
 
 def _liquidity_axis(ind):
     m2 = ind.get("m2"); hh = ind.get("household")
-    y = _num(m2 and m2.get("yoy"))
+    y = json_float(m2 and m2.get("yoy"))
     if y is None:
         return _axis("liquidity", "유동성 (통화·신용)", "na", "M2 자료 대기", "", [])
     if y >= 8:
@@ -133,7 +126,7 @@ def _liquidity_axis(ind):
     else:
         s, h = "warn", f"M2 {y}% — 유동성 수축"
     m = [{"k": "M2(YoY)", "v": f"{y:+.1f}%"}]
-    hy = _num(hh and hh.get("yoy"))
+    hy = json_float(hh and hh.get("yoy"))
     if hy is not None:
         m.append({"k": "가계신용(YoY)", "v": f"{hy:+.1f}%"})
     return _axis("liquidity", "유동성 (통화·신용)", s, h,
@@ -142,7 +135,7 @@ def _liquidity_axis(ind):
 
 def _rate_axis(ind):
     br = ind.get("base_rate")
-    last = _num(br and br.get("span", {}).get("last"))
+    last = json_float(br and br.get("span", {}).get("last"))
     if last is None:
         return _axis("rate", "금리 (통화정책)", "na", "기준금리 자료 대기", "", [])
     d = _dir(br, 12, 0.1)
@@ -150,11 +143,11 @@ def _rate_axis(ind):
     s = "neutral" if d == "상승" else "good"
     gov = ind.get("govbond")
     m = [{"k": "기준금리", "v": f"{last:.2f}%"}]
-    gv = _num(gov and gov.get("span", {}).get("last"))
+    gv = json_float(gov and gov.get("span", {}).get("last"))
     if gv is not None:
         m.append({"k": "국고채(장기)", "v": f"{gv:.2f}%"})
     mr = ind.get("mortgage_rate")
-    mv = _num(mr and mr.get("span", {}).get("last"))
+    mv = json_float(mr and mr.get("span", {}).get("last"))
     if mv is not None:
         m.append({"k": "주담대 금리", "v": f"{mv:.2f}%"})
     return _axis("rate", "금리 (통화정책)", s, f"기준금리 {last:.2f}% · {cycle or '방향 판단 보류'}",
@@ -163,7 +156,7 @@ def _rate_axis(ind):
 
 def _sentiment_axis(ind):
     ccsi = ind.get("ccsi"); esi = ind.get("esi")
-    c = _num(ccsi and ccsi.get("span", {}).get("last"))
+    c = json_float(ccsi and ccsi.get("span", {}).get("last"))
     if c is None:
         return _axis("sentiment", "심리 (기대)", "na", "심리지수 자료 대기", "", [])
     if c >= 100:
@@ -173,7 +166,7 @@ def _sentiment_axis(ind):
     else:
         s, h = "warn", f"소비자심리 {c:.0f} — 비관 우위(기준 100 하회)"
     m = [{"k": "소비자심리(CCSI)", "v": f"{c:.1f}"}]
-    ev = _num(esi and esi.get("span", {}).get("last"))
+    ev = json_float(esi and esi.get("span", {}).get("last"))
     if ev is not None:
         m.append({"k": "경제심리(ESI)", "v": f"{ev:.1f}"})
     return _axis("sentiment", "심리 (기대)", s, h,

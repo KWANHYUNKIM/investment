@@ -16,6 +16,7 @@ import pandas as pd
 import requests
 
 from app.core.config import get_settings
+from app.core.numeric import json_float
 from app.data.infra import store
 
 _BASE = "https://finnhub.io/api/v1"
@@ -82,16 +83,6 @@ def _get(path: str, params: dict) -> dict | None:
         return None
 
 
-def _num(v) -> float | None:
-    try:
-        if v is None:
-            return None
-        f = float(v)
-        return None if f != f else f
-    except (TypeError, ValueError):
-        return None
-
-
 def fetch(symbol: str, fx: dict[str, float] | None = None) -> dict | None:
     """One foreign symbol → fundamentals row. None on failure / not found."""
     if not enabled():
@@ -105,12 +96,12 @@ def fetch(symbol: str, fx: dict[str, float] | None = None) -> dict | None:
 
     cur = (prof.get("currency") or "USD").upper()
     rate = fx.get(cur, _FX_FALLBACK.get(cur, 1.0))
-    price = _num(quote.get("c"))
-    shares = _num(prof.get("shareOutstanding"))  # in millions
+    price = json_float(quote.get("c"))
+    shares = json_float(prof.get("shareOutstanding"))  # in millions
 
     def pick(*keys):
         for k in keys:
-            v = _num(metric.get(k))
+            v = json_float(metric.get(k))
             if v is not None:
                 return v
         return None
@@ -171,7 +162,7 @@ def fetch(symbol: str, fx: dict[str, float] | None = None) -> dict | None:
         "ev_ebitda": r2(ev_ebitda), "rev_growth": r2(rev_g), "eps_growth": r2(eps_g),
         "rev_cagr5y": r2(rev_cagr5), "interest_cov": r2(int_cov),
         "price": price,
-        "change_pct": _num(quote.get("dp")),
+        "change_pct": json_float(quote.get("dp")),
         "updated": time.strftime("%Y-%m-%d %H:%M"),
     }
 

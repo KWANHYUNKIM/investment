@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 from app.core.config import get_settings
+from app.core.numeric import json_float
 from app.data.infra import store
 
 _R_BASE = 0.08          # 기준 요구수익률 8%
@@ -24,25 +25,15 @@ _SCENARIOS = (
 )
 
 
-def _num(v) -> float | None:
-    try:
-        if v is None:
-            return None
-        f = float(v)
-        return None if f != f else f
-    except (TypeError, ValueError):
-        return None
-
-
 def _latest_fundamentals(ticker: str):
     hist = store.fundamentals_history(ticker)
     if hist is None or hist.empty:
         return None, None
     recs = hist.to_dict("records")
     latest = recs[-1]
-    fund = {k: _num(latest.get(k)) for k in ("per", "pbr", "eps", "bps", "roe")}
+    fund = {k: json_float(latest.get(k)) for k in ("per", "pbr", "eps", "bps", "roe")}
     # 과거 PER 중앙값(양수만) — 목표PER 앵커
-    pers = sorted(v for r in recs if (v := _num(r.get("per"))) is not None and v > 0)
+    pers = sorted(v for r in recs if (v := json_float(r.get("per"))) is not None and v > 0)
     per_median = pers[len(pers) // 2] if pers else None
     return fund, per_median
 

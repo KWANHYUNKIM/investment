@@ -18,6 +18,7 @@ from __future__ import annotations
 import threading
 import time
 
+from app.core.numeric import json_float
 from app.data.infra import store
 from app.data.loaders import naver
 from app.data.loaders import sec_edgar
@@ -28,14 +29,6 @@ from app.data.fundamentals import dart_financials
 _lock = threading.Lock()
 _cache: dict[str, dict] = {}  # ticker -> {"ts", "data"}
 TTL = 600.0
-
-
-def _num(v):
-    try:
-        v = float(v)
-        return None if v != v else v
-    except (TypeError, ValueError):
-        return None
 
 
 # ── 현재가·이름·섹터 (전 종목 스냅샷 캐시, 60초) ──────────────────────────
@@ -55,7 +48,7 @@ def _meta_map() -> dict:
             out[r["ticker"]] = {
                 "name": r.get("name"),
                 "sector": secmap.get(r["ticker"]) or r.get("sector"),
-                "close": _num(r.get("close")),
+                "close": json_float(r.get("close")),
             }
     with _meta_lock:
         _meta_cache["ts"] = time.time()
@@ -136,7 +129,7 @@ def _build(ticker: str) -> dict:
     name = meta.get("name")
     close = meta.get("close")
     funds = store.fundamentals_latest_map().get(ticker, {})
-    div_yield_snap = _num(funds.get("div_yield"))
+    div_yield_snap = json_float(funds.get("div_yield"))
 
     # 연간 매출/영업이익/순이익/DPS/ROE (네이버)
     try:
@@ -221,7 +214,7 @@ def _us_price(ticker: str) -> float | None:
         df = fdr.DataReader(ticker.upper())
         if df is None or df.empty:
             return None
-        return _num(df.iloc[-1].get("Close"))
+        return json_float(df.iloc[-1].get("Close"))
     except Exception:
         return None
 
