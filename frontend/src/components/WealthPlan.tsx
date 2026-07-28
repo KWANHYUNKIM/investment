@@ -949,7 +949,7 @@ export function WealthPlan() {
             <span className="text-sm font-semibold">맞춤 재테크 상품</span>
             <span className="text-xs text-white/90">자격 {d.eligible_count}개 / 전체 {d.products.length}개</span>
           </div>
-          <div className="grid grid-cols-1 gap-2 p-3 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid grid-cols-1 gap-2 p-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
             {[...d.products].sort((a, b) => Number(b.eligible) - Number(a.eligible) || a.priority - b.priority).map((p) => (
               <div key={p.name} className={`rounded-lg border p-3 ${p.eligible ? "border-[#cfe3d6] bg-[#f7faf8]" : "border-[#eee] bg-[#fafafa] opacity-70"}`}>
                 <div className="flex items-center justify-between">

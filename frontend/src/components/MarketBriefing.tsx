@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import { api, Briefing, BriefSignal } from "@/lib/api";
+import { useApiData } from "@/lib/useApiData";
 
 const UP = "#c0392b";   // 한국식: 상승=빨강
 const DOWN = "#1c64c4"; // 하락=파랑
@@ -22,15 +23,8 @@ function biasColor(b: string | null): string {
 }
 
 export function MarketBriefing() {
-  const [d, setD] = useState<Briefing | null>(null);
   const [market, setMarket] = useState<"auto" | "kr" | "us">("auto");
-  const [busy, setBusy] = useState(false);
-
-  const load = useCallback((m: "auto" | "kr" | "us") => {
-    setBusy(true);
-    api.briefing(m).then(setD).catch(() => {}).finally(() => setBusy(false));
-  }, []);
-  useEffect(() => { load(market); }, [market, load]);
+  const { data: d, loading: busy, reload } = useApiData<Briefing>(() => api.briefing(market), market);
 
   const sig = (k: string): BriefSignal | undefined => d?.signals.find((s) => s.key === k);
   const n = d?.narrative;
@@ -53,7 +47,7 @@ export function MarketBriefing() {
               </button>
             ))}
           </div>
-          <button onClick={() => load(market)} disabled={busy} className="rounded bg-[#217346] px-3 py-1 text-xs font-semibold text-white hover:bg-[#1b5e3a] disabled:opacity-50">{busy ? "불러오는 중…" : "↻"}</button>
+          <button onClick={reload} disabled={busy} className="rounded bg-[#217346] px-3 py-1 text-xs font-semibold text-white hover:bg-[#1b5e3a] disabled:opacity-50">{busy ? "불러오는 중…" : "↻"}</button>
         </div>
       </div>
 

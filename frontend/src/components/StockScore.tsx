@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { api, StockScoreBoard } from "@/lib/api";
+import { useApiData } from "@/lib/useApiData";
 
 const RED = "#c92a2a";
 const BLUE = "#1971c2";
@@ -28,14 +28,7 @@ function scoreBar(v: number | null | undefined) {
 }
 
 export function StockScore() {
-  const [d, setD] = useState<StockScoreBoard | null>(null);
-  const [err, setErr] = useState("");
-
-  useEffect(() => {
-    let alive = true;
-    api.stockScore().then((r) => alive && setD(r)).catch((e) => alive && setErr(e?.message ?? "불러오기 실패"));
-    return () => { alive = false; };
-  }, []);
+  const { data: d, error: err } = useApiData<StockScoreBoard>(() => api.stockScore(), "");
 
   return (
     <div className="overflow-hidden rounded-md border border-[#d0d0d0] bg-white shadow-sm">
@@ -51,7 +44,7 @@ export function StockScore() {
           전 종목 점수 계산 중…
         </div>
       ) : (
-        <div className="max-h-[calc(100vh-190px)] overflow-auto">
+        <div className="sm:max-h-[calc(100dvh-190px)] overflow-auto">
           <table className="w-full text-[12px]">
             <thead className="sticky top-0 z-10 bg-[#f5f5f5] text-left text-[10px] uppercase tracking-wide text-[#999]">
               <tr className="border-b border-[#e5e5e5]">

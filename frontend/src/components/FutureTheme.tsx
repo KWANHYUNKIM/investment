@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { api, FutureTheme as FT, FutureThemeIndexItem, FutureThemeMember, FutureThemesStatus } from "@/lib/api";
+import { useApiData } from "@/lib/useApiData";
 
 const RED = "#c92a2a";
 const BLUE = "#1971c2";
@@ -33,7 +34,6 @@ function pct(v: number | null | undefined): string {
 export function FutureTheme() {
   const [themes, setThemes] = useState<FutureThemeIndexItem[]>([]);
   const [selected, setSelected] = useState("");
-  const [detail, setDetail] = useState<FT | null>(null);
   const [status, setStatus] = useState<FutureThemesStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
@@ -50,11 +50,11 @@ export function FutureTheme() {
     api.futureThemesStatus().then(setStatus).catch(() => {});
   }, []);
 
-  useEffect(() => {
-    if (!selected) return;
-    setDetail(null);
-    api.futureTheme(selected).then(setDetail).catch(() => setDetail(null));
-  }, [selected]);
+  const { data: detail } = useApiData<FT>(
+    () => api.futureTheme(selected),
+    selected,
+    { enabled: !!selected },
+  );
 
   if (err) return <div className="py-20 text-center text-sm text-rose-600">{err}</div>;
 
@@ -76,9 +76,10 @@ export function FutureTheme() {
         )}
       </div>
 
-      <div className="flex min-h-[72vh]">
+      {/* 좁은 화면: 목록 위 / 상세 아래로 쌓기 */}
+      <div className="flex min-h-[72dvh] flex-col lg:flex-row">
         {/* left: theme list */}
-        <aside className="flex w-[320px] shrink-0 flex-col border-r border-[#d0d0d0] bg-[#faf9fc]">
+        <aside className="flex max-h-[45dvh] w-full shrink-0 flex-col border-b border-[#d0d0d0] bg-[#faf9fc] lg:max-h-none lg:w-[320px] lg:border-b-0 lg:border-r">
           <div className="border-b border-[#d0d0d0] bg-[#eef0ee] px-3 py-1.5 text-[11px] font-semibold text-[#1f5132]">
             메가트렌드 (모멘텀순)
           </div>

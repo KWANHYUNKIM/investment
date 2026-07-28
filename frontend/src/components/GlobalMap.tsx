@@ -79,9 +79,10 @@ export function GlobalMap() {
         </div>
       )}
 
-      <div className="flex min-h-[70vh]">
+      {/* 좁은 화면: 목록 위 / 상세 아래로 쌓기 (아래 IndustryMap·FutureTheme 과 동일 규칙) */}
+      <div className="flex min-h-[70dvh] flex-col lg:flex-row">
         {/* left: cluster list */}
-        <aside className="flex w-[340px] shrink-0 flex-col border-r border-[#d0d0d0] bg-[#fafafa]">
+        <aside className="flex max-h-[45dvh] w-full shrink-0 flex-col border-b border-[#d0d0d0] bg-[#fafafa] lg:max-h-none lg:w-[340px] lg:border-b-0 lg:border-r">
           <div className="grid grid-cols-[1fr_auto] border-b border-[#d0d0d0] bg-[#eef2f7] px-3 py-1.5 text-[11px] font-semibold text-[#1a3a5e]">
             <span>클러스터 (대표기업)</span>
             <span className="text-right">평균 영업이익률</span>

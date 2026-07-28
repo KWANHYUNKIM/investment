@@ -5,6 +5,7 @@ import {
   CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
 import { api, PeerCompare, PeerGlobal, PeerNews, UEProduct } from "@/lib/api";
+import { useApiData } from "@/lib/useApiData";
 
 const GREEN = "#217346";
 
@@ -52,13 +53,8 @@ export function CompetitorCompare() {
   const [products, setProducts] = useState<UEProduct[]>([]);
   const [sel, setSel] = useState<string>("");
   const [sectorFilter, setSectorFilter] = useState<string>("전체");
-  const [data, setData] = useState<PeerCompare | null>(null);
-  const [news, setNews] = useState<PeerNews | null>(null);
-  const [glob, setGlob] = useState<PeerGlobal | null>(null);
-  const [err, setErr] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [newsLoading, setNewsLoading] = useState(false);
-  const [globLoading, setGlobLoading] = useState(false);
+  // 제품 목록 실패는 listErr, 개별 비교 실패는 훅의 error 로 나뉜다.
+  const [listErr, setListErr] = useState("");
 
   // 제품 목록 로드 → 기준 제품 자동선택(원가모델이 실측인 첫 제품)
   useEffect(() => {
@@ -69,48 +65,15 @@ export function CompetitorCompare() {
         setProducts(r.products);
         if (r.products.length) setSel(r.products[0].id);
       })
-      .catch((e) => alive && setErr(e?.message ?? "제품 목록 실패"));
+      .catch((e) => alive && setListErr(e?.message ?? "제품 목록 실패"));
     return () => { alive = false; };
   }, []);
 
-  // 원가 + 주가 변동성
-  useEffect(() => {
-    if (!sel) return;
-    let alive = true;
-    setLoading(true);
-    setErr("");
-    api.peerCompare(sel)
-      .then((r) => alive && setData(r))
-      .catch((e) => alive && setErr(e?.message ?? "비교 실패"))
-      .finally(() => alive && setLoading(false));
-    return () => { alive = false; };
-  }, [sel]);
-
-  // 경쟁사 뉴스 (별도 스피너)
-  useEffect(() => {
-    if (!sel) return;
-    let alive = true;
-    setNewsLoading(true);
-    setNews(null);
-    api.peerNews(sel)
-      .then((r) => alive && setNews(r))
-      .catch(() => {})
-      .finally(() => alive && setNewsLoading(false));
-    return () => { alive = false; };
-  }, [sel]);
-
-  // 글로벌 시장 규모 (별도 스피너)
-  useEffect(() => {
-    if (!sel) return;
-    let alive = true;
-    setGlobLoading(true);
-    setGlob(null);
-    api.peerGlobal(sel)
-      .then((r) => alive && setGlob(r))
-      .catch(() => {})
-      .finally(() => alive && setGlobLoading(false));
-    return () => { alive = false; };
-  }, [sel]);
+  // 원가+변동성 / 경쟁사 뉴스 / 글로벌 시장규모 — 셋 다 기준 제품(sel)에 걸린다.
+  const on = { enabled: !!sel };
+  const { data, loading, error: dataErr } = useApiData<PeerCompare>(() => api.peerCompare(sel), sel, on);
+  const { data: news, loading: newsLoading } = useApiData<PeerNews>(() => api.peerNews(sel), sel, on);
+  const { data: glob, loading: globLoading } = useApiData<PeerGlobal>(() => api.peerGlobal(sel), sel, on);
 
   // 티커 → 색 (기준 제품이 맨 앞이라 그린)
   const colorByTicker = useMemo(() => {
@@ -191,8 +154,8 @@ export function CompetitorCompare() {
         </div>
       </div>
 
-      {err && !data ? (
-        <div className="py-20 text-center text-sm text-rose-600">{err}</div>
+      {(listErr || dataErr) && !data ? (
+        <div className="py-20 text-center text-sm text-rose-600">{listErr || dataErr}</div>
       ) : !data ? (
         <div className="flex flex-col items-center gap-3 py-24 text-sm text-[#888]">
           <span className="h-7 w-7 animate-spin rounded-full border-2 border-[#d0d0d0] border-t-[#217346]" />
@@ -203,7 +166,7 @@ export function CompetitorCompare() {
           이 제품과 같은 업종({data.sector})으로 비교할 경쟁 제품이 없습니다.
         </div>
       ) : (
-        <div className="max-h-[calc(100vh-150px)] space-y-6 overflow-auto p-4">
+        <div className="sm:max-h-[calc(100dvh-150px)] space-y-6 overflow-auto p-4">
           {loading && <div className="text-xs text-[#888]">갱신 중…</div>}
 
           {/* ① 원가 구조 비교 ─────────────────────────────────────── */}

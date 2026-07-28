@@ -90,7 +90,7 @@ export function CrisisSurvivors() {
               <span className="text-[#aaa]">→ 아래 배당주들은 위기마다 급락했지만 매번 회복하며 우상향했고, 그동안 배당을 계속 늘렸습니다.</span>
             </div>
           )}
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
             {survivors.map((r) => <Card key={r.ticker} r={r} />)}
           </div>
           <div className="mt-3 text-[10px] leading-relaxed text-[#bbb]">{d.note}</div>

@@ -37,7 +37,7 @@ export function DividendsBoard() {
           배당·실적 취합 중…
         </div>
       ) : (
-        <div className="max-h-[calc(100vh-190px)] overflow-auto p-4">
+        <div className="sm:max-h-[calc(100dvh-190px)] overflow-auto p-4">
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
             {/* 고배당 */}
             <div className="rounded-md border border-[#e5e5e5]">

@@ -37,8 +37,10 @@ export function Field({ label, children }: { label: string; children: ReactNode 
   );
 }
 
+// min-h-11(44px)은 폰에서만 건다. 데스크톱의 엑셀 밀도는 그대로 두고, 손가락으로 누르는
+// 폭에서만 권장 터치 크기를 채운다.
 const inputCls =
-  "rounded border border-[#bdbdbd] bg-white px-3 py-2 text-sm text-[#1f1f1f] outline-none transition focus:border-[#217346] focus:ring-1 focus:ring-[#217346]/40 placeholder:text-[#aaa]";
+  "min-h-11 rounded border border-[#bdbdbd] bg-white px-3 py-2 text-sm text-[#1f1f1f] outline-none transition focus:border-[#217346] focus:ring-1 focus:ring-[#217346]/40 placeholder:text-[#aaa] sm:min-h-0";
 
 export function Input(props: React.InputHTMLAttributes<HTMLInputElement>) {
   return <input {...props} className={`${inputCls} ${props.className ?? ""}`} />;
@@ -58,7 +60,7 @@ export function Button({
   variant?: "primary" | "ghost";
 }) {
   const base =
-    "inline-flex items-center justify-center gap-2 rounded px-4 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50";
+    "inline-flex min-h-11 items-center justify-center gap-2 rounded px-4 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 sm:min-h-0";
   const styles =
     variant === "primary"
       ? "bg-[#217346] text-white hover:bg-[#1b5e3a] active:bg-[#174c2f]"

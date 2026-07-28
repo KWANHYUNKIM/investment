@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+
 import { api, FundamentalsResponse, TargetPrice, TradeSignals } from "@/lib/api";
 import type { PickedStock } from "./NewsPanel";
+import { useApiData } from "@/lib/useApiData";
 
 function verdictColor(v?: string | null) {
   return v === "매수" ? "#c92a2a" : v === "매도" ? "#1971c2" : "#666";
@@ -35,65 +36,13 @@ const ROWS: { key: string; label: string; suffix?: string }[] = [
 ];
 
 export function FundamentalsPanel({ stock }: { stock: PickedStock | null }) {
-  const [data, setData] = useState<FundamentalsResponse | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [tp, setTp] = useState<TargetPrice | null>(null);
-  const [tpLoading, setTpLoading] = useState(false);
-  const [sig, setSig] = useState<TradeSignals | null>(null);
-  const [sigLoading, setSigLoading] = useState(false);
-
-  useEffect(() => {
-    if (!stock?.ticker) {
-      setData(null);
-      return;
-    }
-    let alive = true;
-    setLoading(true);
-    const load = () =>
-      api
-        .fundamentals(stock.ticker)
-        .then((d) => alive && setData(d))
-        .catch(() => alive && setData(null))
-        .finally(() => alive && setLoading(false));
-    load();
-    const id = setInterval(load, 60000); // 변화 누적 반영
-    return () => {
-      alive = false;
-      clearInterval(id);
-    };
-  }, [stock?.ticker]);
-
-  useEffect(() => {
-    if (!stock?.ticker) {
-      setTp(null);
-      return;
-    }
-    let alive = true;
-    setTpLoading(true);
-    setTp(null);
-    api
-      .targetPrice(stock.ticker)
-      .then((d) => alive && setTp(d))
-      .catch(() => alive && setTp(null))
-      .finally(() => alive && setTpLoading(false));
-    return () => { alive = false; };
-  }, [stock?.ticker]);
-
-  useEffect(() => {
-    if (!stock?.ticker) {
-      setSig(null);
-      return;
-    }
-    let alive = true;
-    setSigLoading(true);
-    setSig(null);
-    api
-      .signals(stock.ticker)
-      .then((d) => alive && setSig(d))
-      .catch(() => alive && setSig(null))
-      .finally(() => alive && setSigLoading(false));
-    return () => { alive = false; };
-  }, [stock?.ticker]);
+  const ticker = stock?.ticker ?? "";
+  const on = { enabled: !!ticker };
+  const { data, loading } = useApiData<FundamentalsResponse>(
+    () => api.fundamentals(ticker), ticker, { ...on, pollMs: 60000 }, // 변화 누적 반영
+  );
+  const { data: tp, loading: tpLoading } = useApiData<TargetPrice>(() => api.targetPrice(ticker), ticker, on);
+  const { data: sig, loading: sigLoading } = useApiData<TradeSignals>(() => api.signals(ticker), ticker, on);
 
   if (!stock) return null;
   const lt = data?.latest;

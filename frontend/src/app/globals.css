@@ -1,26 +1,39 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
+  /* 한글은 OS 기본 글꼴을 그대로 쓴다 — 윈도우에서는 맑은 고딕이 잡히고, 그게 엑셀의 한글 글꼴이다.
+     Carlito(=Calibri 메트릭 클론)가 앞에 서므로 숫자·영문만 웹폰트로 통일된다. */
+  --font-sans: var(--font-sheet), "Malgun Gothic", "Apple SD Gothic Neo", "Noto Sans KR",
+    sans-serif;
+  /* 종목코드·코드 조각용. Consolas 는 오피스가 쓰는 고정폭이라 위장이 유지된다. */
+  --font-mono: ui-monospace, "Cascadia Mono", Consolas, "D2Coding", monospace;
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  /* ── 엑셀 팔레트 ────────────────────────────────────────────────────
+     장식용 강조색은 없다. 화면에서 채도 높은 색은 상승(red)·하락(blue) 둘뿐이고
+     그건 브랜드가 아니라 데이터다. 시트에는 브랜드 색이 없다. */
+  --color-xl-green: #217346; /* 제목표시줄, 활성 시트탭, 주요 액션 */
+  --color-xl-green-deep: #1b5e3a; /* 눌림 */
+  --color-xl-chrome: #f3f2f1; /* 도구모음·시트탭 바닥 */
+  --color-xl-rule: #d0d0d0; /* 괘선 — 이 앱에서 가장 많이 쓰이는 색 */
+  --color-xl-canvas: #fafafa; /* 시트 바탕 */
+  --color-xl-ink: #1f1f1f;
+  --color-xl-ink-mute: #666666;
+  --color-xl-up: #c92a2a; /* 상승 — 한국 관행 */
+  --color-xl-down: #1971c2; /* 하락 */
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans);
+  /* 표에서 자릿수가 흔들리지 않도록 숫자는 항상 등폭으로 잡는다.
+     데이터 화면에서 가장 값싸게 먹히는 한 줄. */
+  font-variant-numeric: tabular-nums;
 }
+
+/* 시트탭을 엄지로 넘길 때 스크롤바 자국이 보이면 앱처럼 읽힌다. 스크롤은 두되 자국만 지운다. */
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
