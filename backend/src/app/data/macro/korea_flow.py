@@ -12,18 +12,16 @@
 """
 from __future__ import annotations
 
-import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 
 import FinanceDataReader as fdr
 
+from app.core.cache import TTLCache
 from app.data.macro import macro
 from app.data.macro import moneyflow
 
-_lock = threading.Lock()
-_cache: dict = {"ts": 0.0, "data": None}
-TTL = 120.0  # 2분 (시세 폴링 + 스케줄러 워밍 여지)
+_cache = TTLCache(ttl=120.0)  # 2분 (시세 폴링 + 스케줄러 워밍 여지)
 
 # (key, 라벨, 종목코드, 그룹)  그룹: real_estate 부동산 / bond 국채·채권
 _BASKET: tuple[tuple[str, str, str, str], ...] = (
@@ -146,9 +144,9 @@ def _verdict(re_items: list[dict], bd_items: list[dict]) -> dict:
 
 
 def snapshot(force: bool = False) -> dict:
-    with _lock:
-        if not force and _cache["data"] and (time.time() - _cache["ts"] < TTL):
-            return _cache["data"]
+    hit = None if force else _cache.get()
+    if hit:
+        return hit
 
     basket = _basket()
     re_items = [b for b in basket if b["group"] == "real_estate"]
@@ -167,7 +165,5 @@ def snapshot(force: bool = False) -> dict:
         "note": "키 없는 대용 신호(ETF 시세·뉴스). 부동산 실거래 거래액·M2·국고채금리·"
                 "통안증권 발행 등 정확한 수치는 data.go.kr·한국은행 ECOS 무료 키 연동 시 추가됩니다.",
     }
-    with _lock:
-        _cache["ts"] = time.time()
-        _cache["data"] = data
+    _cache.set(None, data)
     return data

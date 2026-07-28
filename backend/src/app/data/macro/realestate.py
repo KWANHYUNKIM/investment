@@ -11,23 +11,21 @@
 from __future__ import annotations
 
 import datetime
-import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from xml.etree import ElementTree as ET
 
 import requests
 
+from app.core.cache import TTLCache
 from app.core.config import get_settings
 from app.data.infra.lawd_codes import SIGUNGU
 
 _URL = "https://apis.data.go.kr/1613000/RTMSDataSvcAptTrade/getRTMSDataSvcAptTrade"
 _HEADERS = {"User-Agent": "Mozilla/5.0"}
 
-_lock = threading.Lock()
-_cache: dict = {"ts": 0.0, "data": None}
+_cache = TTLCache(ttl=12 * 3600.0)  # 12시간 (전국 1,500여 콜이라 자주 받지 않음, 스케줄러가 워밍)
 _status_seen: set[int] = set()   # 한 스냅샷 동안 본 비정상 HTTP 코드(429/403 구분용)
-TTL = 12 * 3600.0  # 12시간 (전국 1,500여 콜이라 자주 받지 않음, 스케줄러가 워밍)
 MONTHS = 6
 
 
@@ -173,9 +171,9 @@ def deals(lawd: str, ymd: str | None = None, limit: int = 300) -> list[dict]:
 
 
 def snapshot(months: int = MONTHS, force: bool = False) -> dict:
-    with _lock:
-        if not force and _cache["data"] and (time.time() - _cache["ts"] < TTL):
-            return _cache["data"]
+    hit = None if force else _cache.get()
+    if hit:
+        return hit
 
     if not get_settings().data_go_kr_key:
         return {"available": False,
@@ -272,7 +270,5 @@ def snapshot(months: int = MONTHS, force: bool = False) -> dict:
         "region_all": region_all,
         "partial": ok_n < len(results),
     }
-    with _lock:
-        _cache["ts"] = time.time()
-        _cache["data"] = data
+    _cache.set(None, data)
     return data

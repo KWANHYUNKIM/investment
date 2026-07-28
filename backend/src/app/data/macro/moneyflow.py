@@ -12,19 +12,17 @@
 """
 from __future__ import annotations
 
-import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 
+from app.core.cache import TTLCache
 from app.data.macro import crossasset
 from app.data.macro import macro
 from app.data.news import news
 from app.data.macro import rates
 from app.data.infra import store
 
-_lock = threading.Lock()
-_cache: dict = {"ts": 0.0, "data": None}
-TTL = 600.0  # 10분 (실시간 폴링 + 스케줄러 워밍)
+_cache = TTLCache(ttl=600.0)  # 10분 (실시간 폴링 + 스케줄러 워밍)
 
 # ── 유동성 레짐: 돈을 푸나(완화) 조이나(긴축) ──
 _EASE = (
@@ -301,9 +299,9 @@ def _usdkrw_from(ca: dict) -> dict | None:
 
 
 def pulse(force: bool = False) -> dict:
-    with _lock:
-        if not force and _cache["data"] and (time.time() - _cache["ts"] < TTL):
-            return _cache["data"]
+    hit = None if force else _cache.get()
+    if hit:
+        return hit
 
     liquidity = _liquidity()
     kr = _kr_capital()
@@ -365,7 +363,5 @@ def pulse(force: bool = False) -> dict:
         },
         "categories": categories,
     }
-    with _lock:
-        _cache["ts"] = time.time()
-        _cache["data"] = data
+    _cache.set(None, data)
     return data

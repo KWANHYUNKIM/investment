@@ -10,17 +10,15 @@ Claude 요약)로 규명한다. 스케줄러가 주기적으로 스냅샷을 기
 """
 from __future__ import annotations
 
-import threading
 import time
 
+from app.core.cache import TTLCache
 from app.core.config import get_settings
 from app.core.numeric import json_float
 from app.data.infra import store
 from app.data.news import news
 
-_lock = threading.Lock()
-_cache: dict = {"ts": 0.0, "data": None}
-TTL = 300.0
+_cache = TTLCache(ttl=300.0)
 _SYSTEM = ("너는 한국 주식시장 애널리스트다. 주어진 급등락 종목·업종과 관련 뉴스 헤드라인만 근거로, "
            "오늘 그 종목/업종이 왜 오르거나 내렸는지 원인을 간결한 한국어로 설명한다. 추측은 '추정'으로 표시하고 "
            "과장·투자권유는 하지 않는다. 반드시 JSON만 출력한다.")
@@ -198,11 +196,9 @@ def _build() -> dict:
 
 
 def snapshot(force: bool = False) -> dict:
-    with _lock:
-        if not force and _cache["data"] and (time.time() - _cache["ts"] < TTL):
-            return _cache["data"]
+    hit = None if force else _cache.get()
+    if hit:
+        return hit
     out = _build()
-    with _lock:
-        _cache["ts"] = time.time()
-        _cache["data"] = out
+    _cache.set(None, out)
     return out

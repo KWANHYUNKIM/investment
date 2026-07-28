@@ -11,22 +11,20 @@ API: GET .../1613000/RTMSDataSvcAptRent/getRTMSDataSvcAptRent
 from __future__ import annotations
 
 import datetime
-import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from xml.etree import ElementTree as ET
 
 import requests
 
+from app.core.cache import TTLCache
 from app.core.config import get_settings
 from app.data.infra.lawd_codes import SIGUNGU
 
 _URL = "https://apis.data.go.kr/1613000/RTMSDataSvcAptRent/getRTMSDataSvcAptRent"
 _HEADERS = {"User-Agent": "Mozilla/5.0"}
 
-_lock = threading.Lock()
-_cache: dict = {"ts": 0.0, "data": None}
-TTL = 12 * 3600.0
+_cache = TTLCache(ttl=12 * 3600.0)
 MONTHS = 6
 
 
@@ -114,9 +112,9 @@ def _fetch_one(lawd: str, ymd: str) -> tuple[int, int, int, float, bool]:
 
 
 def snapshot(months: int = MONTHS, force: bool = False) -> dict:
-    with _lock:
-        if not force and _cache["data"] and (time.time() - _cache["ts"] < TTL):
-            return _cache["data"]
+    hit = None if force else _cache.get()
+    if hit:
+        return hit
 
     if not get_settings().data_go_kr_key:
         return {"available": False,
@@ -200,7 +198,5 @@ def snapshot(months: int = MONTHS, force: bool = False) -> dict:
         "monthly": monthly, "by_sido": by_sido,
         "partial": sum(1 for r in results if r["ok"]) < len(results),
     }
-    with _lock:
-        _cache["ts"] = time.time()
-        _cache["data"] = data
+    _cache.set(None, data)
     return data

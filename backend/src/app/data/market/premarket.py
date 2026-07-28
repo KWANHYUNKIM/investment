@@ -12,17 +12,15 @@ Claude(Fable 5)에게 넘겨 서술형 시나리오(주목 섹터·리스크)를
 from __future__ import annotations
 
 import json
-import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 
 import FinanceDataReader as fdr
 
+from app.core.cache import TTLCache
 from app.core.config import get_settings
 
-_lock = threading.Lock()
-_cache: dict = {"ts": 0.0, "data": None}
-TTL = 300.0  # 5분 — 개장 전 지표는 자주 바뀌지 않는다.
+_cache = TTLCache(ttl=300.0)  # 5분 — 개장 전 지표는 자주 바뀌지 않는다.
 
 # (key, 라벨, fdr 심볼, 그룹, 단위, 가중치, 방향)
 #   방향 +1: 오르면 한국장에 우호 / -1: 오르면 부담
@@ -317,9 +315,9 @@ def _extract_json(text: str) -> dict | None:
 
 def forecast() -> dict:
     """오늘 한국장 개장 예측 스냅샷 (규칙 기반 + 선택적 Claude 서술). 캐시 5분."""
-    with _lock:
-        if _cache["data"] and (time.time() - _cache["ts"] < TTL):
-            return _cache["data"]
+    hit = _cache.get()
+    if hit:
+        return hit
 
     signals, adrs = _gather()
     indices = _index_trend()
@@ -336,7 +334,5 @@ def forecast() -> dict:
         "ai_error": ai["error"] if (ai and "error" in ai) else None,
         "ai_enabled": bool((get_settings().anthropic_api_key or "").strip()),
     }
-    with _lock:
-        _cache["ts"] = time.time()
-        _cache["data"] = out
+    _cache.set(None, out)
     return out

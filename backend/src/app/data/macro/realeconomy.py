@@ -17,17 +17,15 @@
 from __future__ import annotations
 
 import datetime
-import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 
 import requests
 
+from app.core.cache import TTLCache
 from app.data.macro import ecos
 
-_lock = threading.Lock()
-_cache: dict = {"ts": 0.0, "data": None}
-TTL = 12 * 3600.0
+_cache = TTLCache(ttl=12 * 3600.0)
 
 # 세계 비교 대상 (세계집계 WLD를 맨 앞에)
 _ENT = [
@@ -166,9 +164,9 @@ def _world() -> list[dict]:
 
 
 def snapshot(force: bool = False) -> dict:
-    with _lock:
-        if not force and _cache["data"] and (time.time() - _cache["ts"] < TTL):
-            return _cache["data"]
+    hit = None if force else _cache.get()
+    if hit:
+        return hit
 
     with ThreadPoolExecutor(max_workers=2) as ex:
         f_kr = ex.submit(_kr)
@@ -190,7 +188,5 @@ def snapshot(force: bool = False) -> dict:
                 "증감률/GDP대비. 세계집계(WLD)는 일부 지표만 제공된다. 한국 카드도 클릭하면 "
                 "전 구간 그래프가 크게 보인다.",
     }
-    with _lock:
-        _cache["ts"] = time.time()
-        _cache["data"] = data
+    _cache.set(None, data)
     return data

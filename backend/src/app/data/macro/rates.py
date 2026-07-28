@@ -11,15 +11,13 @@
 from __future__ import annotations
 
 import datetime
-import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 
+from app.core.cache import TTLCache
 from app.data.news import news
 
-_lock = threading.Lock()
-_cache: dict = {"ts": 0.0, "data": None}
-TTL = 3600.0  # 1h (schedule is static; outlook news refreshes hourly)
+_cache = TTLCache(ttl=3600.0)  # 1h (schedule is static; outlook news refreshes hourly)
 
 # 공식 결정일(발표일). FOMC는 회의 2일차 = 성명 발표일.
 _FOMC_2026 = ["2026-01-28", "2026-03-18", "2026-04-29", "2026-06-17",
@@ -67,9 +65,9 @@ def _fmt(d: str) -> str:
 
 def rate_calendar() -> dict:
     """다음 금리 발표일 + D-day + 금리 시기 전망 뉴스 (cached ~1h)."""
-    with _lock:
-        if _cache["data"] and (time.time() - _cache["ts"] < TTL):
-            return _cache["data"]
+    hit = _cache.get()
+    if hit:
+        return hit
 
     today = _today()
     tstr = today.isoformat()
@@ -133,7 +131,5 @@ def rate_calendar() -> dict:
     summary = "다음 금리 발표 — " + ", ".join(bits) + "." if bits else ""
 
     data = {"schedule": schedule, "outlook": outlook, "digest": digest, "summary": summary}
-    with _lock:
-        _cache["ts"] = time.time()
-        _cache["data"] = data
+    _cache.set(None, data)
     return data

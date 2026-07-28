@@ -31,9 +31,9 @@
 """
 from __future__ import annotations
 
-import threading
 import time
 
+from app.core.cache import TTLCache
 from app.data.infra import store
 
 WEIGHTS = {"reinvest": 30, "conversion": 30, "endurance": 30, "market": 10}
@@ -51,9 +51,7 @@ _COVER_FULL = 5.0       # 이자보상배율 5배 이상이면 만점
 _GRADES = [(80, "A+"), (70, "A"), (60, "B+"), (50, "B"), (40, "C"), (0, "D")]
 _GRADE_ORDER = ["D", "C", "B", "B+", "A", "A+"]
 
-_lock = threading.Lock()
-_cache: dict = {"ts": 0.0, "data": None}
-TTL = 1800.0
+_cache = TTLCache(ttl=1800.0)
 _UNIT = 1e8
 
 
@@ -468,13 +466,11 @@ def _build() -> dict:
 
 
 def board(force: bool = False) -> dict:
-    now = time.time()
-    with _lock:
-        if not force and _cache["data"] is not None and now - _cache["ts"] < TTL:
-            return _cache["data"]
+    hit = None if force else _cache.get()
+    if hit is not None:
+        return hit
     data = _build()
-    with _lock:
-        _cache.update(ts=now, data=data)
+    _cache.set(None, data)
     return data
 
 

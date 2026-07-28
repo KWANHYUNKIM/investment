@@ -15,16 +15,14 @@ World Bank 광의통화 증가율은 국가별 통화·집계 차이를 '증감�
 from __future__ import annotations
 
 import datetime
-import threading
 import time
 
 import requests
 
+from app.core.cache import TTLCache
 from app.data.macro import ecos
 
-_lock = threading.Lock()
-_cache: dict = {"ts": 0.0, "data": None}
-TTL = 12 * 3600.0  # 연·월 지표 — 12시간
+_cache = TTLCache(ttl=12 * 3600.0)  # 연·월 지표 — 12시간
 
 _WB_URL = (
     "https://api.worldbank.org/v2/country/KOR;USA;JPN;CHN/indicator/"
@@ -253,9 +251,9 @@ def _verdict(kr_series: list[dict], kr_headline: dict | None) -> dict:
 
 
 def snapshot(force: bool = False) -> dict:
-    with _lock:
-        if not force and _cache["data"] and (time.time() - _cache["ts"] < TTL):
-            return _cache["data"]
+    hit = None if force else _cache.get()
+    if hit:
+        return hit
 
     wb = _wb_growth()
     if not wb:
@@ -288,7 +286,5 @@ def snapshot(force: bool = False) -> dict:
                 "정규화해 한 자리에서 비교한다. 위기 카드 수치는 World Bank 연간, 한국 현재값은 "
                 "한국은행 ECOS 월간 기준. (World Bank 2001년 한국 계열단절은 비교에서 제외)",
     }
-    with _lock:
-        _cache["ts"] = time.time()
-        _cache["data"] = data
+    _cache.set(None, data)
     return data

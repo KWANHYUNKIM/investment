@@ -10,9 +10,9 @@
 """
 from __future__ import annotations
 
-import threading
 import time
 
+from app.core.cache import TTLCache
 from app.data.market import dividend_royalty
 
 # 우상향 + 3대 위기 모두 배당 증액한 대표 배당주 (전부 배당왕/귀족)
@@ -27,9 +27,7 @@ CRISIS_WINDOWS = [
 ]
 
 _START = "2000-01-01"
-_lock = threading.Lock()
-_cache: dict = {"ts": 0.0, "data": None}
-TTL = 86400.0  # 하루
+_cache = TTLCache(ttl=86400.0)  # 하루
 
 
 def _series(ticker: str):
@@ -113,11 +111,9 @@ def _build() -> dict:
 
 
 def board() -> dict:
-    with _lock:
-        if _cache["data"] and time.time() - _cache["ts"] < TTL:
-            return _cache["data"]
+    hit = _cache.get()
+    if hit:
+        return hit
     out = _build()
-    with _lock:
-        _cache["ts"] = time.time()
-        _cache["data"] = out
+    _cache.set(None, out)
     return out

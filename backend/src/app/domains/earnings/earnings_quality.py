@@ -14,14 +14,12 @@ DART fnlttSinglAcntAll(연결 CFS 우선)로 이미 적재된 dart_financials �
 from __future__ import annotations
 
 import re
-import threading
 import time
 
+from app.core.cache import TTLCache
 from app.data.infra import store
 
-_lock = threading.Lock()
-_cache: dict = {"ts": 0.0, "data": None}
-TTL = 1800.0
+_cache = TTLCache(ttl=1800.0)
 _UNIT = 1e8  # 억
 
 _PREFIX = re.compile(r'^[\sⅠ-ⅩIVXivx0-9.\-()]+')
@@ -341,16 +339,13 @@ def _build() -> dict:
 
 
 def board() -> dict:
-    now = time.time()
-    with _lock:
-        if _cache["data"] is not None and now - _cache["ts"] < TTL:
-            return _cache["data"]
+    hit = _cache.get()
+    if hit is not None:
+        return hit
     data = _build()
-    with _lock:
-        _cache.update(ts=now, data=data)
+    _cache.set(None, data)
     return data
 
 
 def invalidate():
-    with _lock:
-        _cache.update(ts=0.0, data=None)
+    _cache.clear()

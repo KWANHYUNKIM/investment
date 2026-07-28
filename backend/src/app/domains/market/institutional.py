@@ -8,15 +8,13 @@
 """
 from __future__ import annotations
 
-import threading
 import time
 
+from app.core.cache import TTLCache
 from app.core.numeric import json_float
 from app.data.infra import store
 
-_lock = threading.Lock()
-_cache: dict = {"ts": 0.0, "data": None}
-TTL = 600.0  # 10분
+_cache = TTLCache(ttl=600.0)  # 10분
 
 _MIN_DAYS = 5            # 최소 누적일수
 _MIN_AMT = 30.0         # 의미있는 순매수 금액 임계(억)
@@ -153,11 +151,9 @@ def _assemble() -> dict:
 
 
 def track(force: bool = False) -> dict:
-    with _lock:
-        if not force and _cache["data"] and (time.time() - _cache["ts"] < TTL):
-            return _cache["data"]
+    hit = None if force else _cache.get()
+    if hit:
+        return hit
     data = _assemble()
-    with _lock:
-        _cache["ts"] = time.time()
-        _cache["data"] = data
+    _cache.set(None, data)
     return data

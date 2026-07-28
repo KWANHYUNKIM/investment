@@ -18,6 +18,10 @@ from app.core.numeric import json_float
 from app.data.infra import store
 from app.data.market import dividends
 
+# 이 캐시는 core.cache.TTLCache 로 옮기지 않았다. 아래 쓰기 가드가 **만료된 값도 들여다봐야**
+# 하기 때문이다 — 공모주 목록을 빈 응답으로 받았을 때 이전 값이 (설령 오래됐더라도) 있으면
+# 덮어쓰지 않고 다음 호출에서 다시 받아온다. TTLCache.get() 은 만료되면 None 이라 "만료된
+# 값이 있었는지"를 구분할 수 없어서, 옮기면 빈 목록이 TTL 동안 그대로 서빙된다.
 _lock = threading.Lock()
 _ipo_cache: dict = {"ts": 0.0, "data": None}
 IPO_TTL = 1800.0

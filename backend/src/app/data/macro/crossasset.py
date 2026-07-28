@@ -9,15 +9,13 @@
 """
 from __future__ import annotations
 
-import threading
+from app.core.cache import TTLCache
 import time
 from concurrent.futures import ThreadPoolExecutor
 
 import FinanceDataReader as fdr
 
-_lock = threading.Lock()
-_cache: dict = {"ts": 0.0, "data": None}
-TTL = 60.0  # 60s — short so live polling actually refreshes (upstream throttled by cache)
+_cache = TTLCache(ttl=60.0)  # 60s — short so live polling actually refreshes (upstream throttled by cache)
 
 # (key, 라벨, fdr 심볼, 그룹, 종류, 단위)
 #   종류: index 증시 / crypto 암호화폐 / commodity 원자재 / safe 안전자산 /
@@ -130,9 +128,9 @@ def _flow_read(assets: list[dict]) -> dict:
 
 def cross_asset() -> dict:
     """그룹별 자산 시세 + 자금 흐름 판단 (cached ~10분)."""
-    with _lock:
-        if _cache["data"] and (time.time() - _cache["ts"] < TTL):
-            return _cache["data"]
+    hit = _cache.get()
+    if hit:
+        return hit
 
     assets: list[dict] = []
     with ThreadPoolExecutor(max_workers=8) as ex:
@@ -155,7 +153,5 @@ def cross_asset() -> dict:
         "ts": now,
         "as_of": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(now)),
     }
-    with _lock:
-        _cache["ts"] = now
-        _cache["data"] = data
+    _cache.set(None, data)
     return data

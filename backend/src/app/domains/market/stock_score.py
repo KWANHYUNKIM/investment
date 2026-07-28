@@ -10,17 +10,15 @@
 """
 from __future__ import annotations
 
-import threading
 import time
 
 import numpy as np
 import pandas as pd
 
+from app.core.cache import TTLCache
 from app.data.infra import store
 
-_lock = threading.Lock()
-_cache: dict = {"ts": 0.0, "data": None}
-TTL = 300.0
+_cache = TTLCache(ttl=300.0)
 
 
 def _pctrank(s: pd.Series, ascending: bool = True) -> pd.Series:
@@ -152,11 +150,9 @@ def _build() -> dict:
 
 
 def screen() -> dict:
-    with _lock:
-        if _cache["data"] and (time.time() - _cache["ts"] < TTL):
-            return _cache["data"]
+    hit = _cache.get()
+    if hit:
+        return hit
     out = _build()
-    with _lock:
-        _cache["ts"] = time.time()
-        _cache["data"] = out
+    _cache.set(None, out)
     return out

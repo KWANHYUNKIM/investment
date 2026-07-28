@@ -10,19 +10,17 @@ day's report.
 """
 from __future__ import annotations
 
-import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
+from app.core.cache import TTLCache
 from app.data.market import brokers
 from app.data.intel import insight
 from app.data.market import investor
 from app.data.news import news
 from app.data.infra import store
 
-_lock = threading.Lock()
-_cache: dict = {"ts": 0.0, "data": None}
-TTL = 600.0
+_cache = TTLCache(ttl=600.0)
 N_INSIGHTS = 8  # how many most-traded names to analyse in depth
 
 
@@ -102,9 +100,9 @@ def _stock_insight(row: dict) -> dict | None:
 
 
 def market_report() -> dict:
-    with _lock:
-        if _cache["data"] and (time.time() - _cache["ts"] < TTL):
-            return _cache["data"]
+    hit = _cache.get()
+    if hit:
+        return hit
 
     rows = store.screen_table_prices()
     valid = [r for r in rows if r.get("change_pct") is not None]
@@ -186,7 +184,5 @@ def market_report() -> dict:
         "summary": " ".join(p for p in parts if p),
     }
 
-    with _lock:
-        _cache["ts"] = time.time()
-        _cache["data"] = data
+    _cache.set(None, data)
     return data

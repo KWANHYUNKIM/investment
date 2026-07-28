@@ -33,15 +33,13 @@ from __future__ import annotations
 
 import json
 import re
-import threading
 import time
 
+from app.core.cache import TTLCache
 from app.core.config import get_settings
 from app.data.infra import store
 
-_lock = threading.Lock()
-_cache: dict = {"ts": 0.0, "data": None}
-TTL = 1800.0  # 30분
+_cache = TTLCache(ttl=1800.0)  # 30분
 
 # ── 현행 기준값 (2026.7 시행 개혁안 반영) ─────────────────────────────────
 # 매출액 (관리종목 지정 기준). 2027.1 부터 단계적 상향 → 미리 예고 표시한다.
@@ -684,19 +682,16 @@ def _build() -> dict:
 
 
 def board() -> dict:
-    now = time.time()
-    with _lock:
-        if _cache["data"] is not None and now - _cache["ts"] < TTL:
-            return _cache["data"]
+    hit = _cache.get()
+    if hit is not None:
+        return hit
     data = _build()
-    with _lock:
-        _cache.update(ts=now, data=data)
+    _cache.set(None, data)
     return data
 
 
 def invalidate():
-    with _lock:
-        _cache.update(ts=0.0, data=None)
+    _cache.clear()
 
 
 def at_risk_tickers(min_level: int = 1, conn=None) -> list[str]:

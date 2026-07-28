@@ -19,14 +19,13 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 
+from app.core.cache import TTLCache
 from app.core.config import get_settings
 from app.data.macro import macro
 from app.data.news import news
 from app.data.infra import store
 
-_lock = threading.Lock()
-_cache: dict = {"ts": 0.0, "data": None}
-TTL = 1800.0  # 30분
+_cache = TTLCache(ttl=1800.0)  # 30분
 
 # 메가트렌드 테마.
 #   queries: (query, hl, gl, ceid) — 국내(ko)+해외(en) 뉴스
@@ -276,13 +275,11 @@ def _assemble() -> list[dict]:
 
 
 def themes(force: bool = False) -> list[dict]:
-    with _lock:
-        if not force and _cache["data"] and (time.time() - _cache["ts"] < TTL):
-            return _cache["data"]
+    hit = None if force else _cache.get()
+    if hit:
+        return hit
     data = _assemble()
-    with _lock:
-        _cache["ts"] = time.time()
-        _cache["data"] = data
+    _cache.set(None, data)
     return data
 
 

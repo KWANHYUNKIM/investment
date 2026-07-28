@@ -13,17 +13,15 @@ ETF·뉴스 같은 대용 신호가 아니라 한국은행이 집계하는 실�
 from __future__ import annotations
 
 import datetime
-import threading
 import time
 
 import requests
 
+from app.core.cache import TTLCache
 from app.core.config import get_settings
 
 _BASE = "https://ecos.bok.or.kr/api/StatisticSearch"
-_lock = threading.Lock()
-_cache: dict = {"ts": 0.0, "data": None}
-TTL = 12 * 3600.0  # 12시간 (월·분기 지표라 자주 받을 이유 없음)
+_cache = TTLCache(ttl=12 * 3600.0)  # 12시간 (월·분기 지표라 자주 받을 이유 없음)
 
 
 def _search(stat: str, cycle: str, start: str, end: str, *items: str) -> list[dict] | None:
@@ -365,9 +363,9 @@ def _ccsi() -> dict | None:
 
 
 def snapshot(force: bool = False) -> dict:
-    with _lock:
-        if not force and _cache["data"] and (time.time() - _cache["ts"] < TTL):
-            return _cache["data"]
+    hit = None if force else _cache.get()
+    if hit:
+        return hit
 
     if not get_settings().ecos_api_key:
         return {"available": False,
@@ -396,7 +394,5 @@ def snapshot(force: bool = False) -> dict:
         "source": "한국은행 경제통계시스템(ECOS)",
         "indicators": indicators,
     }
-    with _lock:
-        _cache["ts"] = time.time()
-        _cache["data"] = data
+    _cache.set(None, data)
     return data

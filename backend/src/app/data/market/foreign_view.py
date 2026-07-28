@@ -7,16 +7,14 @@ Cached ~30분.
 """
 from __future__ import annotations
 
-import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 
+from app.core.cache import TTLCache
 from app.data.macro import macro
 from app.data.news import news
 
-_lock = threading.Lock()
-_cache: dict = {"ts": 0.0, "data": None}
-TTL = 1800.0  # 30 min
+_cache = TTLCache(ttl=1800.0)  # 30 min
 
 # 외신이 한국 증시를 다루는 각도들 (전부 영문 피드).
 _QUERIES = (
@@ -39,9 +37,9 @@ def _fetch_one(q):
 
 def foreign_view() -> dict:
     """외신이 보는 한국 증시: 시각(lean) + 요약 + 헤드라인 + 대표 내용."""
-    with _lock:
-        if _cache["data"] and (time.time() - _cache["ts"] < TTL):
-            return _cache["data"]
+    hit = _cache.get()
+    if hit:
+        return hit
 
     pool: list[dict] = []
     seen: set[str] = set()
@@ -90,7 +88,5 @@ def foreign_view() -> dict:
         "headlines": headlines,
         "digest": digest,
     }
-    with _lock:
-        _cache["ts"] = time.time()
-        _cache["data"] = data
+    _cache.set(None, data)
     return data

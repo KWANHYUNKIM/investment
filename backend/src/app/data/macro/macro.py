@@ -9,15 +9,13 @@ and global headlines fall into the same drivers. Cached 30 min.
 """
 from __future__ import annotations
 
-import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 
+from app.core.cache import TTLCache
 from app.data.news import news
 
-_lock = threading.Lock()
-_cache: dict = {"ts": 0.0, "data": None}
-TTL = 1800.0  # 30 min
+_cache = TTLCache(ttl=1800.0)  # 30 min
 
 # (query, hl, gl, ceid, region). English (en-US) feeds give global coverage that
 # the bilingual classifier can read; Korea uses Korean feeds.
@@ -189,9 +187,9 @@ def _fetch_one(q: tuple[str, str, str, str, str]) -> list[dict]:
 
 def market_macro() -> dict:
     """Return the global finance macro feed (drivers + region breakdown + news)."""
-    with _lock:
-        if _cache["data"] and (time.time() - _cache["ts"] < TTL):
-            return _cache["data"]
+    hit = _cache.get()
+    if hit:
+        return hit
 
     # Parallel sweep across every region/topic query.
     pool: list[dict] = []
@@ -238,7 +236,5 @@ def market_macro() -> dict:
         "pool_size": len(pool),
         "summary": " ".join(parts),
     }
-    with _lock:
-        _cache["ts"] = time.time()
-        _cache["data"] = data
+    _cache.set(None, data)
     return data

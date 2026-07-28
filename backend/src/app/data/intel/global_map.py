@@ -6,9 +6,9 @@
 """
 from __future__ import annotations
 
-import threading
 import time
 
+from app.core.cache import TTLCache
 from app.core.numeric import json_float
 from app.data.intel import industry
 from app.data.infra import store
@@ -17,9 +17,7 @@ from app.data.fundamentals import financials
 from app.data.infra import global_universe
 from app.data.intel import global_intel
 
-_lock = threading.Lock()
-_cache: dict = {"ts": 0.0, "data": None}
-TTL = 600.0
+_cache = TTLCache(ttl=600.0)
 
 
 def _krw_usd() -> float:
@@ -174,19 +172,16 @@ def _assemble() -> list[dict]:
 
 
 def clusters(force: bool = False) -> list[dict]:
-    with _lock:
-        if not force and _cache["data"] and time.time() - _cache["ts"] < TTL:
-            return _cache["data"]
+    hit = None if force else _cache.get()
+    if hit:
+        return hit
     data = _assemble()
-    with _lock:
-        _cache["ts"] = time.time()
-        _cache["data"] = data
+    _cache.set(None, data)
     return data
 
 
 def invalidate() -> None:
-    with _lock:
-        _cache["data"] = None
+    _cache.clear()
 
 
 def index() -> list[dict]:

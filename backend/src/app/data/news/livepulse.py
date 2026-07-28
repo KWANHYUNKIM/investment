@@ -11,16 +11,14 @@
 """
 from __future__ import annotations
 
-import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 
+from app.core.cache import TTLCache
 from app.data.macro import macro
 from app.data.news import news
 
-_lock = threading.Lock()
-_cache: dict = {"ts": 0.0, "data": None}
-TTL = 60.0  # 60초 — 실시간 폴링용
+_cache = TTLCache(ttl=60.0)  # 60초 — 실시간 폴링용
 
 # 한 쿼리당 최대 기사 수 · 흐름 피드 노출 수. 더 많은 데이터를 위해 크게.
 _PER_QUERY = 20
@@ -106,9 +104,9 @@ def _rel_time(ts: float | None, now: float) -> str | None:
 
 def pulse(force: bool = False) -> dict:
     """실시간 시황 펄스 — 분위기 + 드라이버 + 시간순 흐름. cached 60s."""
-    with _lock:
-        if not force and _cache["data"] and (time.time() - _cache["ts"] < TTL):
-            return _cache["data"]
+    hit = None if force else _cache.get()
+    if hit:
+        return hit
 
     pool: list[dict] = []
     seen: set[str] = set()         # 제목 중복
@@ -182,7 +180,5 @@ def pulse(force: bool = False) -> dict:
         "flow": flow,
         "pool_size": len(pool),
     }
-    with _lock:
-        _cache["ts"] = now
-        _cache["data"] = data
+    _cache.set(None, data)
     return data

@@ -9,20 +9,18 @@ peers.
 """
 from __future__ import annotations
 
-import threading
 import time
 
 import pandas as pd
 import FinanceDataReader as fdr
 
+from app.core.cache import TTLCache
 from app.core.numeric import json_float
 from app.data.infra import store
 from app.data.market import naver_sector
 from app.data.fundamentals import financials
 
-_lock = threading.Lock()
-_cache: dict = {"ts": 0.0, "data": None}
-TTL = 1800.0  # 30 min for the grouped view
+_cache = TTLCache(ttl=1800.0)  # 30 min for the grouped view
 
 
 def _marcap_map() -> dict[str, float]:
@@ -72,15 +70,13 @@ def refresh_profiles() -> int:
     if not rows:
         return 0
     n = store.upsert_company_profile(pd.DataFrame(rows))
-    with _lock:
-        _cache["data"] = None  # invalidate grouped view
+    _cache.clear()  # invalidate grouped view
     return n
 
 
 def invalidate() -> None:
     """Drop the grouped-view cache so the next read rebuilds (e.g. after 실적 적재)."""
-    with _lock:
-        _cache["data"] = None
+    _cache.clear()
 
 
 def _moves() -> dict[str, dict]:
@@ -104,9 +100,9 @@ def industries(min_members: int = 2) -> list[dict]:
     Each group: {industry, count, market_cap (sum), avg_change_pct, members:[...]}.
     Members carry name/ticker/products/market_cap/change_pct, sorted by cap.
     """
-    with _lock:
-        if _cache["data"] and (time.time() - _cache["ts"] < TTL):
-            return _cache["data"]
+    hit = _cache.get()
+    if hit:
+        return hit
 
     prof = store.company_profiles()
     moves = _moves()
@@ -167,9 +163,7 @@ def industries(min_members: int = 2) -> list[dict]:
         )
     out.sort(key=lambda g: g["market_cap"], reverse=True)
 
-    with _lock:
-        _cache["ts"] = time.time()
-        _cache["data"] = out
+    _cache.set(None, out)
     return out
 
 

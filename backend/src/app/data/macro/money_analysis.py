@@ -19,18 +19,16 @@ money_supply.py가 통화량 증가율을 나란히 보여준다면, 이 모듈�
 """
 from __future__ import annotations
 
-import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
 import requests
 
+from app.core.cache import TTLCache
 from app.data.macro import ecos
 
-_lock = threading.Lock()
-_cache: dict = {"ts": 0.0, "data": None}
-TTL = 12 * 3600.0
+_cache = TTLCache(ttl=12 * 3600.0)
 
 _ISO = [("KOR", "한국"), ("USA", "미국"), ("CHN", "중국"), ("JPN", "일본")]
 
@@ -290,9 +288,9 @@ def _regime() -> dict:
 
 
 def snapshot(force: bool = False) -> dict:
-    with _lock:
-        if not force and _cache["data"] and (time.time() - _cache["ts"] < TTL):
-            return _cache["data"]
+    hit = None if force else _cache.get()
+    if hit:
+        return hit
 
     wb = _wb_all()
     if not wb.get("m2_level"):
@@ -315,7 +313,5 @@ def snapshot(force: bool = False) -> dict:
                 "민간신용/GDP=레버리지. 자산 상관은 연 증가율 기준. World Bank는 연·1년 지연, "
                 "한국 현재 금리/물가·집값은 ECOS, 미국 금리·침체는 FRED.",
     }
-    with _lock:
-        _cache["ts"] = time.time()
-        _cache["data"] = data
+    _cache.set(None, data)
     return data

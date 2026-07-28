@@ -6,15 +6,13 @@ ECOS 실데이터(GDP·CPI·PPI·경상수지·M2·가계신용·기준금리·�
 """
 from __future__ import annotations
 
-import threading
 import time
 
+from app.core.cache import TTLCache
 from app.core.numeric import json_float
 from app.data.macro import ecos
 
-_lock = threading.Lock()
-_cache: dict = {"ts": 0.0, "data": None}
-TTL = 1800.0
+_cache = TTLCache(ttl=1800.0)
 
 # 상태 → 색/라벨
 _STATUS = {
@@ -232,11 +230,9 @@ def _build() -> dict:
 
 
 def diagnosis() -> dict:
-    with _lock:
-        if _cache["data"] and (time.time() - _cache["ts"] < TTL):
-            return _cache["data"]
+    hit = _cache.get()
+    if hit:
+        return hit
     out = _build()
-    with _lock:
-        _cache["ts"] = time.time()
-        _cache["data"] = out
+    _cache.set(None, out)
     return out

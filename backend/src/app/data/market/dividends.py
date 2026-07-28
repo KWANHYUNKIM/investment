@@ -8,15 +8,14 @@
 """
 from __future__ import annotations
 
-import threading
 import time
 
+from app.core.cache import TTLCache
 from app.core.numeric import json_float
 from app.data.infra import store
 
-_lock = threading.Lock()
-_cache: dict = {"ts": 0.0, "data": None}
-TTL = 600.0
+TTL = 600.0          # 보드와 유니버스가 같은 주기를 쓴다
+_cache = TTLCache(ttl=TTL)
 
 
 def _meta_map() -> dict:
@@ -85,19 +84,14 @@ def _build() -> dict:
 
 
 def board() -> dict:
-    with _lock:
-        if _cache["data"] and (time.time() - _cache["ts"] < TTL):
-            return _cache["data"]
-    out = _build()
-    with _lock:
-        _cache["ts"] = time.time()
-        _cache["data"] = out
-    return out
+    hit = _cache.get()
+    if hit:
+        return hit
+    return _cache.set(None, _build())
 
 
 # ── 종목 단위 배당 계산기용: 전 종목 검색 유니버스 ──────────────────────────
-_uni_lock = threading.Lock()
-_uni_cache: dict = {"ts": 0.0, "data": None}
+_uni_cache = TTLCache(ttl=TTL)
 
 
 def _build_universe() -> dict:
@@ -139,11 +133,7 @@ def _build_universe() -> dict:
 
 
 def stock_universe() -> dict:
-    with _uni_lock:
-        if _uni_cache["data"] and (time.time() - _uni_cache["ts"] < TTL):
-            return _uni_cache["data"]
-    out = _build_universe()
-    with _uni_lock:
-        _uni_cache["ts"] = time.time()
-        _uni_cache["data"] = out
-    return out
+    hit = _uni_cache.get()
+    if hit:
+        return hit
+    return _uni_cache.set(None, _build_universe())
