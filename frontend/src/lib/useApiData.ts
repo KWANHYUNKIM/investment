@@ -81,7 +81,8 @@ export function useApiData<T>(
     if (!pollMs) return () => { alive = false; };
     const id = setInterval(run, pollMs);
     return () => { alive = false; clearInterval(id); };
-  }, [reqKey, enabled, pollMs]);
+    // key 는 reqKey 안에 이미 들어 있어 재실행 횟수를 늘리지 않는다. 린트가 요구하므로 명시한다.
+  }, [key, reqKey, enabled, pollMs]);
 
   const reload = useCallback(() => setNonce((n) => n + 1), []);
 
