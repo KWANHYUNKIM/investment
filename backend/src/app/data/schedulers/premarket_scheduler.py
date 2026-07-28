@@ -7,11 +7,8 @@
 """
 from __future__ import annotations
 
-import threading
-import time
-
-from app.core.config import get_settings
 from app.data.market import premarket_archive
+from app.data.schedulers import runner
 
 _state = {
     "running": False,
@@ -24,15 +21,6 @@ _state = {
 }
 
 
-def status() -> dict:
-    s = get_settings()
-    return {
-        **{k: _state[k] for k in _state},
-        "interval_sec": s.premarket_archive_interval,
-        "dates": premarket_archive.list_dates(),
-    }
-
-
 def _tick() -> None:
     g = premarket_archive.grade_all()
     if g.get("graded"):
@@ -43,24 +31,18 @@ def _tick() -> None:
         _state["records"] += 1
 
 
-def _loop() -> None:
-    time.sleep(45)  # startup(DB·첫 보드 스냅샷)이 자리잡은 뒤 시작
-    while True:
-        interval = get_settings().premarket_archive_interval
-        try:
-            _tick()
-            _state["ticks"] += 1
-            _state["last_run"] = time.strftime("%Y-%m-%d %H:%M:%S")
-            _state["last_error"] = None
-        except Exception as e:  # 업스트림(fdr) 흔들려도 루프는 살려둔다
-            _state["last_error"] = f"{type(e).__name__}: {str(e)[:120]}"
-        time.sleep(interval)
+_sched = runner.Scheduler(
+    thread_name="premarket-scheduler",
+    state=_state,
+    tick=_tick,
+    enabled=lambda s: s.premarket_archive,
+    interval=lambda s: s.premarket_archive_interval,
+    settle=45.0,  # startup(DB·첫 보드 스냅샷)이 자리잡은 뒤 시작
+    extra_status=lambda s: {
+        "interval_sec": s.premarket_archive_interval,
+        "dates": premarket_archive.list_dates(),
+    },
+)
 
-
-def start() -> None:
-    if _state["running"]:
-        return
-    if not get_settings().premarket_archive:
-        return
-    _state["running"] = True
-    threading.Thread(target=_loop, daemon=True, name="premarket-scheduler").start()
+status = _sched.status
+start = _sched.start

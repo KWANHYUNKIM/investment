@@ -10,10 +10,10 @@ BLOG_AUTOPUBLISH=false 로 끈다.
 """
 from __future__ import annotations
 
-import threading
 import time
 
 from app.core.config import get_settings
+from app.data.schedulers import runner
 
 _state = {
     "running": False,
@@ -25,19 +25,6 @@ _state = {
     "skipped_reason": None,
     "last_error": None,
 }
-
-
-def status() -> dict:
-    s = get_settings()
-    from app.data.admin import blog_archive
-    latest = blog_archive.latest("market-wrap") or {}
-    return {
-        **{k: _state[k] for k in _state},
-        "schedule": "%02d:%02d 평일" % (s.blog_publish_hour, s.blog_publish_minute),
-        "enabled": s.blog_autopublish,
-        "latest_post": {"date": latest.get("date"), "title": latest.get("title"),
-                        "saved_at": latest.get("saved_at")} if latest else None,
-    }
 
 
 def _due(now: time.struct_time) -> tuple[bool, str | None]:
@@ -66,27 +53,34 @@ def _tick() -> None:
     _state["last_title"] = post.get("title")
 
 
-def _loop() -> None:
-    time.sleep(120)          # startup 이 자리잡은 뒤 시작
+def _seed_last_post() -> None:
     from app.data.admin import blog_archive
     latest = blog_archive.latest("market-wrap")
     if latest and latest.get("date"):
         _state["last_post_date"] = latest["date"]      # 재시작 시 중복 발행 방지
-    while True:
-        try:
-            _tick()
-            _state["ticks"] += 1
-            _state["last_run"] = time.strftime("%Y-%m-%d %H:%M:%S")
-            _state["last_error"] = None
-        except Exception as e:   # 뉴스·시세 소스가 흔들려도 루프는 살려둔다
-            _state["last_error"] = f"{type(e).__name__}: {str(e)[:120]}"
-        time.sleep(get_settings().blog_publish_check_interval)
 
 
-def start() -> None:
-    if _state["running"]:
-        return
-    if not get_settings().blog_autopublish:
-        return
-    _state["running"] = True
-    threading.Thread(target=_loop, daemon=True, name="blog-scheduler").start()
+def _extra_status(s) -> dict:
+    from app.data.admin import blog_archive   # 지연 import — 순환 참조 회피
+    latest = blog_archive.latest("market-wrap") or {}
+    return {
+        "schedule": "%02d:%02d 평일" % (s.blog_publish_hour, s.blog_publish_minute),
+        "enabled": s.blog_autopublish,
+        "latest_post": {"date": latest.get("date"), "title": latest.get("title"),
+                        "saved_at": latest.get("saved_at")} if latest else None,
+    }
+
+
+_sched = runner.Scheduler(
+    thread_name="blog-scheduler",
+    state=_state,
+    tick=_tick,
+    enabled=lambda s: s.blog_autopublish,
+    interval=lambda s: s.blog_publish_check_interval,
+    settle=120.0,  # startup 이 자리잡은 뒤 시작
+    before_loop=_seed_last_post,
+    extra_status=_extra_status,
+)
+
+status = _sched.status
+start = _sched.start

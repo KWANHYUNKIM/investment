@@ -13,11 +13,11 @@
 """
 from __future__ import annotations
 
-import threading
 import time
 
 from app.core.config import get_settings
 from app.data.market import delisting
+from app.data.schedulers import runner
 
 _state = {
     "running": False,
@@ -28,19 +28,6 @@ _state = {
     "last_summary": None,
     "last_error": None,
 }
-
-
-def status() -> dict:
-    s = get_settings()
-    board = delisting.board()
-    return {
-        **{k: _state[k] for k in _state},
-        "schedule": "%02d:%02d 매일" % (s.delisting_batch_hour, s.delisting_batch_minute),
-        "market_class_ready": board.get("market_class_ready"),
-        "half_ready": board.get("half_ready"),
-        "market_stats_ready": board.get("market_stats_ready"),
-        "alerts_generated_at": board.get("alerts_generated_at"),
-    }
 
 
 def _due(now: time.struct_time, last_date: str | None) -> bool:
@@ -59,32 +46,40 @@ def _tick() -> None:
     _state["last_build_date"] = time.strftime("%Y-%m-%d", now)
 
 
-def _loop() -> None:
-    time.sleep(120)  # 원가모델 배치·DB 초기화가 자리잡은 뒤
-    # 시장구분 캐시가 아예 없으면(첫 기동) 시각을 기다리지 않고 한 번 채운다 —
-    # 없는 동안엔 스크리너가 요건 절반을 못 보기 때문.
-    if not delisting.load_market_class():
-        try:
-            _state["last_summary"] = delisting.refresh_all()
-            _state["runs"] += 1
-            _state["last_build_date"] = time.strftime("%Y-%m-%d")
-        except Exception as e:
-            _state["last_error"] = f"{type(e).__name__}: {str(e)[:120]}"
-    while True:
-        try:
-            _tick()
-            _state["ticks"] += 1
-            _state["last_run"] = time.strftime("%Y-%m-%d %H:%M:%S")
-            _state["last_error"] = None
-        except Exception as e:
-            _state["last_error"] = f"{type(e).__name__}: {str(e)[:120]}"
-        time.sleep(get_settings().delisting_batch_check_interval)
+def _first_fill_if_empty() -> None:
+    """시장구분 캐시가 아예 없으면(첫 기동) 시각을 기다리지 않고 한 번 채운다 —
+    없는 동안엔 스크리너가 요건 절반을 못 보기 때문."""
+    if delisting.load_market_class():
+        return
+    try:
+        _state["last_summary"] = delisting.refresh_all()
+        _state["runs"] += 1
+        _state["last_build_date"] = time.strftime("%Y-%m-%d")
+    except Exception as e:  # noqa: BLE001
+        _state["last_error"] = f"{type(e).__name__}: {str(e)[:120]}"
 
 
-def start() -> None:
-    if _state["running"]:
-        return
-    if not get_settings().delisting_batch:
-        return
-    _state["running"] = True
-    threading.Thread(target=_loop, daemon=True, name="delisting-scheduler").start()
+def _extra_status(s) -> dict:
+    board = delisting.board()
+    return {
+        "schedule": "%02d:%02d 매일" % (s.delisting_batch_hour, s.delisting_batch_minute),
+        "market_class_ready": board.get("market_class_ready"),
+        "half_ready": board.get("half_ready"),
+        "market_stats_ready": board.get("market_stats_ready"),
+        "alerts_generated_at": board.get("alerts_generated_at"),
+    }
+
+
+_sched = runner.Scheduler(
+    thread_name="delisting-scheduler",
+    state=_state,
+    tick=_tick,
+    enabled=lambda s: s.delisting_batch,
+    interval=lambda s: s.delisting_batch_check_interval,
+    settle=120.0,  # 원가모델 배치·DB 초기화가 자리잡은 뒤
+    before_loop=_first_fill_if_empty,
+    extra_status=_extra_status,
+)
+
+status = _sched.status
+start = _sched.start

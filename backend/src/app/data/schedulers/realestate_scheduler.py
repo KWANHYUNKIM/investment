@@ -17,11 +17,9 @@ tune cadence with ``REALESTATE_WARM_INTERVAL`` (seconds).
 """
 from __future__ import annotations
 
-import threading
-import time
-
 from app.core.config import get_settings
 from app.data.macro import realestate_map
+from app.data.schedulers import runner
 
 _state = {
     "running": False,
@@ -30,19 +28,6 @@ _state = {
     "last_regions": 0,
     "last_error": None,
 }
-
-
-def status() -> dict:
-    s = get_settings()
-    return {
-        "running": _state["running"],
-        "ticks": _state["ticks"],
-        "last_run": _state["last_run"],
-        "last_regions": _state["last_regions"],
-        "last_error": _state["last_error"],
-        "interval_sec": s.realestate_warm_interval,
-        "has_key": bool(s.data_go_kr_key),
-    }
 
 
 def _tick() -> None:
@@ -59,22 +44,19 @@ def _tick() -> None:
     _state["last_error"] = None
 
 
-def _loop() -> None:
-    while True:
-        try:
-            _tick()
-            _state["ticks"] += 1
-            _state["last_run"] = time.strftime("%Y-%m-%d %H:%M:%S")
-        except Exception as e:  # 상류 API 오류 — 루프는 유지
-            _state["last_error"] = f"{type(e).__name__}: {str(e)[:120]}"
-        time.sleep(get_settings().realestate_warm_interval)
+# settle 없음 — 첫 채우기가 느려서(실거래 ~250콜 + 지오코딩) 기동 즉시 시작한다.
+# 키가 없으면 _tick 이 last_error 에 사유를 써 넣고 빠진다(러너가 틱 시작에만 비우므로 남는다).
+_sched = runner.Scheduler(
+    thread_name="realestate-scheduler",
+    state=_state,
+    tick=_tick,
+    enabled=lambda s: s.realestate_warm,
+    interval=lambda s: s.realestate_warm_interval,
+    extra_status=lambda s: {
+        "interval_sec": s.realestate_warm_interval,
+        "has_key": bool(s.data_go_kr_key),
+    },
+)
 
-
-def start() -> None:
-    """Launch the pre-warm scheduler thread once, if enabled in settings."""
-    if _state["running"]:
-        return
-    if not get_settings().realestate_warm:
-        return
-    _state["running"] = True
-    threading.Thread(target=_loop, daemon=True, name="realestate-scheduler").start()
+status = _sched.status
+start = _sched.start

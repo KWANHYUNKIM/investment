@@ -12,12 +12,9 @@ tune the wake cadence with ``REPORT_ARCHIVE_INTERVAL`` (seconds).
 """
 from __future__ import annotations
 
-import threading
-import time
-
-from app.core.config import get_settings
 from app.data.reports import daily_archive
 from app.data.infra import store
+from app.data.schedulers import runner
 
 _state = {
     "running": False,
@@ -28,16 +25,6 @@ _state = {
     "last_status": None,
     "last_error": None,
 }
-
-
-def status() -> dict:
-    s = get_settings()
-    return {
-        **{k: _state[k] for k in _state},
-        "interval_sec": s.report_archive_interval,
-        "deep_n": s.report_deep_n,
-        "archived_dates": daily_archive.list_dates(),
-    }
 
 
 def _tick() -> None:
@@ -55,26 +42,19 @@ def _tick() -> None:
         _state["last_saved_date"] = res.get("date")
 
 
-def _loop() -> None:
-    # Small initial delay so startup (DB init, first board snapshot) settles.
-    time.sleep(30)
-    while True:
-        interval = get_settings().report_archive_interval
-        try:
-            _tick()
-            _state["ticks"] += 1
-            _state["last_run"] = time.strftime("%Y-%m-%d %H:%M:%S")
-            _state["last_error"] = None
-        except Exception as e:  # keep the loop alive through upstream hiccups
-            _state["last_error"] = f"{type(e).__name__}: {str(e)[:120]}"
-        time.sleep(interval)
+_sched = runner.Scheduler(
+    thread_name="report-scheduler",
+    state=_state,
+    tick=_tick,
+    enabled=lambda s: s.report_archive,
+    interval=lambda s: s.report_archive_interval,
+    settle=30.0,  # let startup (DB init, first board snapshot) settle
+    extra_status=lambda s: {
+        "interval_sec": s.report_archive_interval,
+        "deep_n": s.report_deep_n,
+        "archived_dates": daily_archive.list_dates(),
+    },
+)
 
-
-def start() -> None:
-    """Launch the scheduler thread once, if enabled in settings."""
-    if _state["running"]:
-        return
-    if not get_settings().report_archive:
-        return
-    _state["running"] = True
-    threading.Thread(target=_loop, daemon=True, name="report-scheduler").start()
+status = _sched.status
+start = _sched.start

@@ -7,12 +7,10 @@ DuckDB writer를 공유한다. MOVERS=false로 끔. 주말/장외에도 가볍�
 from __future__ import annotations
 
 import datetime as _dt
-import threading
-import time
 
-from app.core.config import get_settings
 from app.data.market import market_movers
 from app.data.market import movers_archive
+from app.data.schedulers import runner
 
 _state = {
     "running": False,
@@ -21,11 +19,6 @@ _state = {
     "last_run": None,
     "last_error": None,
 }
-
-
-def status() -> dict:
-    s = get_settings()
-    return {**{k: _state[k] for k in _state}, "interval_sec": s.movers_interval, "enabled": s.movers}
 
 
 def _is_market_window() -> bool:
@@ -45,24 +38,16 @@ def _tick() -> None:
     _state["records"] += 1
 
 
-def _loop() -> None:
-    time.sleep(60)  # let startup settle
-    while True:
-        interval = get_settings().movers_interval
-        try:
-            _tick()
-            _state["ticks"] += 1
-            _state["last_run"] = time.strftime("%Y-%m-%d %H:%M:%S")
-            _state["last_error"] = None
-        except Exception as e:  # noqa: BLE001
-            _state["last_error"] = f"{type(e).__name__}: {str(e)[:120]}"
-        time.sleep(interval)
+_sched = runner.Scheduler(
+    thread_name="movers-scheduler",
+    state=_state,
+    tick=_tick,
+    enabled=lambda s: s.movers,
+    interval=lambda s: s.movers_interval,
+    settle=60.0,  # let startup settle
+    extra_status=lambda s: {"interval_sec": s.movers_interval, "enabled": s.movers},
+)
 
-
-def start() -> None:
-    if _state["running"]:
-        return
-    if not get_settings().movers:
-        return
-    _state["running"] = True
-    threading.Thread(target=_loop, daemon=True, name="movers-scheduler").start()
+# api/ops.py 와 main.py 는 모듈의 status()/start() 를 호출한다.
+status = _sched.status
+start = _sched.start

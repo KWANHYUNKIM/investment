@@ -8,10 +8,6 @@ research feed to JSON so the competitive picture accumulates. Disable with
 """
 from __future__ import annotations
 
-import threading
-import time
-
-from app.core.config import get_settings
 from app.data.fundamentals import dart
 from app.data.fundamentals import dart_financials
 from app.data.fundamentals import financials
@@ -21,6 +17,7 @@ from app.data.infra import global_universe
 from app.data.intel import industry
 from app.data.intel import industry_research
 from app.data.infra import store
+from app.data.schedulers import runner
 
 _state = {
     "running": False,
@@ -33,20 +30,12 @@ _state = {
     "last_run": None,
     "last_profile_refresh": None,
     "last_financials_refresh": None,
+    # 예전엔 _tick 이 첫 성공 때 이 키를 새로 만들어서, status() 모양이 시간에 따라
+    # 달라졌다(해외 갱신 전엔 키가 없음). 처음부터 선언해 형태를 고정한다.
+    "last_foreign_refresh": None,
     "last_snapshot_date": None,
     "last_error": None,
 }
-
-
-def status() -> dict:
-    s = get_settings()
-    return {
-        **{k: _state[k] for k in _state},
-        "interval_sec": s.industry_map_interval,
-        "top_k": s.industry_top_k,
-        "snapshot_n": s.industry_snapshot_n,
-        "snapshot_dates": industry_research.list_dates(),
-    }
 
 
 def _tick() -> None:
@@ -104,24 +93,20 @@ def _tick() -> None:
         _state["last_snapshot_date"] = res.get("date")
 
 
-def _loop() -> None:
-    time.sleep(45)  # let startup settle (DB init + first price snapshot)
-    while True:
-        interval = get_settings().industry_map_interval
-        try:
-            _tick()
-            _state["ticks"] += 1
-            _state["last_run"] = time.strftime("%Y-%m-%d %H:%M:%S")
-            _state["last_error"] = None
-        except Exception as e:
-            _state["last_error"] = f"{type(e).__name__}: {str(e)[:120]}"
-        time.sleep(interval)
+_sched = runner.Scheduler(
+    thread_name="industry-scheduler",
+    state=_state,
+    tick=_tick,
+    enabled=lambda s: s.industry_map,
+    interval=lambda s: s.industry_map_interval,
+    settle=45.0,  # let startup settle (DB init + first price snapshot)
+    extra_status=lambda s: {
+        "interval_sec": s.industry_map_interval,
+        "top_k": s.industry_top_k,
+        "snapshot_n": s.industry_snapshot_n,
+        "snapshot_dates": industry_research.list_dates(),
+    },
+)
 
-
-def start() -> None:
-    if _state["running"]:
-        return
-    if not get_settings().industry_map:
-        return
-    _state["running"] = True
-    threading.Thread(target=_loop, daemon=True, name="industry-scheduler").start()
+status = _sched.status
+start = _sched.start

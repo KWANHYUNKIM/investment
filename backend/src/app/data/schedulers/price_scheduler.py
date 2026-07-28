@@ -17,14 +17,13 @@ forward. Disable with ``PRICE_INGEST=false``; tune the cadence with
 """
 from __future__ import annotations
 
-import threading
 import time
 
 import pandas as pd
 import FinanceDataReader as fdr
 
-from app.core.config import get_settings
 from app.data.infra import store
+from app.data.schedulers import runner
 
 _state = {
     "running": False,
@@ -35,20 +34,6 @@ _state = {
     "last_date": None,
     "last_error": None,
 }
-
-
-def status() -> dict:
-    s = get_settings()
-    return {
-        "running": _state["running"],
-        "ticks": _state["ticks"],
-        "rows_written": _state["rows_written"],
-        "last_run": _state["last_run"],
-        "last_rows": _state["last_rows"],
-        "last_date": _state["last_date"],
-        "last_error": _state["last_error"],
-        "interval_sec": s.price_ingest_interval,
-    }
 
 
 def _num(v) -> float | None:
@@ -126,26 +111,21 @@ def _snapshot_once() -> int:
     return n
 
 
-def _loop() -> None:
-    while True:
-        interval = get_settings().price_ingest_interval
-        try:
-            n = _snapshot_once()
-            _state["ticks"] += 1
-            _state["last_rows"] = n
-            _state["rows_written"] += n
-            _state["last_run"] = time.strftime("%Y-%m-%d %H:%M:%S")
-            _state["last_error"] = None
-        except Exception as e:  # upstream hiccup — keep the loop alive
-            _state["last_error"] = f"{type(e).__name__}: {str(e)[:120]}"
-        time.sleep(interval)
+def _tick() -> None:
+    n = _snapshot_once()
+    _state["last_rows"] = n
+    _state["rows_written"] += n
 
 
-def start() -> None:
-    """Launch the scheduler thread once, if enabled in settings."""
-    if _state["running"]:
-        return
-    if not get_settings().price_ingest:
-        return
-    _state["running"] = True
-    threading.Thread(target=_loop, daemon=True, name="price-scheduler").start()
+# settle 없음 — 시세는 기동 즉시 한 번 받아 두는 게 낫다(그래야 첫 화면이 오늘 값).
+_sched = runner.Scheduler(
+    thread_name="price-scheduler",
+    state=_state,
+    tick=_tick,
+    enabled=lambda s: s.price_ingest,
+    interval=lambda s: s.price_ingest_interval,
+    extra_status=lambda s: {"interval_sec": s.price_ingest_interval},
+)
+
+status = _sched.status
+start = _sched.start

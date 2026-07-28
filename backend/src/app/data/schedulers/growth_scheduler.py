@@ -12,10 +12,6 @@ Same process → shares the DuckDB writer (no lock conflict). Disable with
 """
 from __future__ import annotations
 
-import threading
-import time
-
-from app.core.config import get_settings
 from app.data.macro import ecos
 from app.data.intel import futuretheme
 from app.data.macro import korea_flow
@@ -28,6 +24,7 @@ from app.data.macro import realeconomy
 from app.data.macro import realestate
 from app.data.macro import rent
 from app.data.infra import store
+from app.data.schedulers import runner
 
 _state = {
     "running": False,
@@ -38,15 +35,6 @@ _state = {
     "last_snapshot_date": None,
     "last_error": None,
 }
-
-
-def status() -> dict:
-    s = get_settings()
-    return {
-        **{k: _state[k] for k in _state},
-        "interval_sec": s.growth_scheduler_interval,
-        "snapshot_dates": futuretheme.list_dates(),
-    }
 
 
 def _tick() -> None:
@@ -82,24 +70,18 @@ def _tick() -> None:
         _state["last_snapshot_date"] = res.get("date")
 
 
-def _loop() -> None:
-    time.sleep(60)  # let startup settle (DB init, first price snapshot, profiles)
-    while True:
-        interval = get_settings().growth_scheduler_interval
-        try:
-            _tick()
-            _state["ticks"] += 1
-            _state["last_run"] = time.strftime("%Y-%m-%d %H:%M:%S")
-            _state["last_error"] = None
-        except Exception as e:
-            _state["last_error"] = f"{type(e).__name__}: {str(e)[:120]}"
-        time.sleep(interval)
+_sched = runner.Scheduler(
+    thread_name="growth-scheduler",
+    state=_state,
+    tick=_tick,
+    enabled=lambda s: s.growth_scheduler,
+    interval=lambda s: s.growth_scheduler_interval,
+    settle=60.0,  # let startup settle (DB init, first price snapshot, profiles)
+    extra_status=lambda s: {
+        "interval_sec": s.growth_scheduler_interval,
+        "snapshot_dates": futuretheme.list_dates(),
+    },
+)
 
-
-def start() -> None:
-    if _state["running"]:
-        return
-    if not get_settings().growth_scheduler:
-        return
-    _state["running"] = True
-    threading.Thread(target=_loop, daemon=True, name="growth-scheduler").start()
+status = _sched.status
+start = _sched.start

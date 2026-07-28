@@ -11,11 +11,11 @@ COSTMODEL_BATCH=false 로 끔.
 """
 from __future__ import annotations
 
-import threading
 import time
 
 from app.core.config import get_settings
 from app.data.fundamentals import company_costmodel
+from app.data.schedulers import runner
 
 _state = {
     "running": False,
@@ -26,16 +26,6 @@ _state = {
     "last_summary": None,
     "last_error": None,
 }
-
-
-def status() -> dict:
-    s = get_settings()
-    return {
-        **{k: _state[k] for k in _state},
-        "schedule": "%02d:%02d 매일" % (s.costmodel_batch_hour, s.costmodel_batch_minute),
-        "sleep_per_ticker_sec": s.costmodel_batch_sleep,
-        "file": company_costmodel.batch_status(),
-    }
 
 
 def _due(now: time.struct_time, last_date: str | None) -> bool:
@@ -57,27 +47,31 @@ def _tick() -> None:
     _state["last_summary"] = summary
 
 
-def _loop() -> None:
-    time.sleep(90)  # startup(DB·프로필 초기화)이 자리잡은 뒤 시작
-    # 파일이 이미 있으면 그 날짜를 '마지막 실행'으로 삼아 재시작 때 중복 실행을 막는다.
+def _seed_last_build() -> None:
+    """파일이 이미 있으면 그 날짜를 '마지막 실행'으로 삼아 재시작 때 중복 실행을 막는다."""
     b = company_costmodel.batch_status()
     if b.get("available") and b.get("built_at"):
         _state["last_build_date"] = b["built_at"][:10]
-    while True:
-        try:
-            _tick()
-            _state["ticks"] += 1
-            _state["last_run"] = time.strftime("%Y-%m-%d %H:%M:%S")
-            _state["last_error"] = None
-        except Exception as e:  # DART/DuckDB 가 흔들려도 루프는 살려둔다
-            _state["last_error"] = f"{type(e).__name__}: {str(e)[:120]}"
-        time.sleep(get_settings().costmodel_batch_check_interval)
 
 
-def start() -> None:
-    if _state["running"]:
-        return
-    if not get_settings().costmodel_batch:
-        return
-    _state["running"] = True
-    threading.Thread(target=_loop, daemon=True, name="costmodel-scheduler").start()
+def _extra_status(s) -> dict:
+    return {
+        "schedule": "%02d:%02d 매일" % (s.costmodel_batch_hour, s.costmodel_batch_minute),
+        "sleep_per_ticker_sec": s.costmodel_batch_sleep,
+        "file": company_costmodel.batch_status(),
+    }
+
+
+_sched = runner.Scheduler(
+    thread_name="costmodel-scheduler",
+    state=_state,
+    tick=_tick,
+    enabled=lambda s: s.costmodel_batch,
+    interval=lambda s: s.costmodel_batch_check_interval,
+    settle=90.0,  # startup(DB·프로필 초기화)이 자리잡은 뒤 시작
+    before_loop=_seed_last_build,
+    extra_status=_extra_status,
+)
+
+status = _sched.status
+start = _sched.start
