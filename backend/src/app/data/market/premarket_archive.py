@@ -20,6 +20,7 @@ import time
 import FinanceDataReader as fdr
 
 from app.core.config import get_settings
+from app.core.jsonstore import write_json
 from app.data.market import premarket
 
 _lock = threading.Lock()
@@ -56,10 +57,7 @@ def exists(based_on: str) -> bool:
 
 def _save(rec: dict) -> str:
     path = _path(rec["based_on"])
-    tmp = f"{path}.tmp"
-    with open(tmp, "w", encoding="utf-8") as fh:
-        json.dump(rec, fh, ensure_ascii=False, separators=(",", ":"))
-    os.replace(tmp, path)
+    write_json(path, rec)
     return path
 
 

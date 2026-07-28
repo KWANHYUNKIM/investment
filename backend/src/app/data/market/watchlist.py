@@ -6,12 +6,11 @@
 """
 from __future__ import annotations
 
-import json
-import os
 import re
 import threading
 
 from app.core.config import get_settings
+from app.core.jsonstore import read_json, write_json
 from app.data.infra import store
 from app.data.market import signals as signals_mod
 from app.data.market import target_price as tp_mod
@@ -28,25 +27,11 @@ def _path(user: str) -> str:
 
 
 def _load(user: str) -> dict:
-    p = _path(user)
-    if not os.path.exists(p):
-        return {"watch": [], "holdings": []}
-    try:
-        with open(p, encoding="utf-8") as fh:
-            d = json.load(fh)
-        d.setdefault("watch", [])
-        d.setdefault("holdings", [])
-        return d
-    except Exception:
-        return {"watch": [], "holdings": []}
+    return read_json(_path(user), {"watch": [], "holdings": []})
 
 
 def _save(user: str, d: dict) -> None:
-    p = _path(user)
-    tmp = f"{p}.tmp"
-    with open(tmp, "w", encoding="utf-8") as fh:
-        json.dump(d, fh, ensure_ascii=False, separators=(",", ":"))
-    os.replace(tmp, p)
+    write_json(_path(user), d)
 
 
 # --- 시세/메타 조회 (보드 1회 쿼리 캐시) -------------------------------------

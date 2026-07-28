@@ -5,11 +5,11 @@
 """
 from __future__ import annotations
 
-import json
 import os
 import threading
 
 from app.core.config import get_settings
+from app.core.jsonstore import read_json, write_json
 
 _lock = threading.Lock()
 _MAX = 800
@@ -22,14 +22,7 @@ def _path() -> str:
 
 
 def _load() -> list:
-    p = _path()
-    if os.path.exists(p):
-        try:
-            with open(p, encoding="utf-8") as fh:
-                return json.load(fh)
-        except Exception:
-            return []
-    return []
+    return read_json(_path(), [])
 
 
 def _compact(snap: dict) -> dict:
@@ -59,11 +52,7 @@ def record(snap: dict) -> None:
             return
         hist.append(entry)
         hist = hist[-_MAX:]
-        p = _path()
-        tmp = f"{p}.tmp"
-        with open(tmp, "w", encoding="utf-8") as fh:
-            json.dump(hist, fh, ensure_ascii=False, separators=(",", ":"))
-        os.replace(tmp, p)
+        write_json(_path(), hist)
 
 
 def recent(limit: int = 50) -> list:

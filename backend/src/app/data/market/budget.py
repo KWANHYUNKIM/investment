@@ -7,12 +7,11 @@
 """
 from __future__ import annotations
 
-import json
-import os
 import re
 import threading
 
 from app.core.config import get_settings
+from app.core.jsonstore import read_json, write_json
 
 _lock = threading.Lock()
 
@@ -125,27 +124,15 @@ def _path(user: str) -> str:
 
 
 def _load(user: str) -> dict:
-    p = _path(user)
-    if not os.path.exists(p):
-        return {"income": {"monthly_net": 0, "extra": 0, "memo": ""}, "transactions": [], "seq": 0, "cat_rules": {}}
-    try:
-        with open(p, encoding="utf-8") as fh:
-            d = json.load(fh)
-        d.setdefault("income", {"monthly_net": 0, "extra": 0, "memo": ""})
-        d.setdefault("transactions", [])
-        d.setdefault("seq", max((t.get("id", 0) for t in d["transactions"]), default=0))
-        d.setdefault("cat_rules", {})
-        return d
-    except Exception:
-        return {"income": {"monthly_net": 0, "extra": 0, "memo": ""}, "transactions": [], "seq": 0, "cat_rules": {}}
+    d = read_json(_path(user), {"income": {"monthly_net": 0, "extra": 0, "memo": ""},
+                                "transactions": [], "cat_rules": {}})
+    # seq 는 기존 거래 id 최대값에서 이어야 해서 정적 기본값으로 둘 수 없다.
+    d.setdefault("seq", max((t.get("id", 0) for t in d["transactions"]), default=0))
+    return d
 
 
 def _save(user: str, d: dict) -> None:
-    p = _path(user)
-    tmp = f"{p}.tmp"
-    with open(tmp, "w", encoding="utf-8") as fh:
-        json.dump(d, fh, ensure_ascii=False, separators=(",", ":"))
-    os.replace(tmp, p)
+    write_json(_path(user), d)
 
 
 # --- 수입(급여) ------------------------------------------------------------

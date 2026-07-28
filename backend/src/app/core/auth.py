@@ -14,7 +14,6 @@ import base64
 import hashlib
 import hmac
 import json
-import os
 import re
 import secrets
 import threading
@@ -23,6 +22,7 @@ import time
 from fastapi import Depends, Header, HTTPException
 
 from app.core.config import get_settings
+from app.core.jsonstore import read_json, write_json
 
 _ITER = 200_000
 _TTL = 7 * 24 * 3600
@@ -62,29 +62,13 @@ def _path() -> str:
 
 
 def _load() -> dict:
-    p = _path()
-    if not os.path.exists(p):
-        return {"secret": secrets.token_hex(32), "users": {}}
-    try:
-        with open(p, encoding="utf-8") as fh:
-            d = json.load(fh)
-        d.setdefault("secret", secrets.token_hex(32))
-        d.setdefault("users", {})
-        return d
-    except Exception:
-        return {"secret": secrets.token_hex(32), "users": {}}
+    # 파일이 없거나 secret 이 빠져 있으면 새로 만든다(기존 토큰은 그대로 유지된다).
+    return read_json(_path(), {"secret": secrets.token_hex(32), "users": {}})
 
 
 def _save(d: dict) -> None:
-    p = _path()
-    tmp = f"{p}.tmp"
-    with open(tmp, "w", encoding="utf-8") as fh:
-        json.dump(d, fh)
-    os.replace(tmp, p)
-    try:
-        os.chmod(p, 0o600)
-    except Exception:
-        pass
+    # 계정 파일이라 소유자만 읽게 잠근다. ensure_ascii 는 예전 파일과 같은 표기 유지.
+    write_json(_path(), d, compact=False, ensure_ascii=True, mode=0o600)
 
 
 def has_users() -> bool:

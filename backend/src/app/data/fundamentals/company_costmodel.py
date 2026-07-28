@@ -14,12 +14,12 @@
 from __future__ import annotations
 
 import json
-import os
 import re
 import threading
 import time
 
 from app.core.config import get_settings
+from app.core.jsonstore import write_json
 from app.data.fundamentals import commodities
 from app.data.fundamentals import dart_full
 from app.data.fundamentals import integrity
@@ -343,10 +343,7 @@ def build_batch(sleep_sec: float | None = None, tickers: list[str] | None = None
     }
     path = _batch_path()
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = f"{path}.tmp"
-    with open(tmp, "w", encoding="utf-8") as fh:
-        json.dump(payload, fh, ensure_ascii=False)
-    os.replace(tmp, path)
+    write_json(path, payload, compact=False)
     with _batch_lock:
         _batch_cache["mtime"] = None      # 다음 조회 때 다시 읽도록
     return {k: v for k, v in payload.items() if k != "companies"}

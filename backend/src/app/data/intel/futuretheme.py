@@ -21,6 +21,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 from app.core.cache import TTLCache
 from app.core.config import get_settings
+from app.core.jsonstore import write_json
 from app.data.macro import macro
 from app.data.news import news
 from app.data.infra import store
@@ -339,8 +340,5 @@ def snapshot(force: bool = False) -> dict:
             "generated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
             "themes": themes(force=True),
         }
-        tmp = f"{p}.tmp"
-        with open(tmp, "w", encoding="utf-8") as fh:
-            json.dump(data, fh, ensure_ascii=False, separators=(",", ":"))
-        os.replace(tmp, p)
+        write_json(p, data)
         return {"status": "saved", "date": date, "path": p, "themes": len(data["themes"])}

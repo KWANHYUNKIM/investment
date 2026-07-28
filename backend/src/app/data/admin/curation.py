@@ -5,12 +5,11 @@
 """
 from __future__ import annotations
 
-import json
-import os
 import threading
 import time
 
 from app.core.config import get_settings
+from app.core.jsonstore import read_json, write_json
 
 _lock = threading.Lock()
 _DEFAULT = {"headline": "", "picks": [], "note": "", "updated_at": None}
@@ -21,17 +20,7 @@ def _path() -> str:
 
 
 def get() -> dict:
-    p = _path()
-    if not os.path.exists(p):
-        return dict(_DEFAULT)
-    try:
-        with open(p, encoding="utf-8") as fh:
-            d = json.load(fh)
-        for k, v in _DEFAULT.items():
-            d.setdefault(k, v)
-        return d
-    except Exception:
-        return dict(_DEFAULT)
+    return read_json(_path(), _DEFAULT)
 
 
 def set_(headline: str, picks: list, note: str) -> dict:
@@ -42,9 +31,5 @@ def set_(headline: str, picks: list, note: str) -> dict:
         "updated_at": time.strftime("%Y-%m-%d %H:%M"),
     }
     with _lock:
-        p = _path()
-        tmp = f"{p}.tmp"
-        with open(tmp, "w", encoding="utf-8") as fh:
-            json.dump(d, fh, ensure_ascii=False)
-        os.replace(tmp, p)
+        write_json(_path(), d, compact=False)
     return d

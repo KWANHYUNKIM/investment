@@ -5,12 +5,11 @@
 """
 from __future__ import annotations
 
-import json
-import os
 import threading
 import time
 
 from app.core.config import get_settings
+from app.core.jsonstore import read_json, write_json
 
 _lock = threading.Lock()
 
@@ -20,27 +19,11 @@ def _path() -> str:
 
 
 def _load() -> dict:
-    p = _path()
-    if not os.path.exists(p):
-        return {"total": 0, "by_view": {}, "by_day": {}, "by_view_day": {}}
-    try:
-        with open(p, encoding="utf-8") as fh:
-            d = json.load(fh)
-    except Exception:
-        return {"total": 0, "by_view": {}, "by_day": {}, "by_view_day": {}}
-    d.setdefault("total", 0)
-    d.setdefault("by_view", {})
-    d.setdefault("by_day", {})
-    d.setdefault("by_view_day", {})
-    return d
+    return read_json(_path(), {"total": 0, "by_view": {}, "by_day": {}, "by_view_day": {}})
 
 
 def _save(d: dict) -> None:
-    p = _path()
-    tmp = f"{p}.tmp"
-    with open(tmp, "w", encoding="utf-8") as fh:
-        json.dump(d, fh, ensure_ascii=False)
-    os.replace(tmp, p)
+    write_json(_path(), d, compact=False)
 
 
 def track(view: str, user: str | None = None) -> None:

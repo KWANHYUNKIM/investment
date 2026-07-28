@@ -20,6 +20,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from app.core.config import get_settings
+from app.core.jsonstore import write_json
 from app.data.intel import industry
 from app.data.news import news
 
@@ -180,10 +181,7 @@ def snapshot(top_industries: int | None = None, force: bool = False) -> dict:
         "industry_count": len(reports),
         "industries": reports,
     }
-    tmp = _path(date) + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as fh:
-        json.dump(data, fh, ensure_ascii=False, separators=(",", ":"))
-    os.replace(tmp, _path(date))
+    write_json(_path(date), data)
     return {"status": "saved", "date": date, "industries": len(reports)}
 
 

@@ -8,13 +8,12 @@
 """
 from __future__ import annotations
 
-import json
-import os
 import re
 import threading
 import time
 
 from app.core.config import get_settings
+from app.core.jsonstore import read_json, write_json
 
 _lock = threading.Lock()
 
@@ -32,25 +31,11 @@ def _empty() -> dict:
 
 
 def _load(user: str) -> dict:
-    p = _path(user)
-    if not os.path.exists(p):
-        return _empty()
-    try:
-        with open(p, encoding="utf-8") as fh:
-            d = json.load(fh)
-        for k, v in _empty().items():
-            d.setdefault(k, v)
-        return d
-    except Exception:
-        return _empty()
+    return read_json(_path(user), _empty())
 
 
 def _save(user: str, d: dict) -> None:
-    p = _path(user)
-    tmp = f"{p}.tmp"
-    with open(tmp, "w", encoding="utf-8") as fh:
-        json.dump(d, fh, ensure_ascii=False, separators=(",", ":"))
-    os.replace(tmp, p)
+    write_json(_path(user), d)
 
 
 def _sum(items) -> float:

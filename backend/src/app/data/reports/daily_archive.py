@@ -25,6 +25,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from app.core.config import get_settings
+from app.core.jsonstore import write_json
 from app.core.numeric import json_float
 from app.data.macro import crossasset
 from app.data.market import foreign_view
@@ -294,10 +295,7 @@ def save(data: dict) -> str:
     if not date:
         raise ValueError("daily report has no date")
     path = _path(date)
-    tmp = f"{path}.tmp"
-    with open(tmp, "w", encoding="utf-8") as fh:
-        json.dump(data, fh, ensure_ascii=False, separators=(",", ":"))
-    os.replace(tmp, path)
+    write_json(path, data)
     return path
 
 

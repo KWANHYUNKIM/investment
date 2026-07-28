@@ -11,12 +11,11 @@
 """
 from __future__ import annotations
 
-import json
-import os
 import re
 import threading
 
 from app.core.config import get_settings
+from app.core.jsonstore import read_json, write_json
 
 _lock = threading.Lock()
 _R = 0.05  # 기본 연 기대수익률(안전+투자 혼합 가정)
@@ -796,22 +795,11 @@ def _path(user: str) -> str:
 
 
 def _load(user: str) -> dict:
-    p = _path(user)
-    if os.path.exists(p):
-        try:
-            with open(p, encoding="utf-8") as fh:
-                return json.load(fh)
-        except Exception:
-            pass
-    return {"profile": {}}
+    return read_json(_path(user), {"profile": {}})
 
 
 def _save(user: str, d: dict) -> None:
-    p = _path(user)
-    tmp = f"{p}.tmp"
-    with open(tmp, "w", encoding="utf-8") as fh:
-        json.dump(d, fh, ensure_ascii=False, separators=(",", ":"))
-    os.replace(tmp, p)
+    write_json(_path(user), d)
 
 
 def _defaults(user: str) -> dict:
