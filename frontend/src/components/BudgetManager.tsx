@@ -45,6 +45,8 @@ export function BudgetManager() {
   const [basis, setBasis] = useState<"billing_month" | "date">("billing_month");
   const [axis, setAxis] = useState<Axis>("category");
   const [pick, setPick] = useState<{ axis: Axis; value: string } | null>(null);
+  const [view, setView] = useState<"list" | "calendar">("list");
+  const [day, setDay] = useState("");          // 캘린더에서 고른 하루 (YYYY-MM-DD)
   const [version, setVersion] = useState(0);
 
   const [emMonths, setEmMonths] = useState(3);
@@ -176,6 +178,7 @@ export function BudgetManager() {
     ];
   }, [s, axis]);
 
+  // 축 필터가 걸린 거래 — 캘린더도 이걸 그린다(카테고리를 고르면 달력도 같이 좁혀진다).
   const rows = useMemo(() => {
     const all = s?.transactions ?? [];
     if (!pick) return all;
@@ -186,6 +189,12 @@ export function BudgetManager() {
       return pick.value === "고정비" ? !!t.fixed : !t.fixed;
     });
   }, [s, pick]);
+
+  // 목록에 실제로 뿌릴 것 — 캘린더에서 하루를 골랐으면 그 날짜까지 좁힌다.
+  const listRows = useMemo(
+    () => (day ? rows.filter((t) => t.date === day) : rows),
+    [rows, day],
+  );
 
   const maxBucket = buckets[0]?.amount || 1;
   const monthValue = month || s?.month || "";
@@ -212,9 +221,12 @@ export function BudgetManager() {
             {s && s.months.length > 0 && (
               <select
                 value={monthValue}
-                onChange={(e) => { setMonth(e.target.value); setPick(null); }}
+                onChange={(e) => { setMonth(e.target.value); setPick(null); setDay(""); }}
                 className="rounded bg-white/20 px-1.5 py-0.5 text-xs text-white outline-none"
               >
+                {/* 카드사마다 결제일이 달라 청구월이 갈린다 — 다른 달에 있는 카드가
+                    '안 들어간 것처럼' 보이지 않게 전체 보기를 둔다. */}
+                <option value="all" className="text-black">전체 기간</option>
                 {s.months.map((m) => (
                   <option key={m} value={m} className="text-black">{m}</option>
                 ))}
@@ -531,25 +543,50 @@ export function BudgetManager() {
 
               {/* 거래 목록 */}
               <div className="overflow-hidden rounded-md border border-[#d0d0d0] bg-white shadow-sm">
-                <div className="flex items-center justify-between border-b border-[#d0d0d0] bg-[#f3f2f1] px-3 py-1.5">
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#d0d0d0] bg-[#f3f2f1] px-3 py-1.5">
                   <span className="text-xs font-bold text-[#217346]">
-                    거래 내역 {rows.length}건{pick ? ` · ${pick.value}` : ""}
+                    거래 내역 {listRows.length}건
+                    {pick ? ` · ${pick.value}` : ""}
+                    {day ? ` · ${day}` : ""}
                   </span>
-                  {s && monthValue && (
-                    <button
-                      onClick={async () => {
-                        if (!confirm(`${monthValue} 내역을 전부 지울까요?`)) return;
-                        await api.budgetClearMonth(monthValue, basis);
-                        bump();
-                      }}
-                      className="text-[11px] text-[#bbb] hover:text-rose-500"
-                    >
-                      이 달 비우기
-                    </button>
-                  )}
+                  <div className="flex items-center gap-2">
+                    {day && (
+                      <button onClick={() => setDay("")} className="rounded border border-[#cdcdcd] bg-white px-2 py-0.5 text-[11px] text-[#666]">
+                        날짜 해제
+                      </button>
+                    )}
+                    <div className="flex overflow-hidden rounded border border-[#cdcdcd]">
+                      {([["list", "목록"], ["calendar", "캘린더"]] as const).map(([v, label]) => (
+                        <button
+                          key={v}
+                          onClick={() => setView(v)}
+                          className={`px-2 py-0.5 text-[11px] ${view === v ? "bg-[#217346] text-white" : "bg-white text-[#666] hover:bg-[#eef6f0]"}`}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                    {s && monthValue && monthValue !== "all" && (
+                      <button
+                        onClick={async () => {
+                          if (!confirm(`${monthValue} 내역을 전부 지울까요?`)) return;
+                          await api.budgetClearMonth(monthValue, basis);
+                          bump();
+                        }}
+                        className="text-[11px] text-[#bbb] hover:text-rose-500"
+                      >
+                        이 달 비우기
+                      </button>
+                    )}
+                  </div>
                 </div>
-                <div className="max-h-[70vh] overflow-auto">
-                  <TxTable rows={rows} categories={s?.categories ?? []} onChange={bump} />
+                {view === "calendar" && <CalendarView rows={rows} day={day} setDay={setDay} />}
+                <div className={view === "calendar" ? "max-h-[40vh] overflow-auto border-t border-[#eee]" : "max-h-[70vh] overflow-auto"}>
+                  {view === "calendar" && !day ? (
+                    <div className="py-4 text-center text-[11px] text-[#aaa]">달력에서 날짜를 누르면 그날 내역이 여기 나옵니다.</div>
+                  ) : (
+                    <TxTable rows={listRows} categories={s?.categories ?? []} onChange={bump} />
+                  )}
                 </div>
               </div>
             </>
@@ -590,6 +627,129 @@ function TypeBadge({ type }: { type: string }) {
   };
   if (type === "일시불") return null;
   return <span className={`rounded border px-1 text-[10px] ${tone[type] ?? "border-[#e0e0e0] bg-[#fafafa] text-[#777]"}`}>{type}</span>;
+}
+
+// --- 캘린더 ------------------------------------------------------------------
+// 청구월이 아니라 **거래일** 로 그린다. '언제 얼마나 썼나' 는 카드값이 빠지는 달이
+// 아니라 긁은 날의 이야기라서다. 그래서 9월 청구분을 보고 있어도 달력은 7·8월이 뜬다.
+
+const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"];
+
+/** 만 원 단위로 줄여 칸 안에 들어가게. 12,300 → 1.2만 */
+function compact(v: number): string {
+  if (!v) return "";
+  if (v >= 10000) {
+    const man = v / 10000;
+    return `${man >= 100 ? Math.round(man) : man.toFixed(1).replace(/\.0$/, "")}만`;
+  }
+  return `${Math.round(v / 1000)}천`;
+}
+
+function CalendarView({
+  rows, day, setDay,
+}: {
+  rows: BudgetTx[];
+  day: string;
+  setDay: (d: string) => void;
+}) {
+  const months = useMemo(() => {
+    const byDay = new Map<string, { amount: number; count: number }>();
+    for (const t of rows) {
+      if (!t.date || t.amount <= 0) continue;
+      const cur = byDay.get(t.date) ?? { amount: 0, count: 0 };
+      cur.amount += t.amount;
+      cur.count += 1;
+      byDay.set(t.date, cur);
+    }
+    const keys = [...new Set([...byDay.keys()].map((d) => d.slice(0, 7)))].sort().reverse();
+    const max = Math.max(1, ...[...byDay.values()].map((v) => v.amount));
+
+    return keys.map((ym) => {
+      const [y, m] = ym.split("-").map(Number);
+      // Date 는 로컬 타임존 기준이라 UTC 로 만들면 하루가 밀린다 — 로컬 생성자를 쓴다.
+      const first = new Date(y, m - 1, 1);
+      const lastDate = new Date(y, m, 0).getDate();
+      const cells: ({ date: string; dom: number; amount: number; count: number } | null)[] = [];
+      for (let i = 0; i < first.getDay(); i++) cells.push(null);
+      for (let dnum = 1; dnum <= lastDate; dnum++) {
+        const date = `${ym}-${String(dnum).padStart(2, "0")}`;
+        const hit = byDay.get(date);
+        cells.push({ date, dom: dnum, amount: hit?.amount ?? 0, count: hit?.count ?? 0 });
+      }
+      while (cells.length % 7) cells.push(null);
+      const weeks: typeof cells[] = [];
+      for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7));
+      const total = cells.reduce((a, c) => a + (c?.amount ?? 0), 0);
+      return { ym, weeks, total, max };
+    });
+  }, [rows]);
+
+  if (!months.length) {
+    return <div className="py-10 text-center text-xs text-[#aaa]">그릴 거래가 없습니다.</div>;
+  }
+
+  return (
+    <div className="flex flex-col gap-4 p-3">
+      {months.map(({ ym, weeks, total, max }) => (
+        <div key={ym}>
+          <div className="mb-1 flex items-baseline justify-between">
+            <span className="text-xs font-bold text-[#217346]">{ym.replace("-", "년 ")}월</span>
+            <span className="text-[11px] tabular-nums text-[#666]">{won(total)}</span>
+          </div>
+          <table className="w-full table-fixed border-collapse text-[10px]">
+            <thead>
+              <tr>
+                {WEEKDAYS.map((w, i) => (
+                  <th key={w} className={`border border-[#e8e8e8] bg-[#f7f7f7] py-0.5 font-semibold ${i === 0 ? "text-[#c92a2a]" : i === 6 ? "text-[#1971c2]" : "text-[#888]"}`}>
+                    {w}
+                  </th>
+                ))}
+                <th className="w-[15%] border border-[#e8e8e8] bg-[#eef4f0] py-0.5 font-semibold text-[#217346]">주계</th>
+              </tr>
+            </thead>
+            <tbody>
+              {weeks.map((week, wi) => {
+                const weekTotal = week.reduce((a, c) => a + (c?.amount ?? 0), 0);
+                return (
+                  <tr key={wi}>
+                    {week.map((c, ci) => {
+                      if (!c) return <td key={ci} className="h-12 border border-[#f0f0f0] bg-[#fbfbfb]" />;
+                      const on = day === c.date;
+                      // 금액이 클수록 진하게 — 제곱근이라 소액 지출도 눈에 보인다.
+                      const heat = c.amount ? Math.min(1, Math.sqrt(c.amount / max)) : 0;
+                      return (
+                        <td
+                          key={ci}
+                          onClick={() => c.amount && setDay(on ? "" : c.date)}
+                          title={c.amount ? `${c.date} · ${c.count}건 · ${won(c.amount)}` : c.date}
+                          className={`h-12 border align-top ${c.amount ? "cursor-pointer" : ""} ${
+                            on ? "border-[#217346] ring-1 ring-[#217346]" : "border-[#f0f0f0]"
+                          }`}
+                          style={{ background: heat ? `rgba(33,115,70,${0.08 + heat * 0.42})` : undefined }}
+                        >
+                          <div className={`px-1 pt-0.5 ${ci === 0 ? "text-[#c92a2a]" : ci === 6 ? "text-[#1971c2]" : "text-[#999]"}`}>
+                            {c.dom}
+                          </div>
+                          {c.amount > 0 && (
+                            <div className={`px-1 text-right font-bold tabular-nums ${heat > 0.55 ? "text-white" : "text-[#1f1f1f]"}`}>
+                              {compact(c.amount)}
+                            </div>
+                          )}
+                        </td>
+                      );
+                    })}
+                    <td className="border border-[#e8e8e8] bg-[#f6faf7] px-1 text-right align-middle tabular-nums text-[#217346]">
+                      {weekTotal ? compact(weekTotal) : ""}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 function TxTable({ rows, categories, onChange }: { rows: BudgetTx[]; categories: string[]; onChange: () => void }) {

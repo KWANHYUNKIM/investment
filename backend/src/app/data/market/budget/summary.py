@@ -48,6 +48,9 @@ def _bucket(rows: list[tuple[str, float]], denom: float) -> list[dict]:
     return sorted(out, key=lambda x: -x["amount"])
 
 
+ALL = "all"     # 월 선택에서 '전체 기간'
+
+
 def summary(user: str, month: str | None = None, basis: str = "billing_month") -> dict:
     d = load(user)
     txs = d["transactions"]
@@ -58,7 +61,9 @@ def summary(user: str, month: str | None = None, basis: str = "billing_month") -
 
     recurring = C.recurring_keys(txs)
     fixed_rules = d.get("fixed_rules", {})
-    mtx = [t for t in txs if _month_of(t, basis) == month]
+    # 카드사마다 결제일이 달라 청구월이 갈린다(신한 9월 · 삼성 8월). 최신 달만 보면
+    # 다른 달에 있는 카드가 '안 들어간 것처럼' 보이므로 전체 기간을 볼 수 있어야 한다.
+    mtx = list(txs) if month == ALL else [t for t in txs if _month_of(t, basis) == month]
     for t in mtx:
         t["fixed"] = C.is_fixed(t, recurring, fixed_rules)
 
