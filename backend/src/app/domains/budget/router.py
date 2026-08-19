@@ -41,6 +41,12 @@ def budget_installments(user: str = Depends(require_auth), svc: BudgetService = 
     return svc.installments(user)
 
 
+@router.get("/budget/fixed-costs")
+def budget_fixed_costs(user: str = Depends(require_auth), svc: BudgetService = Svc):
+    """고정지출(구독·통신·공과금·반복 결제) 목록 + 월/연 환산 + 승격 후보."""
+    return svc.fixed_costs(user)
+
+
 @router.get("/budget/issuers")
 def budget_issuers(svc: BudgetService = Svc):
     """전용 파서가 있는 카드사 목록 + 카테고리 목록."""

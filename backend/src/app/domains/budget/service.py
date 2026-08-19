@@ -18,6 +18,9 @@ class BudgetService:
     def installments(self, user: str) -> dict:
         return budget_data.installments(user)
 
+    def fixed_costs(self, user: str) -> dict:
+        return budget_data.fixed_costs(user)
+
     def issuers(self) -> dict:
         return {"issuers": budget_data.ISSUERS, "categories": budget_data.CATEGORIES}
 

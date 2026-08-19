@@ -18,6 +18,7 @@ import {
   type BudgetCardsOverview,
   type CardCycle,
   type CardStatementPreview,
+  type FixedCostBoard,
 } from "@/lib/api";
 import { useApiData } from "@/lib/useApiData";
 
@@ -50,6 +51,8 @@ export function BudgetManager() {
   const [pick, setPick] = useState<{ axis: Axis; value: string } | null>(null);
   const [view, setView] = useState<"list" | "calendar">("list");
   const [day, setDay] = useState("");          // 캘린더에서 고른 하루 (YYYY-MM-DD)
+  const [cat, setCat] = useState("");          // 거래 목록 카테고리 필터
+  const [q, setQ] = useState("");              // 가맹점 검색
   const [version, setVersion] = useState(0);
 
   const [emMonths, setEmMonths] = useState(3);
@@ -79,6 +82,7 @@ export function BudgetManager() {
     `${emMonths}|${investRatio}|${version}`,
   );
   const cards = useApiData<BudgetCardsOverview>(() => api.budgetCards(), `${version}`);
+  const fixed = useApiData<FixedCostBoard>(() => api.budgetFixedCosts(), `${version}`);
 
   const s = sum.data;
   const p = plan.data;
@@ -194,14 +198,23 @@ export function BudgetManager() {
     });
   }, [s, pick]);
 
-  // 목록에 실제로 뿌릴 것 — 캘린더에서 하루를 골랐으면 그 날짜까지 좁힌다.
+  // 목록에 실제로 뿌릴 것 — 축 필터 위에 카테고리·검색·날짜를 더 건다.
   // 예정 할부는 맨 위에 붙인다(아직 안 나갔지만 이미 확정된 돈이라 먼저 보여야 한다).
-  // 축 필터나 날짜 필터가 걸리면 뺀다 — 거래일이 없어 그 조건에 답할 수 없다.
+  // 좁히는 조건이 하나라도 걸리면 예정분은 뺀다 — 거래일이 없어 그 조건에 답할 수 없다.
   const listRows = useMemo(() => {
-    const base = day ? rows.filter((t) => t.date === day) : rows;
-    if (day || pick || !s?.projected.length) return base;
+    const needle = q.trim().toLowerCase();
+    let base = rows;
+    if (day) base = base.filter((t) => t.date === day);
+    if (cat) base = base.filter((t) => t.category === cat);
+    if (needle) base = base.filter((t) => t.merchant.toLowerCase().includes(needle));
+    if (day || cat || needle || pick || !s?.projected.length) return base;
     return [...s.projected, ...base];
-  }, [rows, day, pick, s]);
+  }, [rows, day, cat, q, pick, s]);
+
+  const listTotal = useMemo(
+    () => listRows.reduce((a, t) => a + (t.amount > 0 ? t.amount : 0), 0),
+    [listRows],
+  );
 
   const maxBucket = buckets[0]?.amount || 1;
   const monthValue = month || s?.month || "";
@@ -353,6 +366,11 @@ export function BudgetManager() {
               )}
             </div>
           </div>
+
+          {/* 고정지출 */}
+          {fixed.data && (fixed.data.items.length > 0 || fixed.data.candidates.length > 0) && (
+            <FixedCosts board={fixed.data} onChange={bump} />
+          )}
 
           {/* 카드별 결제일·이용기간 */}
           {cards.data && cards.data.cards.length > 0 && (
@@ -579,13 +597,34 @@ export function BudgetManager() {
                 <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#d0d0d0] bg-[#f3f2f1] px-3 py-1.5">
                   <span className="text-xs font-bold text-[#217346]">
                     거래 내역 {listRows.length}건
+                    <span className="ml-1 font-normal tabular-nums text-[#666]">{won(listTotal)}</span>
                     {pick ? ` · ${pick.value}` : ""}
                     {day ? ` · ${day}` : ""}
                   </span>
-                  <div className="flex items-center gap-2">
-                    {day && (
-                      <button onClick={() => setDay("")} className="rounded border border-[#cdcdcd] bg-white px-2 py-0.5 text-[11px] text-[#666]">
-                        날짜 해제
+                  <div className="flex flex-wrap items-center gap-2">
+                    {/* 카테고리·가맹점 필터 — 축 패널을 클릭하지 않고도 바로 좁힌다. */}
+                    <select
+                      value={cat}
+                      onChange={(e) => setCat(e.target.value)}
+                      className={`rounded border px-1 py-0.5 text-[11px] outline-none ${cat ? "border-[#217346] bg-[#eef6f0] text-[#217346]" : "border-[#cdcdcd] bg-white text-[#666]"}`}
+                    >
+                      <option value="">카테고리 전체</option>
+                      {(s?.by_category ?? []).map((c) => (
+                        <option key={c.category} value={c.category}>{c.category} ({c.count})</option>
+                      ))}
+                    </select>
+                    <input
+                      value={q}
+                      onChange={(e) => setQ(e.target.value)}
+                      placeholder="가맹점 검색"
+                      className="w-24 rounded border border-[#cdcdcd] bg-white px-1.5 py-0.5 text-[11px] outline-none focus:border-[#217346] sm:w-32"
+                    />
+                    {(cat || q || day) && (
+                      <button
+                        onClick={() => { setCat(""); setQ(""); setDay(""); }}
+                        className="rounded border border-[#cdcdcd] bg-white px-2 py-0.5 text-[11px] text-[#666] hover:bg-[#f5f5f5]"
+                      >
+                        필터 해제
                       </button>
                     )}
                     <div className="flex overflow-hidden rounded border border-[#cdcdcd]">
@@ -660,6 +699,112 @@ function TypeBadge({ type }: { type: string }) {
   };
   if (type === "일시불") return null;
   return <span className={`rounded border px-1 text-[10px] ${tone[type] ?? "border-[#e0e0e0] bg-[#fafafa] text-[#777]"}`}>{type}</span>;
+}
+
+// --- 고정지출 -----------------------------------------------------------------
+// 구독·통신·공과금은 이번 달에 많이 썼다고 다음 달에 줄일 수 있는 돈이 아니다.
+// 변동비와 같은 자리에 두면 '얼마를 줄일 수 있는가' 에 답할 수 없어서 따로 뺀다.
+
+function FixedCosts({ board, onChange }: { board: FixedCostBoard; onChange: () => void }) {
+  const [busy, setBusy] = useState("");
+  const pin = async (merchant: string, on: boolean) => {
+    setBusy(merchant);
+    try { await api.budgetSetFixed(merchant, on ? true : false); onChange(); }
+    finally { setBusy(""); }
+  };
+
+  return (
+    <div className="overflow-hidden rounded-md border border-[#d0d0d0] bg-white shadow-sm">
+      <div className="flex items-center justify-between bg-[#217346] px-4 py-2 text-white">
+        <span className="text-sm font-semibold">고정지출 (계속 나가는 돈)</span>
+        <span className="text-xs tabular-nums">월 {won(board.monthly_total)}</span>
+      </div>
+      <div className="p-3">
+        <div className="mb-2 grid grid-cols-3 gap-2 text-center">
+          <Mini label="항목" value={`${board.count}개`} />
+          <Mini label="월 합계" value={won(board.monthly_total)} color={RED} />
+          <Mini label="연 환산" value={won(board.annual_total)} color={RED} />
+        </div>
+
+        {board.items.length === 0 ? (
+          <div className="py-6 text-center text-[11px] text-[#aaa]">
+            아직 고정지출로 잡힌 게 없습니다. 거래 목록에서 &lsquo;고정&rsquo; 을 눌러 지정할 수 있습니다.
+          </div>
+        ) : (
+          <table className="w-full text-[11px]">
+            <thead>
+              <tr className="border-b border-[#eee] text-[10px] text-[#999]">
+                <th className="px-1 py-1 text-left font-semibold">항목</th>
+                <th className="px-1 py-1 text-left font-semibold">주기</th>
+                <th className="px-1 py-1 text-right font-semibold">월</th>
+                <th className="px-1 py-1 text-right font-semibold">연</th>
+                <th className="px-1 py-1" />
+              </tr>
+            </thead>
+            <tbody>
+              {board.items.map((it) => (
+                <tr key={it.key} className="border-b border-[#f5f5f5]">
+                  <td className="px-1 py-1">
+                    <div className="text-[#333]">{it.merchant}</div>
+                    <div className="text-[10px] text-[#aaa]">
+                      {it.category} · {it.source}
+                      {it.count > 1 && ` · ${it.count}회`}
+                      {it.spread_pct != null && it.count > 1 && ` · 편차 ${it.spread_pct}%`}
+                    </div>
+                  </td>
+                  <td className="px-1 py-1 text-[10px] text-[#777]">
+                    {it.cadence}
+                    {it.next_expected && <div className="text-[#bbb]">다음 {it.next_expected.slice(5)}</div>}
+                  </td>
+                  <td className="px-1 py-1 text-right tabular-nums font-semibold text-[#333]">{num(it.monthly)}</td>
+                  <td className="px-1 py-1 text-right tabular-nums text-[#888]">{num(it.annual)}</td>
+                  <td className="px-1 py-1 text-right">
+                    <button
+                      onClick={() => pin(it.merchant, false)}
+                      disabled={busy === it.merchant}
+                      title="고정지출에서 빼기(변동비로)"
+                      className="text-[10px] text-[#ccc] hover:text-rose-500 disabled:opacity-50"
+                    >
+                      제외
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+
+        {board.candidates.length > 0 && (
+          <div className="mt-3 border-t border-[#eee] pt-2">
+            <div className="mb-1 text-[10px] font-semibold text-[#999]">
+              반복되지만 금액이 달라 변동비로 둔 것 — 고정지출이면 눌러서 옮기세요
+            </div>
+            <ul className="flex flex-col gap-0.5">
+              {board.candidates.map((c) => (
+                <li key={c.key} className="flex items-center justify-between gap-2 text-[11px]">
+                  <span className="min-w-0 truncate text-[#666]">
+                    {c.merchant}
+                    <span className="ml-1 text-[10px] text-[#aaa]">
+                      {c.count}회 · {num(c.min)}~{num(c.max)}
+                    </span>
+                  </span>
+                  <button
+                    onClick={() => pin(c.merchant, true)}
+                    disabled={busy === c.merchant}
+                    className="shrink-0 rounded border border-[#cdcdcd] px-1.5 py-0.5 text-[10px] text-[#217346] hover:bg-[#eef6f0] disabled:opacity-50"
+                  >
+                    고정지출로
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        <p className="mt-2 text-[10px] leading-relaxed text-[#aaa]">{board.note}</p>
+      </div>
+    </div>
+  );
 }
 
 // --- 카드별 결제일·이용기간 ---------------------------------------------------
@@ -1001,6 +1146,17 @@ function TxTable({ rows, categories, onChange }: { rows: BudgetTx[]; categories:
   }
   return (
     <table className="w-full text-[11px]">
+      <thead className="sticky top-0 z-10 bg-[#f7f7f7] text-[10px] text-[#999]">
+        <tr>
+          <th className="px-2 py-1 text-left font-semibold">거래일</th>
+          <th className="px-2 py-1 text-left font-semibold">가맹점</th>
+          <th className="px-1 py-1 text-left font-semibold">고정</th>
+          <th className="px-2 py-1 text-left font-semibold">분류</th>
+          <th className="px-2 py-1 text-right font-semibold">금액</th>
+          <th className="px-2 py-1 text-right font-semibold">할부 잔여</th>
+          <th className="px-1 py-1" />
+        </tr>
+      </thead>
       <tbody>
         {rows.map((t) => (
           // 예정분은 저장된 거래가 아니라 계산 결과다 — 편집할 게 없으니 컨트롤을 빼고
@@ -1057,6 +1213,23 @@ function TxTable({ rows, categories, onChange }: { rows: BudgetTx[]; categories:
               {won(t.amount)}
               {t.total !== t.charged && (
                 <div className="text-[10px] font-normal text-[#bbb]">전액 {num(t.total)}</div>
+              )}
+            </td>
+            {/* 할부 잔여 — 이 건이 앞으로 얼마나 더 나갈지. 일시불은 빈 칸으로 둔다. */}
+            <td className="whitespace-nowrap px-2 py-1 text-right tabular-nums">
+              {t.installment && t.installment.months > 1 ? (
+                t.installment.remaining > 0 ? (
+                  <>
+                    <div className="font-semibold" style={{ color: BLUE }}>{num(t.installment.remaining)}</div>
+                    <div className="text-[10px] text-[#aaa]">{t.installment.months - t.installment.seq}회 남음</div>
+                  </>
+                ) : (
+                  <span className="text-[10px] text-[#ccc]">
+                    {t.installment.seq >= t.installment.months ? "완납" : "잔액 미상"}
+                  </span>
+                )
+              ) : (
+                <span className="text-[#e8e8e8]">·</span>
               )}
             </td>
             <td className="px-1 py-1 text-right">

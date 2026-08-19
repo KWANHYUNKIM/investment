@@ -204,6 +204,46 @@ export interface BudgetCardsOverview {
   defaults: CardCycle;
 }
 
+// --- 고정지출 ---------------------------------------------------------------
+// 구독·통신·공과금처럼 계속 나가는 돈. 변동비와 섞어 두면 '얼마를 줄일 수 있는가' 에
+// 답할 수 없어서 따로 뺀다. 판정 근거(source)를 같이 주므로 화면에서 설명할 수 있다.
+export interface FixedCost {
+  merchant: string;
+  key: string;
+  category: string;
+  cards: string[];
+  count: number;
+  months: string[];
+  min: number;
+  max: number;
+  avg: number;
+  last_amount: number;
+  total: number;
+  steady: boolean;
+  spread_pct: number | null;
+  interval_days: number;
+  cadence: string;
+  last_date: string;
+  next_expected: string;
+  source: string;
+  monthly: number;
+  annual: number;
+}
+
+export interface FixedCostCandidate extends Omit<FixedCost, "source" | "monthly" | "annual"> {
+  reason: string;
+}
+
+export interface FixedCostBoard {
+  items: FixedCost[];
+  candidates: FixedCostCandidate[];
+  count: number;
+  monthly_total: number;
+  annual_total: number;
+  by_category: { category: string; monthly: number }[];
+  note: string;
+}
+
 export interface PayslipParse {
   filename: string;
   net: number | null;
@@ -231,6 +271,7 @@ export const budgetApi = {
   budgetSummary: (month?: string, basis: "billing_month" | "date" = "billing_month") =>
     request<BudgetSummary>(`/api/data/budget/summary?basis=${basis}${month ? `&month=${month}` : ""}`),
   budgetInstallments: () => request<BudgetInstallmentBoard>(`/api/data/budget/installments`),
+  budgetFixedCosts: () => request<FixedCostBoard>(`/api/data/budget/fixed-costs`),
   budgetIssuers: () => request<{ issuers: string[]; categories: string[] }>(`/api/data/budget/issuers`),
 
   budgetSetIncome: (monthly_net: number, extra = 0, memo = "") =>

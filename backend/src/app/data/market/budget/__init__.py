@@ -13,7 +13,7 @@
 """
 from __future__ import annotations
 
-from . import cards, categories, cycles, payslip, store
+from . import cards, categories, cycles, payslip, recurring, store
 from .categories import CATEGORIES, categorize
 from .store import (add_transactions, clear_import, clear_month, delete_transaction,
                     move_month, recalc_billing_months, set_category, set_cycle,
@@ -73,6 +73,15 @@ def preview_file(user: str, filename: str, data: bytes) -> dict:
     rep["stats"] = _stats(txs)
     rep["filename"] = filename
     return rep
+
+
+def fixed_costs(user: str) -> dict:
+    """고정지출(계속 결제되는 것) 목록 + 월/연 환산.
+
+    변동비와 같은 자리에 섞어 두면 '얼마를 줄일 수 있는가' 에 답할 수 없어서 따로 뺀다.
+    """
+    d = store.load(user)
+    return recurring.analyze(d["transactions"], d.get("fixed_rules", {}))
 
 
 def cards_overview(user: str) -> dict:
@@ -164,6 +173,7 @@ __all__ = [
     "CATEGORIES", "ISSUERS", "add_transactions", "cards", "cards_overview", "categories",
     "categorize", "clear_import", "clear_month", "cycles", "delete_transaction",
     "import_csv", "import_file", "installments", "months_of", "move_month",
-    "parse_payslip", "payslip", "plan", "preview_file", "recalc_billing_months",
+    "fixed_costs", "parse_payslip", "payslip", "plan", "preview_file",
+    "recalc_billing_months", "recurring",
     "set_category", "set_cycle", "set_fixed", "set_income", "state", "store", "summary",
 ]

@@ -125,7 +125,9 @@ FIXED_KEYWORDS = ("구독", "정기결제", "정기 결제", "멤버십", "월�
 # 가맹점명 정규화 — 지점·단말기 번호가 붙어도 같은 곳으로 묶는다.
 #   "스타벅스 강남2호점", "스타벅스강남R" → "스타벅스강남"
 _STRIP = re.compile(r"[\s\-_·.,()\[\]{}*#/]+")
-_TAIL = re.compile(r"(지점|점|store|shop)?\d*$")
+# 지점 접미사는 앞의 숫자까지 통째로 떼야 한다 — '강남2호점' 에서 '점' 만 떼면
+# '강남2호' 가 남아 '강남' 과 다른 가맹점이 되고 반복 결제가 안 잡힌다.
+_TAIL = re.compile(r"(?:\d*(?:호점|지점|본점|직영점|점|store|shop|branch))+\d*$")
 
 
 def merchant_key(merchant: str) -> str:
@@ -134,37 +136,16 @@ def merchant_key(merchant: str) -> str:
     return _TAIL.sub("", t) or t
 
 
-def is_fixed(tx: dict, recurring: set[str], overrides: dict[str, bool] | None = None) -> bool:
-    """이 거래가 고정비인가.
+def is_fixed(tx: dict, fixed_keys: set[str], overrides: dict[str, bool] | None = None) -> bool:
+    """이 거래가 고정비인가 — 판정 규칙은 ``recurring.analyze`` 한 곳에만 둔다.
 
-    우선순위: 사용자가 직접 지정한 규칙 > 카테고리·키워드 > 반복 결제 감지.
-    ``recurring`` 은 ``recurring_keys()`` 가 만든, 2개월 이상 반복된 가맹점 키 집합.
+    ``fixed_keys`` 는 ``recurring.steady_keys`` 가 만든 가맹점 키 집합이다. 예전에는
+    여기서 '여러 달에 나왔으면 고정비' 로 따로 판정했는데, 그러면 매달 가지만 금액이
+    제각각인 마트까지 고정비가 됐고 고정지출 화면의 합계와도 어긋났다.
     """
     merchant = tx.get("merchant", "")
     if overrides:
         ov = overrides.get(merchant)
         if ov is not None:
             return bool(ov)
-    if tx.get("category") in FIXED_CATEGORIES:
-        return True
-    low = merchant.lower()
-    if any(k in low for k in FIXED_KEYWORDS):
-        return True
-    return merchant_key(merchant) in recurring
-
-
-def recurring_keys(txs: list[dict], min_months: int = 2) -> set[str]:
-    """서로 다른 청구월에 ``min_months`` 번 이상 나온 가맹점 키.
-
-    금액이 조금씩 달라도(통신요금·전기요금) 반복이면 고정비로 본다. 취소·환불은
-    제외한다 — 반복처럼 보여도 나가는 돈이 아니다.
-    """
-    seen: dict[str, set[str]] = {}
-    for t in txs:
-        if t.get("amount", 0) <= 0:
-            continue
-        month = str(t.get("billing_month") or t.get("date", ""))[:7]
-        if not month:
-            continue
-        seen.setdefault(merchant_key(t.get("merchant", "")), set()).add(month)
-    return {k for k, months in seen.items() if len(months) >= min_months and k}
+    return merchant_key(merchant) in fixed_keys

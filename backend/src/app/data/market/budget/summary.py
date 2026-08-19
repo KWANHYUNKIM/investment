@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from . import categories as C
 from . import cycles as C_cycles
+from . import recurring as R
 from .cards import model as M
 from .store import load
 
@@ -67,8 +68,8 @@ def summary(user: str, month: str | None = None, basis: str = "billing_month") -
     future = sorted(m for m in proj_all if m not in actual_months)
     months = sorted(set(actual_months) | set(future), reverse=True)
 
-    recurring = C.recurring_keys(txs)
     fixed_rules = d.get("fixed_rules", {})
+    recurring = R.steady_keys(txs, fixed_rules)
     # 카드사마다 결제일이 달라 청구월이 갈린다(신한 9월 · 삼성 8월). 최신 달만 보면
     # 다른 달에 있는 카드가 '안 들어간 것처럼' 보이므로 전체 기간을 볼 수 있어야 한다.
     mtx = list(txs) if month == ALL else [t for t in txs if _month_of(t, basis) == month]
@@ -277,8 +278,8 @@ def plan(user: str, emergency_months: int = 3, invest_ratio: float = 0.5) -> dic
     months = months_of(txs)
     recent = months[:3]
 
-    recurring = C.recurring_keys(txs)
     fixed_rules = d.get("fixed_rules", {})
+    recurring = R.steady_keys(txs, fixed_rules)
     per_month, fixed_per_month = [], []
     for m in recent:
         rows = [t for t in txs if _month_of(t, "billing_month") == m and t["amount"] > 0]
