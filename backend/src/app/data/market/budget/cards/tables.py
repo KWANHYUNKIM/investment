@@ -11,6 +11,11 @@
 **인코딩.** 한국 카드사 CSV 는 EUC-KR(cp949)이 아직 많고, HTML 은 meta charset 에
 적어 준다. BOM → meta charset → UTF-8 → cp949 순으로 시도한다.
 
+**PDF.** 메일로 오는 이용대금명세서는 대개 PDF 다. 표 격자선이 아니라 좌표로만
+칸이 나뉘어 있어서, 추출한 텍스트에서 **공백 2칸 이상**을 칸 구분으로 본다(한 칸
+공백은 가맹점 이름 안에도 흔하다). 격자가 아니라 추정이므로 여기서 나온 표는
+전용 파서가 아니라 대개 ``generic`` 이 받는다.
+
 이 모듈은 의미를 해석하지 않는다. 어떤 컬럼이 금액인지는 카드사별 파서가 정한다.
 """
 from __future__ import annotations
@@ -39,6 +44,8 @@ def sniff(data: bytes, filename: str = "") -> str:
         return "xlsx"
     if head.startswith(_XLS_MAGIC):
         return "xls"
+    if head.lstrip(b"\r\n\t ").startswith(b"%PDF"):
+        return "pdf"
     probe = head.lstrip(b"\xef\xbb\xbf \r\n\t")[:400].lower()
     if probe.startswith(b"<") and (b"<html" in probe or b"<table" in probe or b"<?xml" in probe):
         return "html"
@@ -151,6 +158,42 @@ def excel_tables(data: bytes, kind: str) -> list[list[list[str]]]:
     return out
 
 
+# --- PDF -------------------------------------------------------------------
+_GAP = re.compile(r"\s{2,}")
+
+
+def pdf_text(data: bytes) -> str:
+    """PDF → 텍스트. pypdf 가 없거나 암호가 걸려 있으면 빈 문자열."""
+    try:
+        from pypdf import PdfReader
+    except ImportError:
+        return ""
+    try:
+        reader = PdfReader(io.BytesIO(data))
+        if reader.is_encrypted:
+            return ""              # 복호화는 상위(mailbox)의 책임 — 여기선 손대지 않는다
+        return "\n".join((pg.extract_text() or "") for pg in reader.pages)
+    except Exception:
+        return ""
+
+
+def pdf_tables(text: str) -> list[list[list[str]]]:
+    """공백 2칸 이상을 칸 구분으로 보고 행을 만든다.
+
+    한 칸짜리 공백까지 쪼개면 '스타벅스 강남점' 이 두 칸이 되어 가맹점이 반토막
+    난다. 반대로 붙여 두면 날짜와 금액이 한 칸에 뭉치므로 2칸을 경계로 잡는다.
+    """
+    rows = []
+    for line in text.splitlines():
+        line = line.rstrip()
+        if not line.strip():
+            continue
+        cells = [c.strip() for c in _GAP.split(line.strip()) if c.strip()]
+        if cells:
+            rows.append(cells)
+    return [rows] if rows else []
+
+
 # --- 구분자 텍스트 ----------------------------------------------------------
 def text_tables(text: str) -> list[list[list[str]]]:
     """CSV/TSV — 따옴표 안의 구분자를 지키려면 csv 모듈을 쓴다."""
@@ -184,6 +227,12 @@ class Sheet:
 def read(filename: str, data: bytes) -> Sheet:
     kind = sniff(data, filename)
     raw = ""
+    if kind == "pdf":
+        text = pdf_text(data)
+        found = pdf_tables(text)
+        # loose 폴백은 탭/콤마로 칸을 나눈다 — 추정한 칸 경계를 탭으로 남겨 준다.
+        raw = "\n".join("\t".join(r) for t in found for r in t)
+        return Sheet(kind=kind, tables=found, text=f"{filename}\n{text[:4000]}", raw=raw)
     if kind in ("xlsx", "xls"):
         found = excel_tables(data, kind)
         text = "\n".join(" ".join(r) for t in found for r in t[:40])

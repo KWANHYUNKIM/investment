@@ -5,6 +5,9 @@ to the injected ``BudgetService``, and returns the payload unchanged. File
 uploads are read here (``await file.read()``) so the service stays sync and
 framework-free.
 
+카드사 메일 명세서는 ``/budget/mail*`` 로 자동 수집한다 — 받은편지함에서 걷어
+파싱까지 해 두고, 확신이 서는 것만 자동 등록하고 나머지는 대기함에 둔다.
+
 카드 명세서는 **먼저 보고(preview-file) 나중에 등록(import-file)** 하는 두 단계를
 둔다. 카드사마다 금액의 의미가 달라(할부·포인트·취소) 바로 저장하면 틀린 걸
 나중에 찾기 어렵기 때문이다. 예전처럼 한 번에 넣고 싶으면 import-file 만 쓰면 된다.
@@ -86,6 +89,44 @@ async def budget_import_file(file: UploadFile = File(...), user: str = Depends(r
     """카드사 파일 업로드 → 파싱 후 바로 등록(중복 자동 제외)."""
     data = await file.read()
     return svc.import_file(user, file.filename or "", data)
+
+
+@router.get("/budget/mail")
+def budget_mail(user: str = Depends(require_auth), svc: BudgetService = Svc):
+    """메일 수집 상태 + 확인 대기 중인 명세서 + 최근 이력."""
+    return svc.mail_state(user)
+
+
+@router.post("/budget/mail/scan")
+def budget_mail_scan(days: int | None = Query(default=None, ge=1, le=365),
+                     rescan: bool = Query(default=False),
+                     user: str = Depends(require_auth), svc: BudgetService = Svc):
+    """지금 즉시 받은편지함을 확인한다(스케줄러를 기다리지 않고).
+
+    ``rescan`` 은 이미 살펴본 메일까지 다시 본다 — 판별 규칙을 고쳤을 때만 쓴다.
+    """
+    return svc.mail_scan(user, days, rescan)
+
+
+@router.get("/budget/mail/item")
+def budget_mail_item(item_id: str = Query(...), user: str = Depends(require_auth),
+                     svc: BudgetService = Svc):
+    """대기함 항목의 거래 전체 — 등록 전에 눈으로 확인용."""
+    return svc.mail_detail(user, item_id)
+
+
+@router.post("/budget/mail/approve")
+def budget_mail_approve(item_id: str = Query(...), user: str = Depends(require_auth),
+                        svc: BudgetService = Svc):
+    """대기함 항목을 가계부에 등록(중복은 지문으로 걸러짐)."""
+    return svc.mail_approve(user, item_id)
+
+
+@router.post("/budget/mail/discard")
+def budget_mail_discard(item_id: str = Query(...), user: str = Depends(require_auth),
+                        svc: BudgetService = Svc):
+    """대기함 항목 버리기(명세서가 아니거나 잘못 읽힌 것)."""
+    return svc.mail_discard(user, item_id)
 
 
 @router.post("/budget/import")

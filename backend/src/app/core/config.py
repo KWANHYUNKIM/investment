@@ -49,6 +49,35 @@ class Settings(BaseSettings):
     smtp_password: str = ""
     smtp_from: str = ""   # 미설정 시 smtp_user 사용
 
+    # --- 가계부: 카드사 이용대금명세서 메일 자동 수집 (IMAP 수신) ---------------
+    # 카드사가 매달 보내는 e-메일 명세서를 받은편지함에서 직접 읽어 파싱한다. 카드사
+    # 공식 API 는 개인에게 열려 있지 않고, 승인문자는 할부·취소·청구월을 못 잡아서
+    # 명세서가 개인이 얻을 수 있는 가장 정확한 원본이다.
+    #
+    # 네이버: imap.naver.com / 993, 메일 환경설정에서 IMAP 사용을 먼저 켜야 한다.
+    # 지메일: imap.gmail.com / 993, 계정 비밀번호가 아니라 '앱 비밀번호' 를 넣는다.
+    budget_mail: bool = False              # 스케줄러 스위치 (자격증명 없으면 어차피 안 돎)
+    imap_host: str = ""
+    imap_port: int = 993
+    imap_user: str = ""
+    imap_password: str = ""
+    imap_folder: str = "INBOX"
+    imap_ssl: bool = True
+
+    # 어느 계정의 가계부로 넣을지. 스케줄러는 로그인 세션이 없어 물어볼 데가 없다.
+    budget_mail_user: str = "admin"
+    budget_mail_days: int = 45              # 받은편지함을 며칠치까지 훑을지
+    budget_mail_max: int = 40               # 한 번에 살펴볼 최대 메일 수
+    budget_mail_check_interval: float = 1800.0   # 30분마다 (명세서는 월 1회라 급할 것 없다)
+
+    # 첨부 파일 비밀번호 후보(쉼표 구분). 카드사 명세서는 보통 생년월일 6자리 등으로
+    # 잠겨 온다. 앞에서부터 하나씩 시도하고, 다 실패하면 대기함에 '암호 필요' 로 남긴다.
+    budget_mail_passwords: str = ""
+
+    # 전용 파서로 읽혔고 청구월까지 확정된 것만 자동 등록. 나머지는 대기함으로 보내
+    # 사람이 확인한 뒤 넣는다(카드사마다 금액의 의미가 달라 조용히 넣으면 못 찾는다).
+    budget_mail_autoimport: bool = True
+
     # 인증코드를 HTTP 응답에 노출할지(=SMTP 미설정 시 dev_code). 기본 False.
     # True 로 켜면 이메일 인증이 무력화되므로 로컬 개발에서만, 절대 공개 배포에선 금지.
     # (공개 URL 노출 시 누구나 send-code→reset-password 로 계정 탈취 가능)

@@ -3,6 +3,7 @@
 원래 파일 하나였는데, 카드사가 늘면 늘수록 파싱이 전체를 잡아먹어서 갈랐다.
 
     cards/       카드사별 명세서 파서 (카드사 추가는 여기에만)
+    mailbox      카드사 메일 명세서 자동 수집(IMAP) → 위 파서로 넘김
     categories   가맹점 → 카테고리, 고정비/변동비 판정
     store        data/budget_<계정>.json 읽기·쓰기, 중복 방지
     summary      네 축 집계(카테고리·카드·거래구분·고정비) + 할부 미래 부담 + 계획
@@ -13,7 +14,7 @@
 """
 from __future__ import annotations
 
-from . import cards, categories, cycles, payslip, recurring, store
+from . import cards, categories, cycles, mailbox, payslip, recurring, store
 from .categories import CATEGORIES, categorize
 from .store import (add_transactions, clear_import, clear_month, delete_transaction,
                     move_month, recalc_billing_months, set_category, set_cycle,
@@ -172,7 +173,7 @@ def _stats(txs: list[dict]) -> dict:
 __all__ = [
     "CATEGORIES", "ISSUERS", "add_transactions", "cards", "cards_overview", "categories",
     "categorize", "clear_import", "clear_month", "cycles", "delete_transaction",
-    "import_csv", "import_file", "installments", "months_of", "move_month",
+    "import_csv", "import_file", "installments", "mailbox", "months_of", "move_month",
     "fixed_costs", "parse_payslip", "payslip", "plan", "preview_file",
     "recalc_billing_months", "recurring",
     "set_category", "set_cycle", "set_fixed", "set_income", "state", "store", "summary",

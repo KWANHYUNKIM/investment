@@ -17,6 +17,7 @@ from app.core.config import get_settings
 from app.domains.api import domain_router
 from app.data.fundamentals import fundamentals_crawler
 from app.data.schedulers import blog_scheduler
+from app.data.schedulers import budget_mail_scheduler
 from app.data.schedulers import costmodel_scheduler
 from app.data.schedulers import delisting_scheduler
 from app.data.schedulers import growth_scheduler
@@ -87,6 +88,9 @@ def _startup() -> None:
     # 증시 보고서 블로그 글 자동 발행: 평일 장 마감 뒤(기본 16:20) 하루 1편을 만들어
     # data/blog_posts/ 에 저장한다. 관리자 화면에서 그대로 복사해 블로그에 올린다.
     blog_scheduler.start()
+    # Background budget-mail scheduler: pull card statements from the mailbox
+    # (IMAP, read-only) and park them for review / auto-import.
+    budget_mail_scheduler.start()
 
 
 @app.get("/api/health", tags=["meta"])

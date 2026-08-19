@@ -29,3 +29,5 @@ anthropic>=0.40.0
 openpyxl==3.1.5          # .xlsx 읽기 (pandas 엔진)
 pypdf==6.14.2            # PDF 텍스트 추출
 python-multipart==0.0.32 # FastAPI 파일 업로드
+msoffcrypto-tool==6.0.0  # 카드사 메일 명세서: 암호 걸린 .xlsx/.xls 해제
+cryptography==50.0.0     # 위 의존성 + pypdf 의 AES 암호 PDF 해제

@@ -244,6 +244,72 @@ export interface FixedCostBoard {
   note: string;
 }
 
+// --- 메일 명세서 자동 수집 ---------------------------------------------------
+// 카드사가 매달 보내는 e-메일 명세서를 받은편지함에서 걷어 온다. 카드사 API 는 개인에게
+// 열려 있지 않고 승인문자는 할부·취소·청구월을 못 잡아서, 개인이 얻을 수 있는 가장
+// 정확한 원본이 명세서다. 확신이 서는 것만 자동 등록하고 나머지는 대기함에 쌓인다.
+export interface MailPendingItem {
+  id: string;
+  at: string;
+  sent_at: string;
+  subject: string;
+  sender: string;
+  filename: string;
+  saved_path: string;
+  issuer: string;
+  billing_month: string;
+  billing_month_known: boolean;
+  parsed_by: string;
+  file_kind: string;
+  count: number;
+  spend: number;
+  date_range: [string, string];
+  note: string;
+  reason: string;               // 왜 자동 등록하지 않았는가
+  cycle_conflict: { stated: string; by_cycle: string[] } | null;
+  sample: BudgetTx[];
+}
+
+export interface MailHistoryItem {
+  at: string;
+  subject: string;
+  filename?: string;
+  issuer?: string;
+  billing_month?: string;
+  action: "imported" | "approved" | "locked";
+  added?: number;
+  skipped?: number;
+  reason?: string;
+}
+
+export interface MailScanResult {
+  ok: boolean;
+  reason?: string;
+  examined: number;
+  imported: number;
+  added?: number;
+  pending: number;
+  locked?: number;
+  days?: number;
+  note: string;
+}
+
+export interface MailBoard {
+  configured: boolean;          // .env 에 IMAP 자격증명이 들어와 있는가
+  enabled: boolean;             // 스케줄러 스위치
+  autoimport: boolean;
+  host: string;
+  account: string;
+  folder: string;
+  days: number;
+  interval_min: number;
+  has_passwords: boolean;
+  last_scan: { at: string; examined: number; imported: number; pending: number; locked: number } | null;
+  pending: MailPendingItem[];
+  history: MailHistoryItem[];
+  issuers: string[];
+}
+
 export interface PayslipParse {
   filename: string;
   net: number | null;
@@ -300,6 +366,20 @@ export const budgetApi = {
     request<{ moved: number; merged: number; to: string }>(
       `/api/data/budget/move-month?issuer=${encodeURIComponent(issuer)}&from_month=${fromMonth}&to_month=${toMonth}`,
       { method: "POST" }),
+
+  // 메일 명세서 수집 — 상태 조회 / 즉시 확인 / 대기함 승인·폐기
+  budgetMail: () => request<MailBoard>(`/api/data/budget/mail`),
+  budgetMailScan: (days?: number, rescan = false) =>
+    request<MailScanResult>(
+      `/api/data/budget/mail/scan?rescan=${rescan}${days ? `&days=${days}` : ""}`,
+      { method: "POST" }),
+  budgetMailItem: (itemId: string) =>
+    request<MailPendingItem & { ok: boolean }>(`/api/data/budget/mail/item?item_id=${itemId}`),
+  budgetMailApprove: (itemId: string) =>
+    request<{ ok: boolean; added?: number; skipped?: number; issuer?: string; billing_month?: string; reason?: string }>(
+      `/api/data/budget/mail/approve?item_id=${itemId}`, { method: "POST" }),
+  budgetMailDiscard: (itemId: string) =>
+    request<{ ok: boolean }>(`/api/data/budget/mail/discard?item_id=${itemId}`, { method: "POST" }),
 
   budgetCards: () => request<BudgetCardsOverview>(`/api/data/budget/cards`),
   budgetSetCycle: (card: string, c: CardCycle) =>

@@ -44,6 +44,22 @@ class BudgetService:
     def import_csv(self, user: str, text: str) -> dict:
         return budget_data.import_csv(user, text)
 
+    # --- 메일 명세서 자동 수집 ----------------------------------------------
+    def mail_state(self, user: str) -> dict:
+        return budget_data.mailbox.state(user)
+
+    def mail_scan(self, user: str, days: int | None, rescan: bool) -> dict:
+        return budget_data.mailbox.scan(user, days=days, rescan=rescan)
+
+    def mail_detail(self, user: str, item_id: str) -> dict:
+        return budget_data.mailbox.detail(user, item_id)
+
+    def mail_approve(self, user: str, item_id: str) -> dict:
+        return budget_data.mailbox.approve(user, item_id)
+
+    def mail_discard(self, user: str, item_id: str) -> dict:
+        return budget_data.mailbox.discard(user, item_id)
+
     # --- 편집 ---------------------------------------------------------------
     def add_transactions(self, user: str, items: list[dict]) -> dict:
         return budget_data.add_transactions(user, items)

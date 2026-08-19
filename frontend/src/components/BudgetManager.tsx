@@ -19,6 +19,7 @@ import {
   type CardCycle,
   type CardStatementPreview,
   type FixedCostBoard,
+  type MailBoard,
 } from "@/lib/api";
 import { useApiData } from "@/lib/useApiData";
 
@@ -367,6 +368,9 @@ export function BudgetManager() {
             </div>
           </div>
 
+          {/* 메일 명세서 자동 수집 */}
+          <MailInbox onChanged={bump} />
+
           {/* 고정지출 */}
           {fixed.data && (fixed.data.items.length > 0 || fixed.data.candidates.length > 0) && (
             <FixedCosts board={fixed.data} onChange={bump} />
@@ -704,6 +708,216 @@ function TypeBadge({ type }: { type: string }) {
 // --- 고정지출 -----------------------------------------------------------------
 // 구독·통신·공과금은 이번 달에 많이 썼다고 다음 달에 줄일 수 있는 돈이 아니다.
 // 변동비와 같은 자리에 두면 '얼마를 줄일 수 있는가' 에 답할 수 없어서 따로 뺀다.
+
+// 카드사가 보내 주는 e-메일 이용대금명세서를 받은편지함에서 걷어 온다.
+//
+// 왜 이 화면이 필요한가: 카드사 공식 API 는 개인에게 열려 있지 않고(마이데이터는 허가
+// 사업자 전용), 승인문자는 할부·부분취소·청구월을 못 잡는다. 이 가계부는 청구월이
+// 뼈대라 문자로는 채울 수가 없어서, 명세서가 개인이 얻을 수 있는 가장 정확한 원본이다.
+//
+// 자동 등록은 **전용 파서로 읽혔고 청구월이 확정된 것**에만 한다. 나머지는 여기 대기함에
+// 쌓아 두고 사람이 보고 넣는다 — 카드사마다 금액의 의미가 달라, 잘못 들어간 값은 몇 달
+// 뒤 합계가 안 맞을 때야 드러나기 때문이다.
+function MailInbox({ onChanged }: { onChanged: () => void }) {
+  const [version, setVersion] = useState(0);
+  const [busy, setBusy] = useState("");
+  const [msg, setMsg] = useState("");
+  const [open, setOpen] = useState<string | null>(null);
+  const board = useApiData<MailBoard>(() => api.budgetMail(), `${version}`);
+  const d = board.data;
+  const bump = () => setVersion((v) => v + 1);
+
+  const scan = async () => {
+    setBusy("scan");
+    setMsg("");
+    try {
+      const r = await api.budgetMailScan();
+      setMsg(r.ok ? r.note : (r.reason || "확인하지 못했습니다."));
+      bump();
+      if (r.imported) onChanged();
+    } catch {
+      setMsg("받은편지함을 열지 못했습니다. IMAP 설정과 비밀번호를 확인해 주세요.");
+    } finally {
+      setBusy("");
+    }
+  };
+
+  const approve = async (id: string) => {
+    setBusy(id);
+    try {
+      const r = await api.budgetMailApprove(id);
+      setMsg(r.ok ? `${r.issuer || "카드"} ${r.billing_month || ""} ${r.added ?? 0}건 등록${r.skipped ? ` · ${r.skipped}건은 이미 있어 건너뜀` : ""}` : (r.reason || "등록 실패"));
+      bump();
+      onChanged();
+    } finally {
+      setBusy("");
+    }
+  };
+
+  const discard = async (id: string) => {
+    if (!confirm("이 명세서를 대기함에서 버릴까요? (원본 메일은 그대로 있습니다)")) return;
+    setBusy(id);
+    try {
+      await api.budgetMailDiscard(id);
+      bump();
+    } finally {
+      setBusy("");
+    }
+  };
+
+  return (
+    <div className="overflow-hidden rounded-md border border-[#d0d0d0] bg-white shadow-sm">
+      <div className="flex items-center justify-between bg-[#217346] px-4 py-2 text-white">
+        <span className="text-sm font-semibold">메일 명세서 자동 수집</span>
+        <button
+          onClick={scan}
+          disabled={!!busy || !d?.configured}
+          className="rounded bg-white/20 px-2 py-0.5 text-xs hover:bg-white/30 disabled:opacity-40"
+        >
+          {busy === "scan" ? "확인 중…" : "지금 확인"}
+        </button>
+      </div>
+
+      <div className="p-3">
+        {!d ? (
+          <p className="text-[11px] text-[#999]">불러오는 중…</p>
+        ) : !d.configured ? (
+          <div className="rounded border border-[#f0e6c9] bg-[#fdfaf0] p-2 text-[11px] leading-relaxed text-[#7a5f10]">
+            <p className="mb-1 font-semibold">받은편지함 연결이 아직 안 돼 있습니다.</p>
+            <p className="mb-1">
+              카드사 홈페이지에서 <b>이메일 명세서 수신</b>을 신청한 뒤,
+              <code className="mx-1 rounded bg-white px-1">backend/.env</code>에 메일 계정을 넣으세요.
+              카드사 로그인 정보는 필요 없습니다.
+            </p>
+            <pre className="mt-1 overflow-x-auto rounded bg-white p-2 font-mono text-[10px] text-[#555]">{MAIL_ENV_SAMPLE}</pre>
+            <p className="mt-1">
+              네이버는 메일 환경설정에서 IMAP 사용을 먼저 켜야 하고, 지메일은 계정 비밀번호가 아니라
+              <b> 앱 비밀번호</b>를 넣어야 합니다. 명세서 첨부가 잠겨 오면
+              <code className="mx-1 rounded bg-white px-1">BUDGET_MAIL_PASSWORDS</code>에 생년월일 6자리 같은 후보를 쉼표로 나열하세요.
+            </p>
+          </div>
+        ) : (
+          <>
+            <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-[#666]">
+              <span>{d.account}</span>
+              <span className="text-[#ccc]">|</span>
+              <span>{d.folder} · 최근 {d.days}일</span>
+              <span className="text-[#ccc]">|</span>
+              <span>{d.enabled ? `${d.interval_min}분마다 자동 확인` : "자동 확인 꺼짐"}</span>
+              {!d.has_passwords && <span className="text-[#b58900]">첨부 비밀번호 미설정</span>}
+              {d.last_scan && (
+                <span className="text-[#999]">마지막 확인 {d.last_scan.at} · 메일 {d.last_scan.examined}통</span>
+              )}
+            </div>
+
+            {d.pending.length === 0 ? (
+              <p className="text-[11px] text-[#999]">
+                확인 대기 중인 명세서가 없습니다.
+                {d.autoimport ? " 전용 파서로 읽히고 청구월이 확정된 명세서는 자동으로 등록됩니다." : ""}
+              </p>
+            ) : (
+              <ul className="flex flex-col gap-2">
+                {d.pending.map((it) => (
+                  <li key={it.id} className="rounded border border-[#e6e6e6] bg-[#fafafa] p-2">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="truncate text-xs font-semibold text-[#333]">
+                          {it.issuer || "카드사 미상"} · {it.billing_month || "청구월 미상"} 청구
+                          <span className="ml-1 font-normal text-[#888]">{it.count}건 · {won(it.spend)}</span>
+                        </div>
+                        <div className="truncate text-[10px] text-[#999]">
+                          {it.sent_at} · {it.filename}
+                        </div>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-1">
+                        <button
+                          onClick={() => setOpen(open === it.id ? null : it.id)}
+                          className="rounded border border-[#cdcdcd] bg-white px-2 py-0.5 text-[11px] text-[#555] hover:bg-[#f0f0f0]"
+                        >
+                          {open === it.id ? "접기" : "내역 보기"}
+                        </button>
+                        <button
+                          onClick={() => approve(it.id)}
+                          disabled={!!busy || !it.count}
+                          className="rounded bg-[#217346] px-2 py-0.5 text-[11px] font-semibold text-white hover:bg-[#1b5e3a] disabled:opacity-40"
+                        >
+                          {busy === it.id ? "…" : "등록"}
+                        </button>
+                        <button
+                          onClick={() => discard(it.id)}
+                          disabled={!!busy}
+                          className="rounded border border-[#e0e0e0] bg-white px-2 py-0.5 text-[11px] text-[#bbb] hover:text-rose-500"
+                        >
+                          버리기
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="mt-1 text-[10px] text-[#b58900]">
+                      자동 등록하지 않은 이유: {it.reason}
+                      {it.cycle_conflict && (
+                        <> — 명세서는 {it.cycle_conflict.stated} 청구인데 카드 설정으로는 {it.cycle_conflict.by_cycle.join(", ")} 입니다.</>
+                      )}
+                    </div>
+
+                    {open === it.id && (
+                      <div className="mt-2 border-t border-[#eee] pt-1">
+                        <div className="mb-1 text-[10px] text-[#999]">
+                          {it.date_range[0]} ~ {it.date_range[1]} · {it.parsed_by} 파서 · {it.file_kind}
+                        </div>
+                        <table className="w-full text-[11px]">
+                          <tbody>
+                            {it.sample.map((t, i) => (
+                              <tr key={i} className="border-t border-[#f2f2f2]">
+                                <td className="py-0.5 pr-2 text-[#888]">{t.date}</td>
+                                <td className="py-0.5 pr-2 text-[#333]">{t.merchant}</td>
+                                <td className="py-0.5 text-right tabular-nums text-[#333]">{won(t.amount)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                        {it.count > it.sample.length && (
+                          <div className="mt-1 text-[10px] text-[#999]">…외 {it.count - it.sample.length}건</div>
+                        )}
+                      </div>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            {msg && <div className="mt-2 rounded bg-[#f7faf8] px-2 py-1 text-[11px] text-[#456]">{msg}</div>}
+
+            {d.history.length > 0 && (
+              <div className="mt-3 border-t border-[#eee] pt-2">
+                <div className="mb-1 text-[10px] font-semibold text-[#999]">최근 처리</div>
+                <ul className="flex flex-col gap-0.5 text-[11px] text-[#666]">
+                  {d.history.slice(0, 5).map((h, i) => (
+                    <li key={i} className="truncate">
+                      {h.at} · {h.action === "locked"
+                        ? `${h.subject} — ${h.reason}`
+                        : `${h.issuer || "카드"} ${h.billing_month || ""} ${h.added ?? 0}건 ${h.action === "imported" ? "자동 등록" : "등록"}`}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// 설정 예시를 JSX 안에 직접 쓰면 중괄호·따옴표가 섞여 읽기 어려워 밖으로 뺀다.
+const MAIL_ENV_SAMPLE = [
+  "IMAP_HOST=imap.naver.com",
+  "IMAP_USER=your_id@naver.com",
+  "IMAP_PASSWORD=메일_비밀번호",
+  "BUDGET_MAIL=true",
+  "BUDGET_MAIL_PASSWORDS=900326,0326",
+].join("\n");
+
 
 function FixedCosts({ board, onChange }: { board: FixedCostBoard; onChange: () => void }) {
   const [busy, setBusy] = useState("");
