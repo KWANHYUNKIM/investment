@@ -16,6 +16,7 @@ import time
 from app.core.jsonstore import read_json, user_path, write_json
 
 from . import categories as C
+from . import cycles
 from .cards import model as M
 
 _lock = threading.Lock()
@@ -25,6 +26,7 @@ _DEFAULT = {
     "transactions": [],
     "cat_rules": {},        # 가맹점 → 카테고리 (사용자 지정)
     "fixed_rules": {},      # 가맹점 → 고정비 여부 (사용자 지정, True/False)
+    "card_cycles": {},      # "신한카드 본인717" → 이용기간·결제일 설정
     "imports": [],          # 업로드 이력 (최근 20건)
 }
 
@@ -207,6 +209,75 @@ def clear_import(user: str, issuer: str, billing_month: str) -> dict:
         ]
         save(user, d)
     return {"removed": before - len(d["transactions"])}
+
+
+def card_key(tx: dict) -> str:
+    """카드 설정·집계에서 카드를 가리키는 이름 — ``"신한카드 본인717"``."""
+    return f'{tx.get("issuer", "")} {tx.get("card", "")}'.strip()
+
+
+def set_cycle(user: str, card: str, cfg: dict | None) -> dict:
+    """카드의 결제 주기를 저장한다. ``cfg=None`` 이면 설정을 지운다."""
+    card = (card or "").strip()
+    if not card:
+        return {"ok": False}
+    with _lock:
+        d = load(user)
+        cycles_ = d.setdefault("card_cycles", {})
+        if cfg is None:
+            cycles_.pop(card, None)
+            saved = None
+        else:
+            saved = cycles.normalize(cfg)
+            cycles_[card] = saved
+        save(user, d)
+    return {"ok": True, "card": card, "cycle": saved}
+
+
+def get_cycles(user: str) -> dict:
+    return load(user).get("card_cycles", {})
+
+
+def apply_cycles(txs: list[dict], cycles_: dict) -> int:
+    """설정이 있는 카드의 청구월을 거래일에서 다시 계산한다. 바뀐 건수를 돌려준다.
+
+    할부는 거래일이 아니라 **회차**로 잡는다 — 5월에 산 물건의 3회차는 5월 주기가
+    아니라 그로부터 2개월 뒤에 빠진다.
+    """
+    changed = 0
+    for t in txs:
+        cfg = cycles_.get(card_key(t))
+        if not cfg:
+            continue
+        inst = t.get("installment") or {}
+        bm = cycles.billing_month_of(t.get("date", ""), cfg, int(inst.get("seq") or 0))
+        if bm and bm != t.get("billing_month"):
+            t["billing_month"] = bm
+            t["fp"] = M.fingerprint(t)
+            changed += 1
+    return changed
+
+
+def recalc_billing_months(user: str, card: str | None = None) -> dict:
+    """등록해 둔 거래의 청구월을 카드 설정대로 다시 계산한다."""
+    with _lock:
+        d = load(user)
+        cycles_ = d.get("card_cycles", {})
+        if card:
+            cycles_ = {k: v for k, v in cycles_.items() if k == card}
+        if not cycles_:
+            return {"changed": 0, "note": "설정된 카드가 없습니다."}
+        changed = apply_cycles(d["transactions"], cycles_)
+        # 청구월이 바뀌면 이력의 청구월도 더는 맞지 않는다 — 카드사별 최신 값으로 맞춘다.
+        latest: dict[str, str] = {}
+        for t in d["transactions"]:
+            if card_key(t) in cycles_ and t.get("issuer"):
+                latest[t["issuer"]] = max(latest.get(t["issuer"], ""), t.get("billing_month", ""))
+        for im in d.get("imports", []):
+            if im.get("issuer") in latest:
+                im["billing_month"] = latest[im["issuer"]]
+        save(user, d)
+    return {"changed": changed, "cards": list(cycles_)}
 
 
 def move_month(user: str, issuer: str, from_month: str, to_month: str) -> dict:

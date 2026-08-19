@@ -66,9 +66,12 @@ async def budget_income_parse(file: UploadFile = File(...), user: str = Depends(
 @router.post("/budget/preview-file")
 async def budget_preview_file(file: UploadFile = File(...), user: str = Depends(require_auth),
                               svc: BudgetService = Svc):
-    """카드사 파일 업로드 → 파싱 결과만 반환(저장하지 않음). 확인 후 /budget/add 로 등록."""
+    """카드사 파일 업로드 → 파싱 결과만 반환(저장하지 않음). 확인 후 /budget/add 로 등록.
+
+    카드에 결제 주기가 설정돼 있으면 청구월을 거래일에서 계산해 채운다.
+    """
     data = await file.read()
-    return svc.preview_file(file.filename or "", data)
+    return svc.preview_file(user, file.filename or "", data)
 
 
 @router.post("/budget/import-file")
@@ -136,6 +139,43 @@ def budget_move_month(issuer: str = Query(...), from_month: str = Query(...),
                       svc: BudgetService = Svc):
     """등록해 둔 한 묶음의 청구월을 옮긴다 — 추정 청구월이 한 달 어긋났을 때."""
     return svc.move_month(user, issuer, from_month, to_month)
+
+
+@router.get("/budget/cards")
+def budget_cards(user: str = Depends(require_auth), svc: BudgetService = Svc):
+    """등록된 카드 + 결제 주기 설정 + 그 설정이 만드는 실제 이용기간."""
+    return svc.cards_overview(user)
+
+
+@router.post("/budget/cycle")
+def budget_cycle(card: str = Query(...),
+                 cycle_start_day: int = Query(..., ge=0, le=31),
+                 cycle_end_day: int = Query(..., ge=0, le=31),
+                 pay_day: int = Query(..., ge=0, le=31),
+                 pay_offset: int = Query(default=1, ge=0, le=3),
+                 user: str = Depends(require_auth), svc: BudgetService = Svc):
+    """카드의 이용기간·결제일을 저장한다(날짜에 0 을 주면 '말일').
+
+    pay_offset: 이용기간이 끝난 달 기준 몇 달 뒤에 결제하나 (0=당월, 1=익월).
+    """
+    return svc.set_cycle(user, card, {
+        "cycle_start_day": cycle_start_day, "cycle_end_day": cycle_end_day,
+        "pay_day": pay_day, "pay_offset": pay_offset,
+    })
+
+
+@router.post("/budget/cycle/clear")
+def budget_cycle_clear(card: str = Query(...), user: str = Depends(require_auth),
+                       svc: BudgetService = Svc):
+    """카드의 결제 주기 설정을 지운다(청구월 자동 계산 끔)."""
+    return svc.set_cycle(user, card, None)
+
+
+@router.post("/budget/recalc")
+def budget_recalc(card: str | None = Query(default=None), user: str = Depends(require_auth),
+                  svc: BudgetService = Svc):
+    """이미 등록된 거래의 청구월을 카드 설정대로 다시 계산한다."""
+    return svc.recalc(user, card)
 
 
 @router.get("/budget/plan")

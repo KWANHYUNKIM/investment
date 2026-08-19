@@ -32,8 +32,8 @@ class BudgetService:
         return budget_data.parse_payslip(filename, data)
 
     # --- 카드 명세서 --------------------------------------------------------
-    def preview_file(self, filename: str, data: bytes) -> dict:
-        return budget_data.preview_file(filename, data)
+    def preview_file(self, user: str, filename: str, data: bytes) -> dict:
+        return budget_data.preview_file(user, filename, data)
 
     def import_file(self, user: str, filename: str, data: bytes) -> dict:
         return budget_data.import_file(user, filename, data)
@@ -62,3 +62,13 @@ class BudgetService:
 
     def move_month(self, user: str, issuer: str, from_month: str, to_month: str) -> dict:
         return budget_data.move_month(user, issuer, from_month, to_month)
+
+    # --- 카드별 결제 주기 ----------------------------------------------------
+    def cards_overview(self, user: str) -> dict:
+        return budget_data.cards_overview(user)
+
+    def set_cycle(self, user: str, card: str, cfg: dict | None) -> dict:
+        return budget_data.set_cycle(user, card, cfg)
+
+    def recalc(self, user: str, card: str | None) -> dict:
+        return budget_data.recalc_billing_months(user, card)

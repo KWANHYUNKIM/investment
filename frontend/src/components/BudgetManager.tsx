@@ -14,6 +14,9 @@ import {
   type BudgetSummary,
   type BudgetPlan,
   type BudgetTx,
+  type BudgetCard,
+  type BudgetCardsOverview,
+  type CardCycle,
   type CardStatementPreview,
 } from "@/lib/api";
 import { useApiData } from "@/lib/useApiData";
@@ -75,6 +78,7 @@ export function BudgetManager() {
     () => api.budgetPlan(emMonths, investRatio),
     `${emMonths}|${investRatio}|${version}`,
   );
+  const cards = useApiData<BudgetCardsOverview>(() => api.budgetCards(), `${version}`);
 
   const s = sum.data;
   const p = plan.data;
@@ -334,6 +338,11 @@ export function BudgetManager() {
               )}
             </div>
           </div>
+
+          {/* 카드별 결제일·이용기간 */}
+          {cards.data && cards.data.cards.length > 0 && (
+            <CardCycles data={cards.data} onSaved={bump} />
+          )}
 
           {/* 급여 */}
           <div className="overflow-hidden rounded-md border border-[#d0d0d0] bg-white shadow-sm">
@@ -627,6 +636,216 @@ function TypeBadge({ type }: { type: string }) {
   };
   if (type === "일시불") return null;
   return <span className={`rounded border px-1 text-[10px] ${tone[type] ?? "border-[#e0e0e0] bg-[#fafafa] text-[#777]"}`}>{type}</span>;
+}
+
+// --- 카드별 결제일·이용기간 ---------------------------------------------------
+// 이건 자동으로 알아낼 수 없다. 카드사 파일에 안 적혀 있고, '결제일이 종료일보다
+// 뒤면 당월' 같은 규칙도 실제와 맞지 않는다(7/18~8/18 이용분을 9월에 받는 카드가 있다).
+// 그래서 네 값을 직접 받고, 그 설정이 만들어내는 실제 기간을 날짜로 되돌려 보여준다.
+
+const DAY_OPTIONS = [0, ...Array.from({ length: 31 }, (_, i) => i + 1)];
+const dayLabel = (v: number) => (v === 0 ? "말일" : `${v}일`);
+const OFFSETS: [number, string][] = [[0, "당월"], [1, "익월"], [2, "다다음달"]];
+
+function CardCycles({ data, onSaved }: { data: BudgetCardsOverview; onSaved: () => void }) {
+  const [open, setOpen] = useState<string | null>(null);
+  const [busy, setBusy] = useState("");
+  const [msg, setMsg] = useState("");
+
+  return (
+    <div className="overflow-hidden rounded-md border border-[#d0d0d0] bg-white shadow-sm">
+      <div className="flex items-center justify-between bg-[#217346] px-4 py-2 text-white">
+        <span className="text-sm font-semibold">카드 결제일·이용기간</span>
+        <button
+          onClick={async () => {
+            setBusy("all");
+            try {
+              const r = await api.budgetRecalc();
+              setMsg(r.note ?? `${r.changed}건의 청구월을 다시 계산했습니다.`);
+              onSaved();
+            } finally { setBusy(""); }
+          }}
+          disabled={!!busy}
+          className="rounded bg-white/20 px-2 py-0.5 text-xs hover:bg-white/30 disabled:opacity-50"
+        >
+          {busy === "all" ? "계산 중…" : "전체 다시 계산"}
+        </button>
+      </div>
+      <div className="p-3">
+        <p className="mb-2 text-[11px] leading-relaxed text-[#666]">
+          카드마다 결제일과 이용기간이 다릅니다. 등록해 두면 거래일에서 청구월을 자동으로
+          계산합니다 — 할부는 거래일이 아니라 <b>회차</b> 기준입니다.
+        </p>
+        <ul className="flex flex-col gap-1.5">
+          {data.cards.map((c) => (
+            <CardCycleRow
+              key={c.card}
+              card={c}
+              defaults={data.defaults}
+              open={open === c.card}
+              onToggle={() => setOpen(open === c.card ? null : c.card)}
+              onSaved={(m) => { setMsg(m); onSaved(); }}
+            />
+          ))}
+        </ul>
+        {msg && <div className="mt-2 rounded bg-[#f4faf6] px-2 py-1 text-[11px] text-[#2c6b47]">{msg}</div>}
+      </div>
+    </div>
+  );
+}
+
+function CardCycleRow({
+  card, defaults, open, onToggle, onSaved,
+}: {
+  card: BudgetCard;
+  defaults: CardCycle;
+  open: boolean;
+  onToggle: () => void;
+  onSaved: (msg: string) => void;
+}) {
+  const [cfg, setCfg] = useState<CardCycle>(card.configured ? card.cycle : defaults);
+  const [busy, setBusy] = useState(false);
+  const set = (k: keyof CardCycle, v: number) => setCfg({ ...cfg, [k]: v });
+
+  const save = async (recalc: boolean) => {
+    setBusy(true);
+    try {
+      await api.budgetSetCycle(card.card, cfg);
+      const r = recalc ? await api.budgetRecalc(card.card) : { changed: 0 };
+      onSaved(`${card.card} 저장${recalc ? ` · ${r.changed}건 청구월 재계산` : ""}`);
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <li className="rounded border border-[#e8e8e8]">
+      <button onClick={onToggle} className="flex w-full items-center justify-between gap-2 px-2 py-1.5 text-left hover:bg-[#fafafa]">
+        <span className="min-w-0">
+          <span className="text-[11px] font-semibold text-[#333]">{card.card}</span>
+          <span className="ml-1 text-[10px] text-[#aaa]">{card.count}건 · {won(card.amount)}</span>
+          <span className="block truncate text-[10px] text-[#888]">
+            {card.configured
+              ? `${card.describe}${card.window.start ? ` · ${card.billing_month} 청구분 = ${card.window.start} ~ ${card.window.end}` : ""}`
+              : "설정 없음 — 청구월을 파일값/추정치로 씁니다"}
+          </span>
+        </span>
+        <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] ${card.configured ? "bg-[#eef6f0] text-[#217346]" : "bg-[#fff3cd] text-[#8a6a1f]"}`}>
+          {open ? "닫기" : card.configured ? "수정" : "설정"}
+        </span>
+      </button>
+
+      {open && (
+        <div className="border-t border-[#eee] bg-[#fbfbfb] p-2">
+          <div className="flex flex-wrap items-end gap-2">
+            <label className="text-[10px] text-[#666]">
+              이용 시작
+              <select value={cfg.cycle_start_day} onChange={(e) => set("cycle_start_day", Number(e.target.value))}
+                className="mt-0.5 block rounded border border-[#cdcdcd] px-1 py-0.5 text-[11px]">
+                {DAY_OPTIONS.map((d) => <option key={d} value={d}>{dayLabel(d)}</option>)}
+              </select>
+            </label>
+            <label className="text-[10px] text-[#666]">
+              이용 종료
+              <select value={cfg.cycle_end_day} onChange={(e) => set("cycle_end_day", Number(e.target.value))}
+                className="mt-0.5 block rounded border border-[#cdcdcd] px-1 py-0.5 text-[11px]">
+                {DAY_OPTIONS.map((d) => <option key={d} value={d}>{dayLabel(d)}</option>)}
+              </select>
+            </label>
+            <label className="text-[10px] text-[#666]">
+              결제
+              <select value={cfg.pay_offset} onChange={(e) => set("pay_offset", Number(e.target.value))}
+                className="mt-0.5 block rounded border border-[#cdcdcd] px-1 py-0.5 text-[11px]">
+                {OFFSETS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+              </select>
+            </label>
+            <label className="text-[10px] text-[#666]">
+              결제일
+              <select value={cfg.pay_day} onChange={(e) => set("pay_day", Number(e.target.value))}
+                className="mt-0.5 block rounded border border-[#cdcdcd] px-1 py-0.5 text-[11px]">
+                {DAY_OPTIONS.map((d) => <option key={d} value={d}>{dayLabel(d)}</option>)}
+              </select>
+            </label>
+          </div>
+
+          <CyclePreview cfg={cfg} month={card.billing_month} />
+
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <button onClick={() => save(true)} disabled={busy}
+              className="rounded bg-[#217346] px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-[#1b5e3a] disabled:opacity-50">
+              {busy ? "저장 중…" : "저장하고 청구월 다시 계산"}
+            </button>
+            <button onClick={() => save(false)} disabled={busy}
+              className="rounded border border-[#cdcdcd] bg-white px-2.5 py-1 text-[11px] text-[#666] hover:bg-[#f5f5f5] disabled:opacity-50">
+              설정만 저장
+            </button>
+            {card.configured && (
+              <button
+                onClick={async () => { setBusy(true); try { await api.budgetClearCycle(card.card); onSaved(`${card.card} 설정 해제`); } finally { setBusy(false); } }}
+                disabled={busy}
+                className="text-[11px] text-[#bbb] hover:text-rose-500"
+              >
+                설정 해제
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+    </li>
+  );
+}
+
+/** 설정이 만들어내는 실제 기간을 브라우저에서 그대로 계산해 보여준다(저장 전 확인용). */
+function CyclePreview({ cfg, month }: { cfg: CardCycle; month: string }) {
+  const rows = useMemo(() => {
+    const base = month || new Date().toISOString().slice(0, 7);
+    const [by, bm] = base.split("-").map(Number);
+    const dayIn = (y: number, m: number, d: number) => {
+      const last = new Date(y, m, 0).getDate();
+      return !d || d > last ? last : d;
+    };
+    const shift = (y: number, m: number, n: number) => {
+      const t = y * 12 + (m - 1) + n;
+      return [Math.floor(t / 12), (t % 12) + 1] as const;
+    };
+    const at = (y: number, m: number, d: number) => new Date(y, m - 1, dayIn(y, m, d));
+    const spans = (cfg.cycle_start_day || 32) >= (cfg.cycle_end_day || 32);
+    const iso = (d: Date) =>
+      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
+    return [0, 1, 2].map((k) => {
+      const [py, pm] = shift(by, bm, k);                       // 청구월
+      const [ey, em] = shift(py, pm, -cfg.pay_offset);         // 이용기간이 끝나는 달
+      const [sy, sm] = spans ? shift(ey, em, -1) : [ey, em];
+      const start = at(sy, sm, cfg.cycle_start_day);
+      const [ny, nm] = shift(ey, em, 1);
+      const [nsy, nsm] = spans ? [ey, em] : [ny, nm];
+      const nextStart = at(nsy, nsm, cfg.cycle_start_day);
+      // 다음 주기 시작 전날까지 — 시작·종료를 같은 날로 넣으면 하루 겹치기 때문.
+      const rawEnd = at(ey, em, cfg.cycle_end_day);
+      const capped = new Date(nextStart.getTime() - 86400000);
+      const end = rawEnd < capped ? rawEnd : capped;
+      return {
+        month: `${py}-${String(pm).padStart(2, "0")}`,
+        start: iso(start), end: iso(end), pay: iso(at(py, pm, cfg.pay_day)),
+      };
+    });
+  }, [cfg, month]);
+
+  return (
+    <div className="mt-2 rounded border border-[#dbe9e0] bg-[#f6faf7] p-1.5">
+      <div className="mb-0.5 text-[10px] font-semibold text-[#2c6b47]">이 설정이면 이렇게 됩니다</div>
+      <table className="w-full text-[10px] tabular-nums">
+        <tbody>
+          {rows.map((r) => (
+            <tr key={r.month}>
+              <td className="py-0.5 pr-2 font-semibold text-[#217346]">{r.month} 청구분</td>
+              <td className="py-0.5 text-[#555]">{r.start} ~ {r.end} 이용</td>
+              <td className="py-0.5 pl-2 text-right text-[#1b4f7a]">{r.pay} 결제</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
 }
 
 // --- 캘린더 ------------------------------------------------------------------

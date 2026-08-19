@@ -127,6 +127,9 @@ export interface CardStatementPreview {
   file_kind: string;
   parsed_by: string;
   note: string;
+  // 카드 설정으로 청구월을 계산한 건수. conflict 는 파일이 말한 청구월과 설정이 어긋난 경우.
+  cycle_applied?: number;
+  cycle_conflict?: { stated: string; by_cycle: string[] };
   stats: BudgetParseStats;
   transactions: BudgetTx[];
 }
@@ -157,6 +160,40 @@ export interface BudgetPlan {
   allocation: { name: string; monthly: number }[];
   steps: string[];
   note: string;
+}
+
+// --- 카드별 결제 주기 -------------------------------------------------------
+// 이용기간과 결제일은 카드마다 다르고 자동으로 알아낼 수 없다(파일에 안 적혀 있다).
+// 등록해 두면 거래일에서 청구월을 계산한다 — 할부는 거래일이 아니라 회차 기준.
+export interface CardCycle {
+  cycle_start_day: number;   // 0 = 말일
+  cycle_end_day: number;     // 0 = 말일
+  pay_day: number;           // 0 = 말일
+  pay_offset: number;        // 0=당월 결제, 1=익월, 2=다다음달
+}
+
+export interface CardCycleWindow {
+  start?: string;
+  end?: string;
+  pay?: string;
+}
+
+export interface BudgetCard {
+  card: string;
+  issuer: string;
+  count: number;
+  amount: number;
+  months: string[];
+  billing_month: string;
+  configured: boolean;
+  cycle: CardCycle;
+  describe: string;
+  window: CardCycleWindow;
+}
+
+export interface BudgetCardsOverview {
+  cards: BudgetCard[];
+  defaults: CardCycle;
 }
 
 export interface PayslipParse {
@@ -214,6 +251,18 @@ export const budgetApi = {
     request<{ moved: number; merged: number; to: string }>(
       `/api/data/budget/move-month?issuer=${encodeURIComponent(issuer)}&from_month=${fromMonth}&to_month=${toMonth}`,
       { method: "POST" }),
+
+  budgetCards: () => request<BudgetCardsOverview>(`/api/data/budget/cards`),
+  budgetSetCycle: (card: string, c: CardCycle) =>
+    request<{ ok: boolean; cycle: CardCycle }>(
+      `/api/data/budget/cycle?card=${encodeURIComponent(card)}&cycle_start_day=${c.cycle_start_day}` +
+      `&cycle_end_day=${c.cycle_end_day}&pay_day=${c.pay_day}&pay_offset=${c.pay_offset}`,
+      { method: "POST" }),
+  budgetClearCycle: (card: string) =>
+    request<{ ok: boolean }>(`/api/data/budget/cycle/clear?card=${encodeURIComponent(card)}`, { method: "POST" }),
+  budgetRecalc: (card?: string) =>
+    request<{ changed: number; cards?: string[]; note?: string }>(
+      `/api/data/budget/recalc${card ? `?card=${encodeURIComponent(card)}` : ""}`, { method: "POST" }),
 
   budgetPlan: (emergencyMonths = 3, investRatio = 0.5) =>
     request<BudgetPlan>(`/api/data/budget/plan?emergency_months=${emergencyMonths}&invest_ratio=${investRatio}`),
