@@ -16,7 +16,7 @@ from __future__ import annotations
 from . import cards, categories, payslip, store
 from .categories import CATEGORIES, categorize
 from .store import (add_transactions, clear_import, clear_month, delete_transaction,
-                    set_category, set_fixed, set_income)
+                    move_month, set_category, set_fixed, set_income)
 from .summary import installments, months_of, plan, state, summary
 
 ISSUERS = cards.ISSUERS
@@ -87,6 +87,6 @@ def _stats(txs: list[dict]) -> dict:
 __all__ = [
     "CATEGORIES", "ISSUERS", "add_transactions", "cards", "categories", "categorize",
     "clear_import", "clear_month", "delete_transaction", "import_csv", "import_file",
-    "installments", "months_of", "parse_payslip", "payslip", "plan", "preview_file",
-    "set_category", "set_fixed", "set_income", "state", "store", "summary",
+    "installments", "months_of", "move_month", "parse_payslip", "payslip", "plan",
+    "preview_file", "set_category", "set_fixed", "set_income", "state", "store", "summary",
 ]

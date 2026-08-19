@@ -207,3 +207,39 @@ def clear_import(user: str, issuer: str, billing_month: str) -> dict:
         ]
         save(user, d)
     return {"removed": before - len(d["transactions"])}
+
+
+def move_month(user: str, issuer: str, from_month: str, to_month: str) -> dict:
+    """등록해 둔 한 묶음의 청구월을 통째로 옮긴다.
+
+    롯데·하나처럼 청구월이 파일에 없는 카드사는 등록할 때 '마지막 거래월 +1' 추정치가
+    들어간다. 실제 결제일이 달라 한 달 어긋난 걸 나중에 알게 되는 일이 흔한데, 이게
+    없으면 지우고 다시 올리는 수밖에 없다. 지문은 청구월을 포함하므로 다시 만든다.
+    """
+    if not to_month or from_month == to_month:
+        return {"moved": 0}
+    with _lock:
+        d = load(user)
+        known = {t.get("fp") for t in d["transactions"]}
+        moved, dropped = 0, 0
+        kept = []
+        for t in d["transactions"]:
+            if t.get("issuer") != issuer or t.get("billing_month") != from_month:
+                kept.append(t)
+                continue
+            known.discard(t.get("fp"))
+            t["billing_month"] = to_month
+            t["fp"] = M.fingerprint(t)
+            if t["fp"] in known:      # 옮긴 달에 같은 거래가 이미 있으면 합친다
+                dropped += 1
+                continue
+            known.add(t["fp"])
+            kept.append(t)
+            moved += 1
+        d["transactions"] = kept
+        # 업로드 이력도 따라와야 한다 — 안 그러면 다음 번에 옮길 때 from_month 가 어긋난다.
+        for im in d.get("imports", []):
+            if im.get("issuer") == issuer and im.get("billing_month") == from_month:
+                im["billing_month"] = to_month
+        save(user, d)
+    return {"moved": moved, "merged": dropped, "to": to_month}

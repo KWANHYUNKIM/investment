@@ -209,6 +209,11 @@ export const budgetApi = {
     request<{ removed: number }>(`/api/data/budget/clear-month?month=${month}&by=${by}`, { method: "POST" }),
   budgetClearImport: (issuer: string, billingMonth: string) =>
     request<{ removed: number }>(`/api/data/budget/clear-import?issuer=${encodeURIComponent(issuer)}&billing_month=${billingMonth}`, { method: "POST" }),
+  // 추정 청구월이 한 달 어긋났을 때 — 지우고 다시 올리지 않아도 되게.
+  budgetMoveMonth: (issuer: string, fromMonth: string, toMonth: string) =>
+    request<{ moved: number; merged: number; to: string }>(
+      `/api/data/budget/move-month?issuer=${encodeURIComponent(issuer)}&from_month=${fromMonth}&to_month=${toMonth}`,
+      { method: "POST" }),
 
   budgetPlan: (emergencyMonths = 3, investRatio = 0.5) =>
     request<BudgetPlan>(`/api/data/budget/plan?emergency_months=${emergencyMonths}&invest_ratio=${investRatio}`),

@@ -281,23 +281,39 @@ export function BudgetManager() {
               {s && s.imports.length > 0 && !preview && (
                 <div className="mt-3 border-t border-[#eee] pt-2">
                   <div className="mb-1 text-[10px] font-semibold text-[#999]">최근 등록</div>
-                  <ul className="flex flex-col gap-0.5 text-[11px] text-[#666]">
+                  <ul className="flex flex-col gap-1 text-[11px] text-[#666]">
                     {s.imports.map((im, i) => (
                       <li key={i} className="flex items-center justify-between gap-2">
                         <span className="truncate">
-                          {im.at} · {im.issuer || "카드사 미상"} {im.billing_month} · {im.added}건
+                          {im.at} · {im.issuer || "카드사 미상"} · {im.added}건
                         </span>
                         {im.issuer && (
-                          <button
-                            onClick={async () => {
-                              if (!confirm(`${im.issuer} ${im.billing_month} 등록분을 지울까요?`)) return;
-                              await api.budgetClearImport(im.issuer, im.billing_month);
-                              bump();
-                            }}
-                            className="shrink-0 text-[#bbb] hover:text-rose-500"
-                          >
-                            되돌리기
-                          </button>
+                          <span className="flex shrink-0 items-center gap-1">
+                            {/* 청구월이 없는 카드사는 추정치가 들어간다 — 여기서 바로 고친다. */}
+                            <input
+                              type="month"
+                              defaultValue={im.billing_month}
+                              title="청구월 변경"
+                              onChange={async (e) => {
+                                const to = e.target.value;
+                                if (!to || to === im.billing_month) return;
+                                await api.budgetMoveMonth(im.issuer, im.billing_month, to);
+                                setMonth(to);
+                                bump();
+                              }}
+                              className="rounded border border-[#e0e0e0] px-1 py-0.5 text-[10px] outline-none focus:border-[#217346]"
+                            />
+                            <button
+                              onClick={async () => {
+                                if (!confirm(`${im.issuer} ${im.billing_month} 등록분을 지울까요?`)) return;
+                                await api.budgetClearImport(im.issuer, im.billing_month);
+                                bump();
+                              }}
+                              className="text-[#bbb] hover:text-rose-500"
+                            >
+                              되돌리기
+                            </button>
+                          </span>
                         )}
                       </li>
                     ))}

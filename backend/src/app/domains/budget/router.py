@@ -130,6 +130,14 @@ def budget_clear_import(issuer: str = Query(...), billing_month: str = Query(...
     return svc.clear_import(user, issuer, billing_month)
 
 
+@router.post("/budget/move-month")
+def budget_move_month(issuer: str = Query(...), from_month: str = Query(...),
+                      to_month: str = Query(...), user: str = Depends(require_auth),
+                      svc: BudgetService = Svc):
+    """등록해 둔 한 묶음의 청구월을 옮긴다 — 추정 청구월이 한 달 어긋났을 때."""
+    return svc.move_month(user, issuer, from_month, to_month)
+
+
 @router.get("/budget/plan")
 def budget_plan(emergency_months: int = Query(default=3, ge=1, le=12),
                 invest_ratio: float = Query(default=0.5, ge=0.0, le=1.0),

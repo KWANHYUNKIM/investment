@@ -145,3 +145,33 @@ def _isolated_user(tmp_path, monkeypatch) -> str:
     from app.data.market.budget import store
     monkeypatch.setattr(store, "_path", lambda user: str(tmp_path / f"budget_{user}.json"))
     return "tester"
+
+
+def test_billing_month_can_be_moved_after_import(tmp_path, monkeypatch) -> None:
+    """청구월이 없는 카드사는 추정치로 들어간다 — 한 달 어긋난 걸 나중에 고칠 수 있어야 한다.
+
+    이게 없으면 지우고 다시 올리는 수밖에 없다. 지문이 청구월을 포함하므로 옮긴 뒤에는
+    같은 파일을 다시 올렸을 때 중복으로 걸리지 않고 새로 들어온다(다른 달의 청구니까).
+    """
+    user = _isolated_user(tmp_path, monkeypatch)
+    budget.import_file(user, "명세서.xls", SHINHAN_XLS)
+    assert budget.summary(user)["month"] == "2026-09"
+
+    res = budget.move_month(user, "신한카드", "2026-09", "2026-10")
+    assert res["moved"] == 4 and res["merged"] == 0
+
+    s = budget.summary(user)
+    assert s["month"] == "2026-10"
+    assert s["count"] == 4
+    # 업로드 이력도 따라와야 다음 번 이동의 기준(from_month)이 맞는다.
+    assert s["imports"][0]["billing_month"] == "2026-10"
+
+
+def test_moving_onto_an_existing_month_merges_instead_of_duplicating(tmp_path, monkeypatch) -> None:
+    user = _isolated_user(tmp_path, monkeypatch)
+    budget.import_file(user, "명세서.xls", SHINHAN_XLS)
+    budget.move_month(user, "신한카드", "2026-09", "2026-10")
+    budget.import_file(user, "명세서.xls", SHINHAN_XLS)      # 2026-09 로 다시 들어온다
+    res = budget.move_month(user, "신한카드", "2026-09", "2026-10")
+    assert res["moved"] == 0 and res["merged"] == 4          # 같은 거래라 합쳐진다
+    assert budget.summary(user, "2026-10")["count"] == 4

@@ -187,3 +187,67 @@ def test_parsers_do_not_claim_each_others_files() -> None:
     for owner, sheet in files.items():
         claimed = {name for name, mod in mods.items() if mod.detect(sheet)}
         assert claimed == {owner}, f"{owner} 파일을 {claimed} 가 물었다"
+
+
+# --- 아직 실물을 못 받은 구획 ------------------------------------------------
+# 삼성 일시불 시트와 롯데 할부 파일은 표본이 없어 컬럼 구성만 같게 만들어 두고,
+# 지금 코드가 어떤 규칙으로 읽는지를 못박아 둔다. 실물이 오면 여기부터 확인한다.
+
+LOTTE_INSTALLMENT_XLS = """<html xmlns:x="urn:schemas-microsoft-com:office:excel"><head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" /></head><body>
+<p class="x-tit1">할부 결제예정금액</p>
+<table>
+<tr><th>이용일자</th><th>이용카드</th><th>가맹점명</th><th>이용금액</th><th>청구원금</th>
+<th>수수료·이자</th><th>연체이자</th><th>회차</th><th>잔여원금</th></tr>
+<tr><td>2026.06.15</td><td>본인 | 9409-****-****-*159</td><td>테스트가전</td>
+<td>1,200,000</td><td>200,000</td><td>5,000</td><td>0</td><td>2/6</td><td>800,000</td></tr>
+</table></body></html>""".encode("utf-8")
+
+
+def test_lotte_installment_file_is_read_as_installment() -> None:
+    rep = parse_file("할부 결제예정금액_20260819092636.xls", LOTTE_INSTALLMENT_XLS)
+    assert rep["issuer"] == "롯데카드"
+    tx = rep["transactions"][0]
+    assert tx["tx_type"] == M.INSTALLMENT
+    assert tx["amount"] == 205_000              # 청구원금 200,000 + 수수료·이자 5,000
+    assert tx["installment"] == {"months": 6, "seq": 2, "remaining": 800_000}
+
+
+def test_lotte_installment_feeds_the_upcoming_schedule(tmp_path, monkeypatch) -> None:
+    """할부 파일이 들어오면 남은 회차가 향후 확정지출로 잡혀야 한다."""
+    from app.data.market import budget
+    from app.data.market.budget import store
+    monkeypatch.setattr(store, "_path", lambda user: str(tmp_path / f"b_{user}.json"))
+    budget.import_file("u", "할부 결제예정금액.xls", LOTTE_INSTALLMENT_XLS)
+    inst = budget.installments("u")
+    assert inst["count"] == 1
+    assert inst["remaining_total"] == 800_000
+    assert inst["next_month"] == 200_000        # 800,000 ÷ 남은 4회차
+    assert len(inst["schedule"]) == 4
+
+
+def _samsung_lump_xlsx() -> bytes:
+    """삼성 일시불 구획 — 할부 컬럼(개월·회차·원금·이자)이 비어 있는 형태로 가정."""
+    import openpyxl
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "일시불"
+    ws.append(["일시불"])
+    ws.append([])
+    ws.append(["이용일", "이용구분", "가맹점", "이용금액", "총할부금액", "이용혜택", "혜택금액",
+               "개월", "회차", "원금", "이자/수수료", "포인트명", "적립금액", "입금후잔액"])
+    ws.append(["20260803", "본 인 654", "이마트", "50,000", "", "", "", "", "", "", "", "", 0, ""])
+    ws.append(["20260804", "본 인 654", "청구할인가맹점", "30,000", "", "청구할인", "-3,000",
+               "", "", "", "", "", 0, ""])
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
+def test_samsung_lump_sum_section() -> None:
+    txs = parse_file("samsungcard_20260901.xlsx", _samsung_lump_xlsx())["transactions"]
+    assert [t["tx_type"] for t in txs] == [M.LUMP, M.LUMP]
+    assert txs[0]["amount"] == 50_000
+    # 원금 컬럼이 비면 음수 혜택금액(청구할인)만 반영한다.
+    assert txs[1]["amount"] == 27_000
+    assert txs[1]["total"] == 30_000

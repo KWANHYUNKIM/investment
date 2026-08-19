@@ -59,3 +59,6 @@ class BudgetService:
 
     def clear_import(self, user: str, issuer: str, billing_month: str) -> dict:
         return budget_data.clear_import(user, issuer, billing_month)
+
+    def move_month(self, user: str, issuer: str, from_month: str, to_month: str) -> dict:
+        return budget_data.move_month(user, issuer, from_month, to_month)
