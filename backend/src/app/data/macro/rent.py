@@ -200,3 +200,93 @@ def snapshot(months: int = MONTHS, force: bool = False) -> dict:
     }
     _cache.set(None, data)
     return data
+
+
+# --- 단지별 전월세 실거래(지도용) --------------------------------------------
+# 매매(realestate.month_deals)와 같은 모양의 계약 단위 목록. 지도에서 매매/전세/월세를
+# 같은 코드로 다루려고 금액 필드를 통일한다: 전세는 deposit_eok, 월세는 보증금+월세.
+_deal_cache = TTLCache(ttl=12 * 3600.0)
+
+
+def month_deals(lawd: str, ymd: str) -> tuple[list[dict], bool]:
+    """한 시군구·한 달의 아파트 전월세 계약 **전체** 목록과 성공여부(ok)."""
+    key = get_settings().data_go_kr_key
+    if not key:
+        return [], False
+    out: list[dict] = []
+    page = 1
+    while True:
+        params = {"serviceKey": key, "LAWD_CD": lawd, "DEAL_YMD": ymd,
+                  "pageNo": str(page), "numOfRows": "1000"}
+        try:
+            r = requests.get(_URL, params=params, headers=_HEADERS, timeout=12)
+        except Exception:
+            return out, False
+        if r.status_code != 200:
+            return out, False
+        try:
+            root = ET.fromstring(r.text)
+        except ET.ParseError:
+            return out, False
+        rc = _txt(root, ".//resultCode") or _txt(root, ".//returnReasonCode")
+        if rc not in (None, "000", "00", "0"):
+            return out, False
+        items = root.findall(".//item")
+        for it in items:
+            dep = _num(_txt(it, "deposit", "보증금액", "보증금"))
+            rent_m = _num(_txt(it, "monthlyRent", "월세금액", "월세")) or 0.0
+            if dep is None and not rent_m:
+                continue
+            y = _txt(it, "dealYear", "년") or ymd[:4]
+            m = _txt(it, "dealMonth", "월") or ymd[4:]
+            d = _txt(it, "dealDay", "일") or ""
+            area = _txt(it, "excluUseAr", "전용면적")
+            out.append({
+                "apt": _txt(it, "aptNm", "아파트") or "-",
+                "dong": _txt(it, "umdNm", "법정동") or "",
+                "area": round(float(area), 1) if area else None,
+                "deposit_eok": round((dep or 0.0) / 10000.0, 2),
+                "monthly_manwon": int(rent_m),
+                "rent_type": "월세" if rent_m > 0 else "전세",
+                "floor": _txt(it, "floor", "층"),
+                "build_year": _txt(it, "buildYear", "건축년도"),
+                "date": f"{int(y):04d}-{int(m):02d}-{int(d):02d}" if d else f"{y}-{m}",
+            })
+        tc = _txt(root, ".//totalCount")
+        try:
+            total_n = int(tc) if tc else len(out)
+        except ValueError:
+            total_n = len(out)
+        if len(out) >= total_n or not items or page > 30:
+            break
+        page += 1
+    return out, True
+
+
+# 실패(429/키오류)도 잠깐 기억한다 — 안 그러면 매매 조회마다 전월세 API 를 헛되이
+# 다시 때려 남은 일일 쿼터를 더 태운다.
+_deal_fail = TTLCache(ttl=10 * 60.0)
+
+
+def deals_ok(lawd: str, ymd: str | None = None, limit: int = 600) -> tuple[list[dict], bool]:
+    """(계약목록, 성공여부). ok=False 면 쿼터 초과/키 오류 — '거래 없음'과 구분해야 한다."""
+    if not ymd:
+        ymd = _recent_months(2)[0]
+    ck = f"{lawd}:{ymd}"
+    hit = _deal_cache.get(ck)
+    if hit is not None:
+        return hit[:limit], True
+    if _deal_fail.get(ck) is not None:
+        return [], False
+    out, ok = month_deals(lawd, ymd)
+    out.sort(key=lambda x: (x["date"], x["deposit_eok"]), reverse=True)
+    if ok:
+        _deal_cache.set(ck, out)
+    else:
+        _deal_fail.set(ck, True)
+    return out[:limit], ok
+
+
+def deals(lawd: str, ymd: str | None = None, limit: int = 600) -> list[dict]:
+    """한 시군구의 아파트 전월세 계약 목록. 매매와 달리 건수가 많아 캐시를 둔다."""
+    return deals_ok(lawd, ymd, limit)[0]

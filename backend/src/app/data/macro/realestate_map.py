@@ -16,7 +16,7 @@ import requests
 
 from app.core.config import get_settings
 from app.data.infra.lawd_codes import SIGUNGU
-from app.data.macro import realestate
+from app.data.macro import realestate, rent, rtms
 
 # 17개 시도 중심점 (지오코딩 폴백)
 _SIDO_CENTROID = {
@@ -354,17 +354,61 @@ def _start_dong_warm(lawd: str, sido: str, region: str, dongs: list[str]) -> Non
     threading.Thread(target=run, name=f"re-dong-{lawd}", daemon=True).start()
 
 
-def region_apartments(lawd: str, ym: str | None = None) -> dict:
-    """한 시군구의 실거래를 **단지 단위**로 묶어 지도 마커용으로 반환(호갱노노 스타일).
+def _rent_index(lawd: str, ym: str | None, kind: str = "apt") -> dict[tuple[str, str], dict]:
+    """(단지, 동) -> 전월세 집계. 매매 단지에 전세가/전세가율을 붙이는 데 쓴다."""
+    try:
+        if kind == "apt":
+            contracts, _ok = rent.deals_ok(lawd, ym)
+        else:
+            contracts, _ok, _why = rtms.deals(kind, "rent", lawd, ym)
+    except Exception:
+        return {}
+    idx: dict[tuple[str, str], dict] = {}
+    for c in contracts:
+        acc = idx.setdefault((c["apt"], c["dong"]), {"jeonse": [], "wolse": 0, "count": 0})
+        acc["count"] += 1
+        if c["rent_type"] == "전세":
+            acc["jeonse"].append(c["deposit_eok"])
+        else:
+            acc["wolse"] += 1
+    return idx
+
+
+def _why_message(why: str) -> str:
+    """API 실패 사유를 화면에 그대로 쓸 한 줄로."""
+    w = why or ""
+    if "429" in w or "한도" in w or "LIMITED" in w.upper():
+        return "국토부 실거래 API 일일 호출한도를 넘겼습니다 — 자정 이후 다시 채워집니다."
+    if "없습니다" in w:
+        return w
+    if "미설정" in w:
+        return "DATA_GO_KR_KEY 가 설정되지 않았습니다."
+    return f"실거래를 불러오지 못했습니다 — {w or '원인 미상'}. 이 서비스에 활용신청이 승인됐는지 확인하세요."
+
+
+def _group_rent(contracts: list[dict]) -> dict[tuple[str, str], list[dict]]:
+    groups: dict[tuple[str, str], list[dict]] = {}
+    for c in contracts:
+        groups.setdefault((c["apt"], c["dong"]), []).append(c)
+    return groups
+
+
+def region_apartments(lawd: str, ym: str | None = None, trade: str = "sale",
+                      kind: str = "apt") -> dict:
+    """한 시군구의 실거래를 **단지 단위**로 묶어 지도 마커용으로 반환(네이버 부동산 스타일).
+
+    trade: "sale"(매매) · "jeonse"(전세) · "wolse"(월세). 매매에는 같은 달 전세 실거래로
+    계산한 **전세가율**(전세중위/매매중위)을 함께 실어, 카드에서 갭을 바로 보게 한다.
 
     정밀 좌표는 시군구 중심점 + 동별 군집 + 단지명 미세분산으로 결정적 배치한다.
     (Nominatim이 한국 읍·면·동·리 한글주소를 거의 못 찾아, 네트워크 의존 대신 결정적 레이아웃.
      도시 행정동으로 캐시된 좌표가 있으면 그것을 우선 사용.)
     """
+    trade = trade if trade in ("sale", "jeonse", "wolse") else "sale"
+    kind = kind if kind in rtms.KINDS else "apt"
     sido, region = _LAWD_INFO.get(lawd, ("", ""))
-    deals = realestate.deals(lawd, ym)
 
-    # 지역을 선택하는 즉시 이 시군구의 5년 거래이력 수집을 백그라운드로 시작해 둔다.
+    # 지역을 선택하는 즉시 이 시군구의 거래이력 수집을 백그라운드로 시작해 둔다.
     # (사용자가 목록을 훑는 동안 미리 채워져, 단지 상세를 열 때 대기가 사라짐)
     if get_settings().data_go_kr_key:
         _ensure_hist(lawd, _HIST_MONTHS)
@@ -374,10 +418,26 @@ def region_apartments(lawd: str, ym: str | None = None) -> dict:
     if center is None:
         center = list(_sido_centroid(sido)) if sido else [36.5, 127.8]
 
-    # 단지(apt+dong) 단위 그룹
-    groups: dict[tuple[str, str], list[dict]] = {}
-    for d in deals:
-        groups.setdefault((d["apt"], d["dong"]), []).append(d)
+    ok, why = True, ""
+    if trade == "sale":
+        if kind == "apt":
+            source_deals = realestate.deals(lawd, ym)
+        else:
+            source_deals, ok, why = rtms.deals(kind, "sale", lawd, ym)
+        groups: dict[tuple[str, str], list[dict]] = {}
+        for d in source_deals:
+            groups.setdefault((d["apt"], d["dong"]), []).append(d)
+        rent_idx = _rent_index(lawd, ym, kind)
+    else:
+        want = "전세" if trade == "jeonse" else "월세"
+        if kind == "apt":
+            contracts, ok = rent.deals_ok(lawd, ym)
+            why = "" if ok else "국토부 전월세 API 호출 실패"
+        else:
+            contracts, ok, why = rtms.deals(kind, "rent", lawd, ym)
+        source_deals = [c for c in contracts if c["rent_type"] == want]
+        groups = _group_rent(source_deals)
+        rent_idx = {}
 
     dongs = sorted({dong for (_apt, dong) in groups if dong})
     if sido and region and dongs:
@@ -387,9 +447,14 @@ def region_apartments(lawd: str, ym: str | None = None) -> dict:
     dong_idx = {d: i for i, d in enumerate(dongs)}     # 동별 군집 위치 인덱스
     apartments: list[dict] = []
     for (apt, dong), ds in groups.items():
-        ds.sort(key=lambda x: (x["date"], x["amount_eok"]), reverse=True)
+        # 금액 필드는 거래유형마다 다르다 — 마커/카드가 쓰는 공통 키로 정규화한다.
+        if trade == "sale":
+            ds.sort(key=lambda x: (x["date"], x["amount_eok"]), reverse=True)
+            prices = [x["amount_eok"] for x in ds]
+        else:
+            ds.sort(key=lambda x: (x["date"], x["deposit_eok"]), reverse=True)
+            prices = [x["deposit_eok"] for x in ds]
         recent = ds[0]
-        prices = [x["amount_eok"] for x in ds]
         areas = sorted({x["area"] for x in ds if x["area"] is not None})
 
         geo = dong_cache.get(f"{sido} {region} {dong}") if dong else None
@@ -402,24 +467,48 @@ def region_apartments(lawd: str, ym: str | None = None) -> dict:
         lat = round(base[0] + jt[0], 6)
         lng = round(base[1] + jt[1], 6)
 
-        apartments.append({
+        row = {
             "apt": apt, "dong": dong, "count": len(ds),
-            "recent_eok": recent["amount_eok"], "recent_area": recent["area"],
+            "recent_eok": recent["amount_eok"] if trade == "sale" else recent["deposit_eok"],
+            "recent_area": recent["area"],
             "recent_date": recent["date"], "recent_floor": recent["floor"],
             "build_year": recent["build_year"],
             "min_eok": min(prices), "max_eok": max(prices),
             "areas": areas,
             "lat": lat, "lng": lng, "approx": not precise,
             "deals": ds[:12],
-        })
+        }
+        if trade == "wolse":
+            rents = [x["monthly_manwon"] for x in ds if x["monthly_manwon"]]
+            row["monthly_min"] = min(rents) if rents else 0
+            row["monthly_max"] = max(rents) if rents else 0
+            row["monthly_recent"] = recent.get("monthly_manwon", 0)
+        if trade == "sale":
+            r = rent_idx.get((apt, dong))
+            jeonse_vals = sorted(r["jeonse"]) if r else []
+            if jeonse_vals:
+                mid_j = jeonse_vals[len(jeonse_vals) // 2]
+                sale_sorted = sorted(prices)
+                mid_s = sale_sorted[len(sale_sorted) // 2]
+                row["jeonse_eok"] = mid_j
+                row["jeonse_ratio"] = round(mid_j / mid_s * 100.0, 1) if mid_s else None
+                row["gap_eok"] = round(mid_s - mid_j, 2) if mid_s else None
+            else:
+                row["jeonse_eok"] = None
+                row["jeonse_ratio"] = None
+                row["gap_eok"] = None
+        apartments.append(row)
 
     apartments.sort(key=lambda a: a["recent_eok"], reverse=True)
     geocoded = sum(1 for a in apartments if not a["approx"])
     return {
         "lawd": lawd, "sido": sido, "region": region, "ym": ym,
-        "count": len(apartments), "deal_count": len(deals),
+        "trade": trade, "kind": kind, "kind_label": rtms.KINDS[kind]["label"],
+        "count": len(apartments), "deal_count": len(source_deals),
         "geocoded": geocoded, "geocoding": bool(_dong_warm.get(lawd)),
         "center": center, "apartments": apartments,
+        "available": ok,
+        "message": None if ok else _why_message(why),
     }
 
 

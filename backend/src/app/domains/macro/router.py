@@ -48,9 +48,35 @@ def realestate_deals_endpoint(lawd: str, ym: str | None = None, svc: MacroServic
 
 
 @router.get("/realestate-apartments")
-def realestate_apartments_endpoint(lawd: str, ym: str | None = None, svc: MacroService = Svc):
-    """시군구(LAWD) 실거래를 단지 단위로 묶어 지도 마커용 — 읍/면/동 지오코딩 + 단지 분산."""
-    return svc.realestate_apartments(lawd, ym)
+def realestate_apartments_endpoint(lawd: str, ym: str | None = None,
+                                   trade: str = "sale", kind: str = "apt",
+                                   svc: MacroService = Svc):
+    """시군구(LAWD) 실거래를 단지 단위로 묶어 지도 마커용 — 읍/면/동 지오코딩 + 단지 분산.
+
+    trade=sale|jeonse|wolse — 네이버 부동산의 매매/전세/월세 전환에 대응한다.
+    kind=apt|offi|rh|sh|nrg|land|silv — 네이버의 매물 종류 탭에 대응한다.
+    """
+    return svc.realestate_apartments(lawd, ym, trade, kind)
+
+
+@router.get("/poi-schools")
+def poi_schools_endpoint(sw_lat: float, sw_lng: float, ne_lat: float, ne_lng: float,
+                         levels: str | None = None, svc: MacroService = Svc):
+    """지도 범위 안의 학교 — 네이버 부동산의 학군 레이어. levels=초등학교,중학교 로 거른다."""
+    return svc.poi_schools(sw_lat, sw_lng, ne_lat, ne_lng, levels)
+
+
+@router.get("/poi-stations")
+def poi_stations_endpoint(sw_lat: float, sw_lng: float, ne_lat: float, ne_lng: float,
+                          svc: MacroService = Svc):
+    """지도 범위 안의 지하철역 — 네이버 부동산의 교통 레이어."""
+    return svc.poi_stations(sw_lat, sw_lng, ne_lat, ne_lng)
+
+
+@router.get("/realestate-kinds")
+def realestate_kinds_endpoint(svc: MacroService = Svc):
+    """지원하는 매물 종류 목록 — 유형별 전월세 실거래 제공 여부까지."""
+    return svc.realestate_kinds()
 
 
 @router.get("/realestate-apartment")

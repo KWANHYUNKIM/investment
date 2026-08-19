@@ -105,11 +105,26 @@ export interface RealEstateMapData {
   note?: string;
 }
 
+// 거래유형 — 네이버 부동산의 매매/전세/월세 전환에 대응
+export type TradeKind = "sale" | "jeonse" | "wolse";
+
+// 매물 종류 — 네이버의 아파트/오피스텔/빌라… 탭에 대응(국토부 RTMS 유형)
+export type PropertyKind = "apt" | "offi" | "rh" | "sh" | "nrg" | "land" | "silv";
+
+export interface PropertyKindMeta {
+  key: PropertyKind;
+  label: string;
+  has_rent: boolean; // false = 그 유형은 전월세 실거래가 공공데이터에 없음
+}
+
 export interface RealEstateDeal {
   apt: string;
   dong: string;
   area: number | null;
-  amount_eok: number;
+  amount_eok: number;      // 매매가(억)
+  deposit_eok?: number;    // 전월세 보증금(억) — trade=jeonse|wolse
+  monthly_manwon?: number; // 월세(만원) — trade=wolse
+  rent_type?: "전세" | "월세";
   floor: string | null;
   build_year: string | null;
   date: string;
@@ -137,6 +152,14 @@ export interface RealEstateApartment {
   lng: number;
   approx: boolean; // true=동 좌표 미확보 → 시군구 중심 근사
   deals: RealEstateDeal[];
+  // 매매(trade=sale)일 때만 — 같은 달 전세 실거래로 계산
+  jeonse_eok?: number | null;
+  jeonse_ratio?: number | null; // 전세가율 %
+  gap_eok?: number | null;      // 갭(매매중위 − 전세중위)
+  // 월세(trade=wolse)일 때만 — 보증금은 min/max_eok, 월세는 아래
+  monthly_min?: number;
+  monthly_max?: number;
+  monthly_recent?: number;
 }
 
 export interface RealEstateApartments {
@@ -144,10 +167,15 @@ export interface RealEstateApartments {
   sido: string;
   region: string;
   ym?: string | null;
+  trade?: TradeKind;
+  kind?: PropertyKind;
+  kind_label?: string;
   count: number;
   deal_count: number;
   geocoded: number;
   geocoding: boolean; // 동 좌표 채우는 중 → 잠시 후 재조회하면 정밀해짐
+  available?: boolean; // false = API 호출한도 초과 등 — "거래 없음"과 구분
+  message?: string | null;
   center: number[];
   apartments: RealEstateApartment[];
 }
@@ -222,12 +250,65 @@ export const realestateApi = {
   realestateMap: () => request<RealEstateMapData>(`/api/data/realestate-map`),
   realestateDeals: (lawd: string, ym?: string) =>
     request<RealEstateDeals>(`/api/data/realestate-deals?lawd=${encodeURIComponent(lawd)}${ym ? `&ym=${ym}` : ""}`),
-  realestateApartments: (lawd: string, ym?: string) =>
-    request<RealEstateApartments>(`/api/data/realestate-apartments?lawd=${encodeURIComponent(lawd)}${ym ? `&ym=${ym}` : ""}`),
+  realestateKinds: () => request<{ kinds: PropertyKindMeta[] }>(`/api/data/realestate-kinds`),
+  realestateApartments: (
+    lawd: string, ym?: string, trade: TradeKind = "sale", kind: PropertyKind = "apt",
+  ) =>
+    request<RealEstateApartments>(
+      `/api/data/realestate-apartments?lawd=${encodeURIComponent(lawd)}${ym ? `&ym=${ym}` : ""}` +
+      `&trade=${trade}&kind=${kind}`,
+    ),
   realestateApartment: (lawd: string, apt: string, dong?: string, months = 120) =>
     request<RealEstateApartmentDetail>(
       `/api/data/realestate-apartment?lawd=${encodeURIComponent(lawd)}&apt=${encodeURIComponent(apt)}${
         dong ? `&dong=${encodeURIComponent(dong)}` : ""
       }&months=${months}`,
     ),
+};
+
+// --- 지도 주변시설(POI) — 네이버의 학군·교통 레이어 -------------------------
+export interface PoiSchool {
+  name: string;
+  level: string;   // 초등학교 · 중학교 · 고등학교 · 특수학교
+  kind: string;    // 초 · 중 · 고 (마커 배지)
+  lat: number;
+  lng: number;
+  addr: string;
+}
+
+export interface PoiStation {
+  name: string;
+  line: string;
+  lines: string[];   // 환승역이면 여러 노선
+  transfer: boolean;
+  lat: number;
+  lng: number;
+  addr: string;
+}
+
+export interface PoiResult<T> {
+  available: boolean;   // false = reference JSON 미적재
+  message: string | null;
+  count: number;
+  truncated: boolean;   // 범위 안이 너무 많아 잘림 — 더 확대하라는 신호
+  items: T[];
+}
+
+export interface MapBounds {
+  swLat: number;
+  swLng: number;
+  neLat: number;
+  neLng: number;
+}
+
+function bbox(b: MapBounds): string {
+  return `sw_lat=${b.swLat}&sw_lng=${b.swLng}&ne_lat=${b.neLat}&ne_lng=${b.neLng}`;
+}
+
+export const poiApi = {
+  poiSchools: (b: MapBounds, levels?: string[]) =>
+    request<PoiResult<PoiSchool>>(
+      `/api/data/poi-schools?${bbox(b)}${levels?.length ? `&levels=${encodeURIComponent(levels.join(","))}` : ""}`,
+    ),
+  poiStations: (b: MapBounds) => request<PoiResult<PoiStation>>(`/api/data/poi-stations?${bbox(b)}`),
 };

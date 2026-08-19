@@ -44,7 +44,7 @@ import { budgetApi } from "./budget";
 import { incomeApi } from "./income";
 import { wealthApi } from "./wealth";
 import { macroApi } from "./macro";
-import { realestateApi } from "./realestate";
+import { realestateApi, poiApi } from "./realestate";
 import { themesApi } from "./themes";
 import { industryApi } from "./industry";
 import { globalMapApi } from "./globalMap";
@@ -71,6 +71,7 @@ export const api = {
   ...wealthApi,
   ...macroApi,
   ...realestateApi,
+  ...poiApi,
   ...themesApi,
   ...industryApi,
   ...globalMapApi,

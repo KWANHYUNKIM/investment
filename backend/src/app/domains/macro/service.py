@@ -36,9 +36,25 @@ class MacroService:
         from app.data.macro import realestate_map
         return realestate_map.region_deals(lawd, ym)
 
-    def realestate_apartments(self, lawd: str, ym: str | None) -> dict:
+    def realestate_apartments(self, lawd: str, ym: str | None,
+                              trade: str = "sale", kind: str = "apt") -> dict:
         from app.data.macro import realestate_map
-        return realestate_map.region_apartments(lawd, ym)
+        return realestate_map.region_apartments(lawd, ym, trade, kind)
+
+    def poi_schools(self, sw_lat: float, sw_lng: float, ne_lat: float, ne_lng: float,
+                    levels: str | None) -> dict:
+        from app.data.macro import poi
+        return poi.schools(sw_lat, sw_lng, ne_lat, ne_lng, levels)
+
+    def poi_stations(self, sw_lat: float, sw_lng: float,
+                     ne_lat: float, ne_lng: float) -> dict:
+        from app.data.macro import poi
+        return poi.stations(sw_lat, sw_lng, ne_lat, ne_lng)
+
+    def realestate_kinds(self) -> dict:
+        from app.data.macro import rtms
+        return {"kinds": [{"key": k, "label": v["label"], "has_rent": bool(v["rent"])}
+                          for k, v in rtms.KINDS.items()]}
 
     def realestate_apartment(self, lawd: str, apt: str, dong: str | None,
                              months: int) -> dict:
