@@ -61,12 +61,57 @@ def norm_date(s) -> str | None:
 
 
 def norm_month(s) -> str | None:
-    """``2026년9월 예정 이용대금명세서`` → ``2026-09``."""
+    """``2026년9월`` / ``2026-09`` → ``2026-09``. 첫 번째로 걸리는 것.
+
+    표 본문까지 넘기면 안 된다 — 거래일에 먼저 걸린다. 제목에서 청구월을 뽑을
+    때는 ``title_month`` 를 쓴다.
+    """
     m = _MONTH.search(str(s or ""))
     if not m:
         return None
     mo = int(m.group(2))
     return f"{m.group(1)}-{mo:02d}" if 1 <= mo <= 12 else None
+
+
+# 제목의 청구월만 잡는 형태 — ``2026년 9월``. 표 본문의 거래일은 ``2026.07.20`` 이라
+# 한글 '년/월' 을 쓰지 않으므로, 이 형태로만 찾으면 파일 전체를 훑어도 안전하다.
+_TITLE_MONTH = re.compile(r"(20\d{2})\s*년\s*(\d{1,2})\s*월")
+
+
+def title_month(text) -> str:
+    """명세서 제목에서 청구월을 뽑는다. 없으면 빈 문자열(= 모른다)."""
+    m = _TITLE_MONTH.search(str(text or ""))
+    if not m:
+        return ""
+    mo = int(m.group(2))
+    return f"{m.group(1)}-{mo:02d}" if 1 <= mo <= 12 else ""
+
+
+def add_months(month: str, n: int) -> str:
+    """``2026-09`` + 2 → ``2026-11``. 못 읽으면 빈 문자열."""
+    try:
+        y, m = (int(x) for x in str(month).split("-")[:2])
+    except (ValueError, IndexError):
+        return ""
+    if not (1 <= m <= 12):
+        return ""
+    total = y * 12 + (m - 1) + n
+    return f"{total // 12}-{total % 12 + 1:02d}"
+
+
+# 마스킹된 카드번호를 축 라벨로 쓸 만하게 줄인다.
+#   "본인 | 9409-****-****-*159" → "본인 159"     "본 인 654" → "본인 654"
+_MASKED = re.compile(r"\d{2,6}\s*-\s*\*+\s*-\s*\*+\s*-\s*\**(\d+)")
+
+
+def card_label(raw) -> str:
+    t = re.sub(r"\s+", " ", str(raw or "")).strip()
+    if not t:
+        return ""
+    t = _MASKED.sub(r"\1", t)
+    t = t.replace("|", " ").replace("본 인", "본인").replace("가 족", "가족")
+    t = re.sub(r"\*+", "", t)
+    return re.sub(r"\s+", " ", t).strip(" -")
 
 
 def clean_amt(s) -> float | None:
@@ -111,14 +156,20 @@ def make_tx(*, date: str, merchant: str, charged: float, fee: float = 0.0,
             total: float | None = None, billing_month: str | None = None,
             issuer: str = "", card: str = "", tx_type: str = LUMP,
             installment: dict | None = None) -> dict:
-    """정규화 거래 한 건을 만든다(카테고리·지문은 여기서 채운다)."""
+    """정규화 거래 한 건을 만든다(카테고리·지문은 여기서 채운다).
+
+    ``billing_month=None`` 은 '카드사가 안 알려줬다'는 뜻으로 빈 문자열이 되고,
+    ``parse_file`` 이 추정치로 채운 뒤 사용자가 등록 전에 고칠 수 있게 한다.
+    거래월을 조용히 청구월로 쓰면 신한(청구월 기준)과 섞였을 때 같은 달 합계가
+    무엇을 뜻하는지 알 수 없어진다.
+    """
     from ..categories import categorize
 
     charged = float(charged or 0)
     fee = float(fee or 0)
     tx = {
         "date": date,
-        "billing_month": billing_month or (date[:7] if date else ""),
+        "billing_month": billing_month if billing_month is not None else (date[:7] if date else ""),
         "merchant": (merchant or "").strip() or "미상",
         "amount": round(charged + fee, 2),
         "charged": round(charged, 2),

@@ -122,6 +122,8 @@ export interface CardStatementPreview {
   issuer: string;
   billing_month: string;
   billing_months: string[];
+  // false 면 파일에 청구월이 없어 '마지막 거래월 +1' 로 추정한 값이다 — 등록 전에 고르게 한다.
+  billing_month_known: boolean;
   file_kind: string;
   parsed_by: string;
   note: string;

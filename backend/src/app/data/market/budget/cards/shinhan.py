@@ -94,7 +94,7 @@ def _tx_type(kind: str, merchant: str, total: float, fee: float, months: int) ->
 
 
 def parse(sheet) -> list[dict]:
-    billing = M.norm_month(sheet.text) or ""
+    billing = M.title_month(sheet.text)
     out: list[dict] = []
     for table in sheet.tables:
         found = _find_header(table)
@@ -127,7 +127,7 @@ def parse(sheet) -> list[dict]:
 
             out.append(M.make_tx(
                 date=date, merchant=merchant, charged=charged, fee=fee, total=total,
-                billing_month=billing or date[:7], issuer=ISSUER,
-                card=_cell(row, c["card"]), tx_type=ttype, installment=inst,
+                billing_month=billing, issuer=ISSUER,
+                card=M.card_label(_cell(row, c["card"])), tx_type=ttype, installment=inst,
             ))
     return out

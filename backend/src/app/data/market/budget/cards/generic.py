@@ -69,7 +69,7 @@ def _tx_type(kind: str, merchant: str, amount: float) -> str:
 
 
 def parse(sheet) -> list[dict]:
-    billing = M.norm_month(sheet.text) or ""
+    billing = M.title_month(sheet.text)
     out: list[dict] = []
     for table in sheet.tables:
         found = _find_header(table)
@@ -89,9 +89,9 @@ def parse(sheet) -> list[dict]:
                 amt = -abs(amt)
             out.append(M.make_tx(
                 date=date, merchant=merchant, charged=amt, fee=fee, total=amt,
-                # 청구월을 모르면 거래월로 — 카드사가 알려주지 않으면 이 이상은 추정이다.
-                billing_month=billing or date[:7], issuer=ISSUER,
-                card=_cell(row, c["card"]), tx_type=ttype,
+                # 청구월을 못 찾으면 빈 값 — parse_file 이 추정치를 넣고 사용자가 고친다.
+                billing_month=billing, issuer=ISSUER,
+                card=M.card_label(_cell(row, c["card"])), tx_type=ttype,
             ))
     return out
 

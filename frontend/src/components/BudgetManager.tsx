@@ -57,6 +57,9 @@ export function BudgetManager() {
 
   const [preview, setPreview] = useState<CardStatementPreview | null>(null);
   const [chosen, setChosen] = useState<Set<string>>(new Set());
+  // 카드사가 청구월을 안 알려주는 파일(롯데 결제예정금액·하나 이용내역)이 있어서
+  // 등록 전에 사용자가 확정한다. 서버 추정치를 초기값으로 받는다.
+  const [billMonth, setBillMonth] = useState("");
   const [paste, setPaste] = useState("");
   const [msg, setMsg] = useState("");
 
@@ -82,6 +85,7 @@ export function BudgetManager() {
       const rep = await api.budgetPreviewFile(file);
       setPreview(rep);
       setChosen(new Set(rep.transactions.map((t) => t.fp)));
+      setBillMonth(rep.billing_month);
       if (!rep.transactions.length) setMsg(rep.note);
     } catch {
       setMsg("파일을 읽지 못했습니다. 카드사에서 받은 원본인지 확인해 주세요.");
@@ -104,7 +108,10 @@ export function BudgetManager() {
 
   const commit = async () => {
     if (!preview) return;
-    const items = preview.transactions.filter((t) => chosen.has(t.fp));
+    // 사용자가 확정한 청구월을 전부에 씌운다(서버가 지문을 다시 만들어 중복도 맞춰진다).
+    const items = preview.transactions
+      .filter((t) => chosen.has(t.fp))
+      .map((t) => (billMonth ? { ...t, billing_month: billMonth } : t));
     if (!items.length) return;
     setBusy("commit");
     try {
@@ -112,7 +119,7 @@ export function BudgetManager() {
       setMsg(`${r.added}건 등록${r.skipped ? ` · ${r.skipped}건은 이미 있어 건너뜀` : ""}`);
       setPreview(null);
       setPaste("");
-      setMonth(preview.billing_month || "");
+      setMonth(billMonth || preview.billing_month || "");
       bump();
     } catch {
       setMsg("등록에 실패했습니다.");
@@ -391,6 +398,8 @@ export function BudgetManager() {
               rep={preview}
               chosen={chosen}
               setChosen={setChosen}
+              billMonth={billMonth}
+              setBillMonth={setBillMonth}
               onCancel={() => { setPreview(null); setMsg(""); }}
               onCommit={commit}
               busy={busy === "commit"}
@@ -629,11 +638,13 @@ function TxTable({ rows, categories, onChange }: { rows: BudgetTx[]; categories:
 }
 
 function PreviewPanel({
-  rep, chosen, setChosen, onCancel, onCommit, busy,
+  rep, chosen, setChosen, billMonth, setBillMonth, onCancel, onCommit, busy,
 }: {
   rep: CardStatementPreview;
   chosen: Set<string>;
   setChosen: (s: Set<string>) => void;
+  billMonth: string;
+  setBillMonth: (m: string) => void;
   onCancel: () => void;
   onCommit: () => void;
   busy: boolean;
@@ -650,14 +661,23 @@ function PreviewPanel({
   return (
     <div className="overflow-hidden rounded-md border border-[#d0d0d0] bg-white shadow-sm">
       <div className="flex flex-wrap items-center justify-between gap-2 bg-[#217346] px-4 py-2 text-white">
-        <span className="text-sm font-semibold">
-          확인 후 등록 — {rep.issuer || "카드사 미상"} {rep.billing_month && `${rep.billing_month} 청구분`}
-        </span>
+        <span className="text-sm font-semibold">확인 후 등록 — {rep.issuer || "카드사 미상"}</span>
         <div className="flex items-center gap-2">
+          <label className="flex items-center gap-1 text-xs">
+            청구월
+            <input
+              type="month"
+              value={billMonth}
+              onChange={(e) => setBillMonth(e.target.value)}
+              className={`rounded px-1.5 py-0.5 text-xs text-[#1f1f1f] outline-none ${
+                rep.billing_month_known ? "bg-white/90" : "bg-[#fff3cd] ring-1 ring-[#e0a34e]"
+              }`}
+            />
+          </label>
           <button onClick={onCancel} className="rounded bg-white/20 px-2 py-0.5 text-xs hover:bg-white/30">취소</button>
           <button
             onClick={onCommit}
-            disabled={busy || !picked.length}
+            disabled={busy || !picked.length || !billMonth}
             className="rounded bg-white px-3 py-0.5 text-xs font-semibold text-[#217346] hover:bg-[#eef6f0] disabled:opacity-50"
           >
             {busy ? "등록 중…" : `${picked.length}건 등록`}
