@@ -175,3 +175,60 @@ def test_moving_onto_an_existing_month_merges_instead_of_duplicating(tmp_path, m
     res = budget.move_month(user, "신한카드", "2026-09", "2026-10")
     assert res["moved"] == 0 and res["merged"] == 4          # 같은 거래라 합쳐진다
     assert budget.summary(user, "2026-10")["count"] == 4
+
+
+# --- 남은 할부를 미래 달의 '예정 지출' 로 채우기 ------------------------------
+def test_future_month_shows_the_remaining_installment(tmp_path, monkeypatch) -> None:
+    """명세서가 아직 안 나온 달도 남은 할부만큼은 확정이다.
+
+    이걸 안 채우면 다음 달 화면이 텅 비어 '나갈 돈이 없다' 처럼 읽힌다.
+    """
+    user = _isolated_user(tmp_path, monkeypatch)
+    budget.import_file(user, "명세서.xls", SHINHAN_XLS)      # 할부 1/6, 청구월 2026-09
+
+    nxt = budget.summary(user, "2026-10")
+    assert nxt["count"] == 0                                 # 실제 거래는 없고
+    assert nxt["projected_total"] == 412_500                 # 2,062,500 ÷ 남은 5회
+    assert nxt["committed"] == 412_500
+    row = nxt["projected"][0]
+    assert row["projected"] is True
+    assert row["installment"]["seq"] == 2                    # 2회차
+    assert row["id"] == 0                                    # 저장된 거래가 아니다
+
+
+def test_projection_months_are_selectable_but_not_the_default(tmp_path, monkeypatch) -> None:
+    """예정만 있는 달도 월 선택에 나와야 하지만, 열자마자 1년 뒤가 뜨면 안 된다."""
+    user = _isolated_user(tmp_path, monkeypatch)
+    budget.import_file(user, "명세서.xls", SHINHAN_XLS)
+    s = budget.summary(user)
+    assert s["month"] == "2026-09"                           # 실제 내역이 있는 최신 달
+    assert "2027-02" in s["months"]
+    assert s["future_months"] == ["2026-10", "2026-11", "2026-12", "2027-01", "2027-02"]
+
+
+def test_projection_disappears_when_the_real_statement_arrives(tmp_path, monkeypatch) -> None:
+    """다음 달 명세서를 올리면 예정이 실제로 바뀌어야 한다 — 둘 다 세면 두 배가 된다."""
+    user = _isolated_user(tmp_path, monkeypatch)
+    budget.import_file(user, "명세서.xls", SHINHAN_XLS)
+    assert budget.summary(user, "2026-10")["projected_total"] == 412_500
+
+    # 같은 할부의 2회차가 실제로 들어온 상황
+    budget.add_transactions(user, [{
+        "date": "2026-07-20", "billing_month": "2026-10", "merchant": "분할납부(TEST SHOP)",
+        "charged": 412_500, "fee": 40_000, "total": 2_475_041, "issuer": "신한카드",
+        "card": "본인717", "tx_type": "할부",
+        "installment": {"months": 6, "seq": 2, "remaining": 1_650_000},
+    }])
+    s = budget.summary(user, "2026-10")
+    assert s["count"] == 1
+    assert s["projected_total"] == 0                         # 예정은 사라진다
+    assert s["committed"] == 452_500                         # 실제 금액(수수료 포함)만
+
+
+def test_projection_is_subtracted_from_savings(tmp_path, monkeypatch) -> None:
+    """이미 확정된 지출을 빼지 않으면 저축 가능액이 매달 그만큼 낙관적으로 보인다."""
+    user = _isolated_user(tmp_path, monkeypatch)
+    budget.import_file(user, "명세서.xls", SHINHAN_XLS)
+    budget.set_income(user, 3_000_000)
+    s = budget.summary(user, "2026-10")
+    assert s["savings_possible"] == 3_000_000 - 412_500

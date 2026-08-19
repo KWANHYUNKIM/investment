@@ -13,6 +13,7 @@
 from __future__ import annotations
 
 from . import categories as C
+from . import cycles as C_cycles
 from .cards import model as M
 from .store import load
 
@@ -55,15 +56,24 @@ def summary(user: str, month: str | None = None, basis: str = "billing_month") -
     d = load(user)
     txs = d["transactions"]
     basis = "date" if basis == "date" else "billing_month"
-    months = months_of(txs, basis)
+    actual_months = months_of(txs, basis)
+    # 기본 달은 **실제 내역이 있는 최신 달**이다. 예정만 있는 미래 달을 기본으로
+    # 잡으면 탭을 열자마자 1년 뒤 할부 화면이 뜬다.
     if not month:
-        month = months[0] if months else ""
+        month = actual_months[0] if actual_months else ""
+
+    # 아직 명세서가 안 나온 할부 회차 — 청구월 기준일 때만 의미가 있다(결제 예정이므로).
+    proj_all = projected_installments(user) if basis == "billing_month" else {}
+    future = sorted(m for m in proj_all if m not in actual_months)
+    months = sorted(set(actual_months) | set(future), reverse=True)
 
     recurring = C.recurring_keys(txs)
     fixed_rules = d.get("fixed_rules", {})
     # 카드사마다 결제일이 달라 청구월이 갈린다(신한 9월 · 삼성 8월). 최신 달만 보면
     # 다른 달에 있는 카드가 '안 들어간 것처럼' 보이므로 전체 기간을 볼 수 있어야 한다.
     mtx = list(txs) if month == ALL else [t for t in txs if _month_of(t, basis) == month]
+    proj = ([r for rows in proj_all.values() for r in rows] if month == ALL
+            else proj_all.get(month, []))
     for t in mtx:
         t["fixed"] = C.is_fixed(t, recurring, fixed_rules)
 
@@ -86,19 +96,27 @@ def summary(user: str, month: str | None = None, basis: str = "billing_month") -
 
     inst = installments(user)
     upcoming = inst["schedule"]
+    proj_total = sum(t["amount"] for t in proj)
 
     inc = d["income"]
     income_total = (inc.get("monthly_net") or 0) + (inc.get("extra") or 0)
-    savings_possible = income_total - net_spent
+    # 예정분까지 빼야 '저축 가능액'이 실제로 남는 돈이 된다. 명세서가 아직 안 나왔을
+    # 뿐 이미 확정된 지출이라, 빼지 않으면 매달 그만큼 낙관적으로 보인다.
+    savings_possible = income_total - net_spent - proj_total
 
     return {
         "month": month,
         "months": months,
+        "future_months": future,
         "basis": basis,
         "income": inc,
         "income_total": round(income_total),
         "spent": round(net_spent),
         "refund": round(refund),
+        # 예정분은 실제 지출과 섞지 않는다 — 합쳐 놓으면 '이미 나간 돈'과 구별이 안 된다.
+        "projected": sorted(proj, key=lambda t: (t["billing_month"], -t["amount"])),
+        "projected_total": round(proj_total),
+        "committed": round(net_spent + proj_total),
         "savings_possible": round(savings_possible),
         "savings_rate": round(savings_possible / income_total * 100, 1) if income_total else None,
         # --- 분리 축 4개 (합계는 모두 spent 와 같다) ---
@@ -189,6 +207,62 @@ def installments(user: str) -> dict:
         "fee_note": "월 금액은 원금 기준입니다. 수수료는 잔액에 붙어 회차마다 줄어듭니다.",
         "schedule": schedule,
     }
+
+
+# --- 예정 지출(아직 명세서가 안 나온 할부 회차) -------------------------------
+def projected_installments(user: str) -> dict:
+    """남은 할부 회차를 청구월별 '예정 지출' 로 만든다.
+
+    명세서에 ``6개월 중 1회차 · 잔액 2,062,500`` 이라고 적혀 있으면 다음 달부터
+    다섯 달치가 이미 확정이다. 그런데 그 달 명세서는 아직 안 나왔으니 화면이
+    텅 비어 **'나갈 돈이 없다' 처럼 읽힌다.** 그래서 아는 만큼 채워 넣는다.
+
+    실제 명세서가 들어온 회차는 뺀다(같은 카드·가맹점·회차). 나중에 그 달 명세서를
+    올리면 예정이 실제로 바뀌면서 중복되지 않는다.
+
+    카드에 결제 주기가 설정돼 있으면 실제 결제일까지 붙인다.
+    """
+    d = load(user)
+    inst = installments(user)
+    conf = d.get("card_cycles", {})
+
+    # (카드, 가맹점, 회차) 로 이미 들어온 할부를 표시해 둔다.
+    seen = {
+        (f'{t.get("issuer", "")} {t.get("card", "")}'.strip(), t.get("merchant", ""),
+         int((t.get("installment") or {}).get("seq") or 0))
+        for t in d["transactions"] if t.get("installment")
+    }
+    origin = {(i["card"], i["merchant"]): i for i in inst["items"]}
+
+    by_month: dict[str, list[dict]] = {}
+    for row in inst["schedule"]:
+        month = row["month"]
+        for it in row["items"]:
+            key = (it["card"], it["merchant"], it["seq"])
+            if key in seen:
+                continue
+            src = origin.get((it["card"], it["merchant"]), {})
+            cfg = conf.get(it["card"])
+            pay = C_cycles.window_for(month, cfg).get("pay", "") if cfg else ""
+            by_month.setdefault(month, []).append({
+                "id": 0,                       # 저장된 거래가 아니다 — 편집 대상이 아님
+                "date": pay,                   # 결제일을 아는 경우에만 채운다
+                "billing_month": month,
+                "merchant": it["merchant"],
+                "amount": it["amount"],
+                "charged": it["amount"],
+                "fee": 0.0,
+                "total": src.get("total", it["amount"]),
+                "category": src.get("category", "기타"),
+                "issuer": src.get("card", "").split(" ")[0],
+                "card": it["card"],
+                "tx_type": M.INSTALLMENT,
+                "installment": {"months": it["months"], "seq": it["seq"], "remaining": 0},
+                "projected": True,
+                "fixed": True,                 # 이미 확정된 지출이라 줄일 수 없다
+                "fp": f"proj:{it['card']}:{it['merchant']}:{it['seq']}",
+            })
+    return by_month
 
 
 # --- 저축·투자 계획 ---------------------------------------------------------

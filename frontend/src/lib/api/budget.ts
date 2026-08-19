@@ -35,6 +35,8 @@ export interface BudgetTx {
   tx_type: string;
   installment: BudgetInstallmentRef | null;
   fixed?: boolean;
+  // 아직 명세서가 안 나온 할부 회차 — 저장된 거래가 아니라 계산으로 만든 예정분이다.
+  projected?: boolean;
   fp: string;
 }
 
@@ -84,11 +86,17 @@ export interface BudgetImportLog {
 export interface BudgetSummary {
   month: string;
   months: string[];
+  // 실제 내역은 없고 할부 예정만 있는 달 (months 안에 함께 들어 있다)
+  future_months: string[];
   basis: "billing_month" | "date";
   income: BudgetIncome;
   income_total: number;
   spent: number;
   refund: number;
+  // 남은 할부 회차 — 명세서는 아직이지만 이미 확정된 지출
+  projected: BudgetTx[];
+  projected_total: number;
+  committed: number;          // spent + projected_total
   savings_possible: number;
   savings_rate: number | null;
   by_category: CategoryBucket[];

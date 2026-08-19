@@ -195,10 +195,13 @@ export function BudgetManager() {
   }, [s, pick]);
 
   // 목록에 실제로 뿌릴 것 — 캘린더에서 하루를 골랐으면 그 날짜까지 좁힌다.
-  const listRows = useMemo(
-    () => (day ? rows.filter((t) => t.date === day) : rows),
-    [rows, day],
-  );
+  // 예정 할부는 맨 위에 붙인다(아직 안 나갔지만 이미 확정된 돈이라 먼저 보여야 한다).
+  // 축 필터나 날짜 필터가 걸리면 뺀다 — 거래일이 없어 그 조건에 답할 수 없다.
+  const listRows = useMemo(() => {
+    const base = day ? rows.filter((t) => t.date === day) : rows;
+    if (day || pick || !s?.projected.length) return base;
+    return [...s.projected, ...base];
+  }, [rows, day, pick, s]);
 
   const maxBucket = buckets[0]?.amount || 1;
   const monthValue = month || s?.month || "";
@@ -232,7 +235,9 @@ export function BudgetManager() {
                     '안 들어간 것처럼' 보이지 않게 전체 보기를 둔다. */}
                 <option value="all" className="text-black">전체 기간</option>
                 {s.months.map((m) => (
-                  <option key={m} value={m} className="text-black">{m}</option>
+                  <option key={m} value={m} className="text-black">
+                    {m}{s.future_months.includes(m) ? " (할부 예정)" : ""}
+                  </option>
                 ))}
               </select>
             )}
@@ -244,9 +249,19 @@ export function BudgetManager() {
         ) : (
           <div className="grid grid-cols-2 gap-px bg-[#e8e8e8] sm:grid-cols-3 xl:grid-cols-6">
             <Cell label="수입" value={won(s.income_total)} />
-            <Cell label={basis === "billing_month" ? "이 달 카드값" : "이 달 지출"} value={won(s.spent)} color={RED} />
+            <Cell
+              label={basis === "billing_month" ? "이 달 카드값" : "이 달 지출"}
+              value={won(s.spent)}
+              sub={s.projected_total ? `+ 할부 예정 ${num(s.projected_total)}` : undefined}
+              color={RED}
+            />
+            <Cell
+              label="확정 지출"
+              value={won(s.committed)}
+              sub={s.projected_total ? "명세서 + 남은 할부" : undefined}
+              color={RED}
+            />
             <Cell label="저축 가능" value={won(s.savings_possible)} color={s.savings_possible >= 0 ? GREEN : RED} />
-            <Cell label="저축률" value={s.savings_rate == null ? "—" : `${s.savings_rate}%`} color={(s.savings_rate ?? 0) >= 0 ? GREEN : RED} />
             <Cell label="고정비 비중" value={`${s.by_fixed.fixed_pct}%`} sub={won(s.by_fixed.fixed)} />
             <Cell
               label="할부 잔액"
@@ -467,7 +482,16 @@ export function BudgetManager() {
                 </div>
                 <div className="p-3">
                   {buckets.length === 0 ? (
-                    <div className="py-8 text-center text-xs text-[#aaa]">이 달 내역이 없습니다. 왼쪽에서 명세서를 올려보세요.</div>
+                    <div className="py-8 text-center text-xs text-[#aaa]">
+                      {s && s.projected_total > 0 ? (
+                        <>
+                          이 달 명세서는 아직 없고, 남은 할부 <b className="text-[#1b4f7a]">{won(s.projected_total)}</b> 만 확정돼 있습니다.
+                          <div className="mt-1 text-[11px]">아래 목록에서 확인하세요.</div>
+                        </>
+                      ) : (
+                        "이 달 내역이 없습니다. 왼쪽에서 명세서를 올려보세요."
+                      )}
+                    </div>
                   ) : (
                     <div className="flex flex-col gap-1.5">
                       {buckets.map((b, i) => {
@@ -979,51 +1003,68 @@ function TxTable({ rows, categories, onChange }: { rows: BudgetTx[]; categories:
     <table className="w-full text-[11px]">
       <tbody>
         {rows.map((t) => (
-          <tr key={t.id} className="border-t border-[#f5f5f5] hover:bg-[#fafafa]">
-            <td className="whitespace-nowrap px-2 py-1 text-[#999]">{t.date?.slice(5)}</td>
+          // 예정분은 저장된 거래가 아니라 계산 결과다 — 편집할 게 없으니 컨트롤을 빼고
+          // 배경으로 구분한다. id 가 0 이라 key 는 지문을 쓴다.
+          <tr key={t.projected ? t.fp : t.id} className={`border-t border-[#f5f5f5] ${t.projected ? "bg-[#f7f9fc]" : "hover:bg-[#fafafa]"}`}>
+            <td className="whitespace-nowrap px-2 py-1 text-[#999]">
+              {t.projected ? (t.date ? t.date.slice(5) : "—") : t.date?.slice(5)}
+            </td>
             <td className="px-2 py-1 text-[#333]">
               <div className="flex flex-wrap items-center gap-1">
-                <span>{t.merchant}</span>
+                <span className={t.projected ? "text-[#556]" : undefined}>{t.merchant}</span>
+                {t.projected && (
+                  <span className="rounded border border-[#d7e3ee] bg-[#eaf2fa] px-1 text-[10px] text-[#1b4f7a]">예정</span>
+                )}
                 <TypeBadge type={t.tx_type} />
                 {t.installment && t.installment.months > 1 && (
-                  <span className="text-[10px] text-[#888]" title={`전액 ${won(t.total)} · 잔액 ${won(t.installment.remaining)}`}>
+                  <span className="text-[10px] text-[#888]" title={`전액 ${won(t.total)}${t.installment.remaining ? ` · 잔액 ${won(t.installment.remaining)}` : ""}`}>
                     {t.installment.seq}/{t.installment.months}회차
                   </span>
                 )}
                 {t.fee > 0 && <span className="text-[10px] text-[#aa8]">수수료 {num(t.fee)}</span>}
               </div>
-              <div className="text-[10px] text-[#bbb]">{[t.issuer, t.card].filter(Boolean).join(" ")}</div>
+              <div className="text-[10px] text-[#bbb]">
+                {t.projected ? `${t.card}${t.date ? "" : " · 결제일은 카드 설정을 넣으면 표시됩니다"}` : [t.issuer, t.card].filter(Boolean).join(" ")}
+              </div>
             </td>
             <td className="px-1 py-1">
-              <button
-                onClick={async () => { await api.budgetSetFixed(t.merchant, !t.fixed); onChange(); }}
-                title={t.fixed ? "고정비로 잡힘 — 눌러서 변동비로" : "변동비 — 눌러서 고정비로"}
-                className={`rounded border px-1 text-[10px] ${t.fixed ? "border-[#dbe9e0] bg-[#f4faf6] text-[#2c6b47]" : "border-[#e8e8e8] text-[#bbb] hover:text-[#666]"}`}
-              >
-                {t.fixed ? "고정" : "변동"}
-              </button>
+              {!t.projected && (
+                <button
+                  onClick={async () => { await api.budgetSetFixed(t.merchant, !t.fixed); onChange(); }}
+                  title={t.fixed ? "고정비로 잡힘 — 눌러서 변동비로" : "변동비 — 눌러서 고정비로"}
+                  className={`rounded border px-1 text-[10px] ${t.fixed ? "border-[#dbe9e0] bg-[#f4faf6] text-[#2c6b47]" : "border-[#e8e8e8] text-[#bbb] hover:text-[#666]"}`}
+                >
+                  {t.fixed ? "고정" : "변동"}
+                </button>
+              )}
             </td>
             <td className="px-2 py-1">
-              <select
-                value={t.category}
-                onChange={async (e) => { await api.budgetSetCategory(t.id, e.target.value, true); onChange(); }}
-                className={`rounded border px-1 py-0.5 text-[10px] outline-none focus:border-[#217346] ${
-                  t.category === "기타" ? "border-[#e6b0b0] bg-[#fdf3f3] text-[#a55]" : "border-[#e0e0e0] text-[#666]"
-                }`}
-              >
-                {categories.map((c) => <option key={c} value={c}>{c}</option>)}
-              </select>
+              {t.projected ? (
+                <span className="text-[10px] text-[#999]">{t.category}</span>
+              ) : (
+                <select
+                  value={t.category}
+                  onChange={async (e) => { await api.budgetSetCategory(t.id, e.target.value, true); onChange(); }}
+                  className={`rounded border px-1 py-0.5 text-[10px] outline-none focus:border-[#217346] ${
+                    t.category === "기타" ? "border-[#e6b0b0] bg-[#fdf3f3] text-[#a55]" : "border-[#e0e0e0] text-[#666]"
+                  }`}
+                >
+                  {categories.map((c) => <option key={c} value={c}>{c}</option>)}
+                </select>
+              )}
             </td>
-            <td className="px-2 py-1 text-right tabular-nums font-semibold" style={{ color: t.amount < 0 ? BLUE : "#333" }}>
+            <td className="px-2 py-1 text-right tabular-nums font-semibold" style={{ color: t.amount < 0 ? BLUE : t.projected ? "#1b4f7a" : "#333" }}>
               {won(t.amount)}
               {t.total !== t.charged && (
                 <div className="text-[10px] font-normal text-[#bbb]">전액 {num(t.total)}</div>
               )}
             </td>
             <td className="px-1 py-1 text-right">
-              <button onClick={async () => { await api.budgetDelete(t.id); onChange(); }} className="text-[#ccc] hover:text-rose-500">
-                삭제
-              </button>
+              {!t.projected && (
+                <button onClick={async () => { await api.budgetDelete(t.id); onChange(); }} className="text-[#ccc] hover:text-rose-500">
+                  삭제
+                </button>
+              )}
             </td>
           </tr>
         ))}
