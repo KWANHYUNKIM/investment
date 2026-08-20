@@ -3,6 +3,7 @@
 import type { RealEstateApartment, RealEstateRegion, TradeKind } from "@/lib/api";
 import { Spinner } from "@/components/ui";
 import { TRADE_META, area as fmtArea, buildAge, eok, manwon, priceRange, AreaUnit } from "./format";
+import { useEffect, useRef } from "react";
 import { RegionTrend } from "@/components/RealEstate/RegionTrend";
 import { favKey, SORTS, SortKey } from "./filters";
 
@@ -50,6 +51,17 @@ export function ListPanel({
 }) {
   const meta = TRADE_META[trade];
 
+  // 지도에서 마커를 누르면 목록의 그 줄만 색이 바뀐다. 그런데 목록이 길면 그 줄이
+  // **화면 밖**이라, 사용자 눈에는 아무 일도 안 일어난 것으로 보인다(실제로 그렇게
+  // 보고받았다). 선택이 바뀌면 그 줄로 스크롤한다.
+  const selRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!selectedApt || !selRef.current) return;
+    selRef.current.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [selectedApt]);
+
+  const picked = apartments?.find((a) => favKey(a) === selectedApt) ?? null;
+
   if (!region) {
     return (
       <div className="flex h-full items-center justify-center px-6 text-center text-xs leading-relaxed text-[#999]">
@@ -87,6 +99,35 @@ export function ListPanel({
       {/* 지역 추이 — 단지 목록보다 위에 둔다. '이 동네가 어떻게 움직여 왔나' 가
           개별 단지를 보기 전에 답해져야 하는 질문이라서다. */}
       <RegionTrend key={region.lawd} lawd={region.lawd} region={region.region} />
+
+      {/* 지도에서 고른 단지 — 목록 맨 위에 고정한다. 스크롤만으로는 '어느 걸 눌렀는지'
+          가 목록 안에서 흐려지고, 필터를 바꾸면 그 줄이 아예 사라지기도 한다. */}
+      {picked && (
+        <div className="shrink-0 border-b border-[#e0e0e0] bg-[#f2f7f4] px-3.5 py-2">
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0">
+              <div className="truncate text-[13px] font-bold text-[#217346]">{picked.apt}</div>
+              <div className="mt-0.5 text-[11px] text-[#666]">
+                {picked.dong}
+                {picked.recent_area ? ` · 전용 ${fmtArea(picked.recent_area, areaUnit)}` : ""}
+                {picked.recent_floor ? ` · ${picked.recent_floor}층` : ""}
+                {picked.count ? ` · 거래 ${picked.count}건` : ""}
+              </div>
+            </div>
+            <div className="shrink-0 text-right">
+              <div className="text-[15px] font-extrabold tabular-nums" style={{ color: meta.color }}>
+                {priceRange(picked, trade)}
+              </div>
+              <button
+                onClick={() => onDetail(picked)}
+                className="mt-0.5 text-[11px] font-semibold text-[#217346] hover:underline"
+              >
+                시세 그래프 보기
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 정렬 */}
       <div className="flex items-center gap-2 border-b border-[#eee] px-3.5 py-1.5">
@@ -127,6 +168,7 @@ export function ListPanel({
               return (
                 <div
                   key={key}
+                  ref={sel ? selRef : undefined}
                   onClick={() => onPick(a)}
                   className={`cursor-pointer rounded-lg border bg-white px-3 py-2.5 shadow-sm transition ${
                     sel ? "border-[#217346] ring-1 ring-[#217346]" : "border-[#e5e7eb] hover:border-[#217346] hover:shadow"
