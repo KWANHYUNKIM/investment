@@ -356,6 +356,42 @@ def flows(rows: list[dict], code: str, limit: int = 10) -> dict:
     return {"inbound": top(inbound), "outbound": top(outbound)}
 
 
+# --- 좌표 -------------------------------------------------------------------
+def _coord(code: str) -> list[float] | None:
+    """이동 상대 지역의 좌표 — 지도에 흐름을 선으로 그리려면 필요하다.
+
+    원본이 통합시를 시 단위로 주는데(4113000000 성남시) 우리가 지오코딩해 둔 것은
+    구 단위(성남시 분당구…)다. 그래서 **그 시에 속한 구들의 평균**을 쓴다. 시청
+    좌표가 아니라 사람이 사는 면적의 중심에 가까워서, 선이 엉뚱한 데서 시작하지 않는다.
+    """
+    from app.data.macro.realestate_map import _cached_coord, _sido_centroid
+
+    prefix = code[:4]
+    pts, sido = [], ""
+    for lawd5, sd, name in SIGUNGU:
+        if _SIDO_FIX.get(lawd5[:2], lawd5[:2]) + lawd5[2:4] != prefix:
+            continue
+        sido = sd
+        c = _cached_coord(sd, name)
+        if c:
+            pts.append(c)
+    if pts:
+        return [round(sum(p[0] for p in pts) / len(pts), 5),
+                round(sum(p[1] for p in pts) / len(pts), 5)]
+    if sido:                       # 지오코딩 전이면 시도 중심이라도 준다
+        lat, lng = _sido_centroid(sido)
+        return [lat, lng]
+    return None
+
+
+def _with_coords(partners: list[dict]) -> list[dict]:
+    out = []
+    for b in partners:
+        c = _coord(b["cd"])
+        out.append({**b, "lat": c[0], "lng": c[1]} if c else b)
+    return out
+
+
 # --- 조회 -------------------------------------------------------------------
 def region(lawd: str, months: int = 12) -> dict:
     """한 지역의 이동 요약 + 상대 지역 흐름 + 월별 추이."""
@@ -369,7 +405,7 @@ def region(lawd: str, months: int = 12) -> dict:
         "months": sorted(yms),
         "available": bool(rows),
         **summarize(rows, code),
-        **flows(rows, code),
+        **{k: _with_coords(v) for k, v in flows(rows, code).items()},
         "series": _series(rows, code, sorted(yms)),
         "note": ("전입신고 기준(행정안전부). 통합시는 시 단위로 집계되어 "
                  "구별 이동은 나오지 않습니다."),

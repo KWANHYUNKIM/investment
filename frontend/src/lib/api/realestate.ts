@@ -217,6 +217,10 @@ export interface MigrationPartner {
   name: string;
   total: number;
   young: number;
+  // 지도에 흐름 선을 그리려고 백엔드가 붙여 준다. 통합시는 그 시에 속한 구들의
+  // 평균 좌표다 — 아직 지오코딩 전인 지역은 없을 수 있다.
+  lat?: number;
+  lng?: number;
 }
 
 export interface MigrationPoint {

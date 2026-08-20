@@ -5,7 +5,7 @@ import dynamic from "next/dynamic";
 import {
   api, RealEstateMapData, RealEstateRegion, RealEstateApartments, RealEstateApartment,
   TradeKind, PropertyKind, PropertyKindMeta, MapBounds, PoiSchool, PoiStation,
-  type InterestBoard,
+  type InterestBoard, type RegionMigration,
 } from "@/lib/api";
 import { Spinner } from "@/components/ui";
 import { RealEstateAptDetail } from "@/components/RealEstateAptDetail";
@@ -76,6 +76,8 @@ export function RealEstateMap() {
   // 검색 관심도 패널 — 지도 오른쪽에 얹는다(왼쪽은 단지 목록이 쓴다).
   const [showInterest, setShowInterest] = useState(false);
   const [heat, setHeat] = useState<HeatMap | null>(null);
+  // 선택 지역의 인구이동. 지도에 흐름 선을 그리려고 여기서 받아 좌측 패널과 나눠 쓴다.
+  const [migration, setMigration] = useState<RegionMigration | null>(null);
   const [panelOpen, setPanelOpen] = useState(true);
   const [autoSearch, setAutoSearch] = useState(true);
   const [viewport, setViewport] = useState<{ zoom: number; lat: number; lng: number } | null>(null);
@@ -174,6 +176,17 @@ export function RealEstateMap() {
   function pickRegion(r: RealEstateRegion, fly = true) {
     selectRegion(r, filters.trade, kind, ym, fly);
   }
+
+  // 선택 지역이 바뀌면 이동 흐름을 다시 받는다. 응답이 늦게 와도 이전 지역의 선이
+  // 남으면 새 지역의 흐름으로 읽히므로, 넘길 때 lawd 가 일치하는지 본다.
+  useEffect(() => {
+    if (!sel?.lawd) return;
+    let alive = true;
+    api.realestateMigration(sel.lawd)
+      .then((d) => alive && setMigration(d.available ? d : null))
+      .catch(() => { /* 배경 정보라 없다고 지도를 막지 않는다 */ });
+    return () => { alive = false; };
+  }, [sel?.lawd]);
 
   useEffect(() => () => { if (aptTimer.current) clearTimeout(aptTimer.current); }, []);
 
@@ -373,6 +386,23 @@ export function RealEstateMap() {
             </div>
           )}
 
+          {/* 이동 흐름 범례 — 선이 그려질 때만 띄운다. 색만 있고 설명이 없으면
+              빨강이 유입인지 유출인지 화면에서 알 수 없다. */}
+          {migration?.lawd === sel?.lawd && migration && (
+            <div className="flex items-center gap-1.5 text-[10px] text-[#888]">
+              <span>인구이동</span>
+              <span className="flex items-center gap-0.5">
+                <span className="inline-block h-0.5 w-3" style={{ background: "#c0392b" }} />
+                들어옴
+              </span>
+              <span className="flex items-center gap-0.5">
+                <span className="inline-block h-0.5 w-3" style={{ background: "#2a6fb5" }} />
+                나감
+              </span>
+              <span className="text-[#aaa]">굵기 = 인원</span>
+            </div>
+          )}
+
           <button
             onClick={() => setShowInterest((v) => !v)}
             className={`rounded-md border px-2.5 py-1 text-[11px] font-bold transition ${
@@ -400,6 +430,7 @@ export function RealEstateMap() {
         <MapCanvas
           regions={regionsForMap}
           heat={heat ?? undefined}
+          migration={migration?.lawd === sel?.lawd ? migration : null}
           apartments={showList ? filtered : null}
           selectedLawd={sel?.lawd ?? null}
           selectedApt={selectedApt}

@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type {
-  MapBounds, PoiSchool, PoiStation, RealEstateApartment, RealEstateRegion, TradeKind,
+  MapBounds, MigrationPartner, PoiSchool, PoiStation, RealEstateApartment,
+  RealEstateRegion, RegionMigration, TradeKind,
 } from "@/lib/api";
 import { TRADE_META, area as fmtArea, eokShort, headlinePrice, AreaUnit } from "./format";
 import { favKey } from "./filters";
@@ -192,11 +193,12 @@ const MAP_KINDS: { key: MapKind; label: string }[] = [
 
 export default function MapCanvas({
   regions, apartments, selectedLawd, selectedApt, trade, areaUnit, favs,
-  flyTarget, layers, onLayers, schools, stations, heat,
+  flyTarget, layers, onLayers, schools, stations, heat, migration,
   onSelectRegion, onSelectApt, onAptDetail, onViewport,
 }: {
   regions: RealEstateRegion[];
   heat?: HeatMap;            // lawd → 검색 관심도(없으면 마커는 지금 모습 그대로)
+  migration?: RegionMigration | null;   // 선택 지역의 이동 흐름(없으면 선을 안 그린다)
   apartments: RealEstateApartment[] | null;
   selectedLawd: string | null;
   selectedApt: string | null;      // favKey
@@ -219,6 +221,7 @@ export default function MapCanvas({
   const panoRef = useRef<any>(null);
   const markersRef = useRef<any[]>([]);
   const poiRef = useRef<any[]>([]);
+  const flowRef = useRef<any[]>([]);      // 이동 흐름 선
   const cadastralRef = useRef<any>(null);
   const [status, setStatus] = useState<"loading" | "ready" | "no-key" | "auth-fail" | "load-fail">(
     CLIENT_ID ? "loading" : "no-key",
@@ -376,7 +379,51 @@ export default function MapCanvas({
     }
   }, [regions, apartments, dongs, selectedLawd, selectedApt, trade, areaUnit, favs, zoom, status, heat]);
 
-  // 6) 주변시설 레이어 — 학교/지하철은 실거래 마커와 따로 그린다(껐다 켜도 재계산 최소).
+  // 6) 이동 흐름 — 선택 지역과 상위 상대 지역을 선으로 잇는다.
+  //
+  // 좌측 패널의 막대는 '얼마나' 는 말해도 '어디' 를 말하지 못한다. 성남에서 강남으로
+  // 오는 흐름은 지도에서 봐야 직주근접 이동이라는 게 읽힌다.
+  //
+  // 들어오는 흐름은 빨강, 나가는 흐름은 파랑. 굵기는 규모에 비례시키되 하한을 둔다 —
+  // 1위에 맞춰 정규화하면 4·5위가 보이지 않는다.
+  useEffect(() => {
+    if (status !== "ready") return;
+    const naver = window.naver;
+    const map = mapRef.current;
+    flowRef.current.forEach((l) => l.setMap(null));
+    flowRef.current = [];
+
+    // 시군구 사이의 흐름이라 단지까지 들어간 배율에서는 뜻이 없다 — 화면 밖으로
+    // 뻗은 선만 남아 지도를 가린다. 지역 마커가 보이는 배율에서만 그린다.
+    if (zoom >= DONG_ZOOM) return;
+
+    const here = regions.find((r) => r.lawd === selectedLawd);
+    if (!migration || !here) return;
+
+    const draw = (list: MigrationPartner[], color: string, inbound: boolean) => {
+      const max = Math.max(1, ...list.map((b) => b.total));
+      list.slice(0, 5).forEach((b) => {
+        if (b.lat == null || b.lng == null) return;
+        const there = new naver.maps.LatLng(b.lat, b.lng);
+        const mine = new naver.maps.LatLng(here.lat, here.lng);
+        flowRef.current.push(new naver.maps.Polyline({
+          map,
+          // 화살표가 향하는 쪽이 '도착지' 다. 들어오는 흐름은 이 지역이 도착지다.
+          path: inbound ? [there, mine] : [mine, there],
+          strokeColor: color,
+          strokeOpacity: 0.55,
+          strokeWeight: Math.max(1.5, Math.round((b.total / max) * 7)),
+          endIcon: naver.maps.PointingIcon.OPEN_ARROW,
+          endIconSize: 10,
+          zIndex: 5,
+        }));
+      });
+    };
+    draw(migration.inbound, "#c0392b", true);
+    draw(migration.outbound, "#2a6fb5", false);
+  }, [migration, regions, selectedLawd, status, zoom]);
+
+  // 7) 주변시설 레이어 — 학교/지하철은 실거래 마커와 따로 그린다(껐다 켜도 재계산 최소).
   useEffect(() => {
     if (status !== "ready") return;
     const naver = window.naver;
