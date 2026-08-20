@@ -52,10 +52,18 @@ def _path() -> str:
 
 
 def load() -> dict:
+    # 저장소만 갈아 끼운다 — 예산 배분·평형 집계·조회 로직은 어느 쪽인지 모른다.
+    from app.db import stores
+    if stores.enabled():
+        return stores.region_stats_load()
     return read_json(_path(), {"updated": None, "cells": {}})
 
 
 def _save(d: dict) -> None:
+    from app.db import stores
+    if stores.enabled():
+        stores.region_stats_save(d)
+        return
     d["updated"] = time.strftime("%Y-%m-%d %H:%M:%S")
     write_json(_path(), d)
 

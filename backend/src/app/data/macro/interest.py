@@ -58,6 +58,24 @@ def _path() -> str:
     return str(get_settings().data_dir / "realestate_interest.json")
 
 
+def _persist(data: dict) -> None:
+    """수집 결과를 저장한다. 저장소는 설정이 정한다."""
+    from app.db import stores
+    if stores.enabled():
+        stores.interest_save(data)
+        return
+    write_json(_path(), data)
+
+
+def _restore() -> dict | None:
+    """저장된 수집 결과. DB 판은 **지수·순위·추세를 점에서 다시 계산해** 돌려준다 —
+    같은 사실을 두 벌 들고 있으면 언젠가 어긋나기 때문이다."""
+    from app.db import stores
+    if stores.enabled():
+        return stores.interest_load()
+    return read_json(_path(), None)
+
+
 def configured() -> bool:
     s = get_settings()
     return bool(s.naver_client_id and s.naver_client_secret)
@@ -276,7 +294,7 @@ def collect(regions: list[dict], *, months: int = 12,
         "items": items,
     }
     with _lock:
-        write_json(_path(), data)
+        _persist(data)
     return data
 
 
@@ -298,7 +316,7 @@ def _rank(items: list[dict]) -> None:
 # --- 조회 ------------------------------------------------------------------
 def snapshot() -> dict:
     """저장된 관심도. 없으면 왜 없는지 말해 준다(빈 화면을 그냥 두지 않는다)."""
-    data = read_json(_path(), None)
+    data = _restore()
     if data:
         return {"ready": True, "warming": _warm["running"], **data, **_note()}
     if not configured():

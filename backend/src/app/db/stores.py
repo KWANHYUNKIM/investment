@@ -20,7 +20,9 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
-from app.db.models import (AppUser, Holding, PageViewDaily, WatchItem, WealthProfile)
+from app.db.models import (AppUser, Holding, InterestPoint, InterestRun,
+                           PageViewDaily, Region, RegionMonthAreaStat,
+                           RegionMonthStat, WatchItem, WealthProfile)
 from app.db.session import bind_request_context, get_sessionmaker
 
 
@@ -48,6 +50,16 @@ def _session(user: str) -> tuple[Session, int]:
 
 def _f(v) -> float:
     return float(v) if v is not None else 0.0
+
+
+def _dec(v):
+    """float → Decimal. ``str`` 을 거쳐야 저장이 오차를 심지 않는다."""
+    if v is None or v == "":
+        return None
+    try:
+        return Decimal(str(v))
+    except Exception:  # noqa: BLE001
+        return None
 
 
 # --- 관심종목 · 보유 ----------------------------------------------------------
@@ -207,5 +219,204 @@ def stats_save(d: dict) -> None:
         s.close()
 
 
-__all__ = ["enabled", "stats_load", "stats_save", "watchlist_load", "watchlist_save",
-           "wealth_load", "wealth_save"]
+# --- 부동산 월별 집계 ---------------------------------------------------------
+def _region_ids(s: Session):
+    rows = s.execute(select(Region.id, Region.lawd_cd)).all()
+    return ({lawd: rid for rid, lawd in rows}, {rid: lawd for rid, lawd in rows})
+
+
+def region_stats_load() -> dict:
+    """``{"updated":…, "cells": {"lawd|ym|trade": {...}}}`` — 파일과 같은 모양.
+
+    평형별 세부는 자식 표에 있으므로 한 번에 끌어와 붙인다. 셀마다 따로 물으면
+    266번 왕복하게 된다.
+    """
+    s = get_sessionmaker()()
+    try:
+        _, by_id = _region_ids(s)
+        areas = {}
+        for a in s.scalars(select(RegionMonthAreaStat)).all():
+            areas.setdefault(a.month_stat_id, {})[a.area_bucket] = {
+                "count": a.deal_count,
+                "avg_eok": _f(a.avg_price) if a.avg_price is not None else None}
+
+        cells = {}
+        updated = None
+        for m in s.scalars(select(RegionMonthStat)).all():
+            lawd = by_id.get(m.region_id)
+            if not lawd:
+                continue
+            cells[f"{lawd}|{m.year_month}|{m.trade_type}"] = {
+                "count": m.deal_count,
+                "amount_eok": _f(m.total_amount) if m.total_amount is not None else 0.0,
+                "avg_eok": _f(m.avg_price) if m.avg_price is not None else None,
+                "avg_rent_manwon": (_f(m.avg_monthly_rent)
+                                    if m.avg_monthly_rent is not None else None),
+                "by_area": areas.get(m.id, {}),
+                # 수집 시각. '무엇을 다시 받을지' 를 정하는 근거라 반드시 살려야 한다.
+                "at": int(m.fetched_at.timestamp()) if m.fetched_at else 0,
+            }
+            if m.updated_at and (updated is None or m.updated_at > updated):
+                updated = m.updated_at
+        return {"updated": updated.strftime("%Y-%m-%d %H:%M:%S") if updated else None,
+                "cells": cells}
+    finally:
+        s.close()
+
+
+def region_stats_save(d: dict) -> None:
+    """셀을 UPSERT 한다. 파일 저장소는 통째로 덮어썼지만 여기서는 바뀐 것만 올린다."""
+    s = get_sessionmaker()()
+    try:
+        by_lawd, _ = _region_ids(s)
+        for key, cell in (d.get("cells") or {}).items():
+            try:
+                lawd, ym, trade = key.split("|")
+            except ValueError:
+                continue
+            rid = by_lawd.get(lawd)
+            if rid is None:
+                continue
+            fetched = dt.datetime.fromtimestamp(cell.get("at") or 0, tz=dt.timezone.utc)
+            stmt = pg_insert(RegionMonthStat.__table__).values(
+                region_id=rid, year_month=ym, trade_type=trade,
+                deal_count=int(cell.get("count") or 0),
+                total_amount=_dec(cell.get("amount_eok")),
+                avg_price=_dec(cell.get("avg_eok")),
+                avg_monthly_rent=_dec(cell.get("avg_rent_manwon")),
+                fetched_at=fetched)
+            s.execute(stmt.on_conflict_do_update(
+                index_elements=["region_id", "year_month", "trade_type"],
+                set_={"deal_count": stmt.excluded.deal_count,
+                      "total_amount": stmt.excluded.total_amount,
+                      "avg_price": stmt.excluded.avg_price,
+                      "avg_monthly_rent": stmt.excluded.avg_monthly_rent,
+                      "fetched_at": stmt.excluded.fetched_at}))
+            mid = s.scalar(select(RegionMonthStat.id).where(
+                RegionMonthStat.region_id == rid,
+                RegionMonthStat.year_month == ym,
+                RegionMonthStat.trade_type == trade))
+            for bucket, v in (cell.get("by_area") or {}).items():
+                astmt = pg_insert(RegionMonthAreaStat.__table__).values(
+                    month_stat_id=mid, area_bucket=bucket,
+                    deal_count=int(v.get("count") or 0),
+                    avg_price=_dec(v.get("avg_eok")))
+                s.execute(astmt.on_conflict_do_update(
+                    index_elements=["month_stat_id", "area_bucket"],
+                    set_={"deal_count": astmt.excluded.deal_count,
+                          "avg_price": astmt.excluded.avg_price}))
+        s.commit()
+    except Exception:
+        s.rollback()
+        raise
+    finally:
+        s.close()
+
+
+# --- 부동산 검색 관심도 --------------------------------------------------------
+def interest_load():
+    """가장 최근 수집 한 벌. **지수·순위·추세는 저장하지 않고 여기서 다시 만든다.**
+
+    파일 저장소는 그 셋을 점들과 함께 저장했는데, 같은 사실을 두 벌 들고 있으면
+    언젠가 어긋난다. 전부 점에서 나오는 값이라 계산이 정답이다.
+    """
+    s = get_sessionmaker()()
+    try:
+        run = s.scalar(select(InterestRun).order_by(InterestRun.id.desc()))
+        if run is None:
+            return None
+        regions = {r.id: r for r in s.scalars(select(Region)).all()}
+
+        grouped = {}
+        keywords = {}
+        for p in s.scalars(select(InterestPoint)
+                           .where(InterestPoint.run_id == run.id)
+                           .order_by(InterestPoint.period)).all():
+            grouped.setdefault(p.region_id, []).append(
+                {"period": p.period.isoformat(), "ratio": _f(p.ratio_to_anchor)})
+            keywords[p.region_id] = p.keyword
+
+        items = []
+        for rid, series in grouped.items():
+            reg = regions.get(rid)
+            if reg is None:
+                continue
+            items.append({
+                "lawd": reg.lawd_cd, "sido": reg.sido, "region": reg.name,
+                "keyword": keywords.get(rid, ""),
+                "index": round(sum(x["ratio"] for x in series) / len(series), 4)
+                if series else 0.0,
+                "series": series,
+            })
+
+        # 순위·추세는 도메인 모듈의 규칙을 그대로 쓴다 — 규칙이 두 곳에 있으면 갈라진다.
+        from app.data.macro import interest as I
+        I._rank(items)
+
+        return {
+            "updated": (run.created_at.strftime("%Y-%m-%d %H:%M:%S")
+                        if run.created_at else None),
+            "anchor": run.anchor_keyword,
+            "unit": run.time_unit,
+            "period": {"start": run.period_start.isoformat(),
+                       "end": run.period_end.isoformat()},
+            "count": len(items),
+            "dropped": [],
+            "items": items,
+        }
+    finally:
+        s.close()
+
+
+def interest_save(data: dict) -> None:
+    """수집 한 벌을 저장한다. 앵커·기간이 같으면 같은 수집으로 보고 점만 갱신한다 —
+    매번 새 실행을 만들면 점이 그대로 두 배가 된다(이관에서 실제로 그랬다)."""
+    s = get_sessionmaker()()
+    try:
+        by_lawd, _ = _region_ids(s)
+        period = data.get("period") or {}
+        start = dt.date.fromisoformat(str(period.get("start", "2000-01-01"))[:10])
+        end = dt.date.fromisoformat(str(period.get("end", "2000-01-01"))[:10])
+        anchor = data.get("anchor") or "?"
+
+        run = s.scalar(select(InterestRun).where(
+            InterestRun.anchor_keyword == anchor,
+            InterestRun.period_start == start,
+            InterestRun.period_end == end))
+        if run is None:
+            run = InterestRun(anchor_keyword=anchor,
+                              time_unit=data.get("unit") or "month",
+                              period_start=start, period_end=end,
+                              region_count=len(data.get("items") or []),
+                              source="naver_api_hub")
+            s.add(run)
+            s.flush()
+
+        for item in data.get("items") or []:
+            rid = by_lawd.get(item.get("lawd"))
+            if rid is None:
+                continue
+            for p in item.get("series") or []:
+                try:
+                    d0 = dt.date.fromisoformat(str(p.get("period"))[:10])
+                except (TypeError, ValueError):
+                    continue
+                stmt = pg_insert(InterestPoint.__table__).values(
+                    run_id=run.id, region_id=rid, period=d0,
+                    keyword=item.get("keyword") or "",
+                    ratio_to_anchor=_dec(p.get("ratio")) or Decimal(0))
+                s.execute(stmt.on_conflict_do_update(
+                    index_elements=["run_id", "region_id", "period"],
+                    set_={"ratio_to_anchor": stmt.excluded.ratio_to_anchor,
+                          "keyword": stmt.excluded.keyword}))
+        s.commit()
+    except Exception:
+        s.rollback()
+        raise
+    finally:
+        s.close()
+
+
+__all__ = ["enabled", "interest_load", "interest_save", "region_stats_load",
+           "region_stats_save", "stats_load", "stats_save", "watchlist_load",
+           "watchlist_save", "wealth_load", "wealth_save"]
