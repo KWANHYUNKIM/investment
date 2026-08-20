@@ -14,7 +14,7 @@
 """
 from __future__ import annotations
 
-from . import cards, categories, cycles, mailbox, payslip, recurring
+from . import cards, categories, cycles, mailbox, payslip, recurring, store
 from .categories import CATEGORIES, categorize
 
 
@@ -35,18 +35,21 @@ def _pick_store():
     return store_json
 
 
-store = _pick_store()
+# 활성 저장소. **``store`` 라는 이름을 쓰지 않는다** — 그 이름은 파일 저장소
+# 서브모듈이 이미 갖고 있고, 덮으면 ``from .budget import store`` 가 상황에 따라
+# 다른 것을 돌려준다(실제로 그 때문에 기존 검증 16개가 한꺼번에 깨졌다).
+backing = _pick_store()
 
-add_transactions = store.add_transactions
-clear_import = store.clear_import
-clear_month = store.clear_month
-delete_transaction = store.delete_transaction
-move_month = store.move_month
-recalc_billing_months = store.recalc_billing_months
-set_category = store.set_category
-set_cycle = store.set_cycle
-set_fixed = store.set_fixed
-set_income = store.set_income
+add_transactions = backing.add_transactions
+clear_import = backing.clear_import
+clear_month = backing.clear_month
+delete_transaction = backing.delete_transaction
+move_month = backing.move_month
+recalc_billing_months = backing.recalc_billing_months
+set_category = backing.set_category
+set_cycle = backing.set_cycle
+set_fixed = backing.set_fixed
+set_income = backing.set_income
 from .summary import installments, months_of, plan, state, summary
 
 ISSUERS = cards.ISSUERS
@@ -59,7 +62,7 @@ def _apply_cycles(user: str, rep: dict) -> dict:
     다르면 ``cycle_conflict`` 로 알려 준다. 설정이 한 달 어긋나 있다는 뜻이라,
     조용히 덮어쓰면 나머지 카드까지 같은 오차로 쌓인다.
     """
-    cycles_ = store.get_cycles(user)
+    cycles_ = backing.get_cycles(user)
     txs = rep["transactions"]
     if not cycles_ or not txs:
         rep["cycle_applied"] = 0
@@ -69,7 +72,7 @@ def _apply_cycles(user: str, rep: dict) -> dict:
     if rep.get("billing_month_known"):
         # 파일이 말한 청구월이 설정과 맞는지만 확인하고 값은 건드리지 않는다.
         probe = [dict(t) for t in txs]
-        store.apply_cycles(probe, cycles_)
+        backing.apply_cycles(probe, cycles_)
         got = sorted({t["billing_month"] for t in probe if t["billing_month"]})
         rep["cycle_applied"] = 0
         if got and stated not in got:
@@ -78,7 +81,7 @@ def _apply_cycles(user: str, rep: dict) -> dict:
                             f"{'·'.join(got)} 입니다 — 결제일 설정을 확인하세요.")
         return rep
 
-    changed = store.apply_cycles(txs, cycles_)
+    changed = backing.apply_cycles(txs, cycles_)
     rep["cycle_applied"] = changed
     if changed:
         months = sorted({t["billing_month"] for t in txs if t["billing_month"]})
@@ -109,7 +112,7 @@ def fixed_costs(user: str) -> dict:
 
     변동비와 같은 자리에 섞어 두면 '얼마를 줄일 수 있는가' 에 답할 수 없어서 따로 뺀다.
     """
-    d = store.load(user)
+    d = backing.load(user)
     return recurring.analyze(d["transactions"], d.get("fixed_rules", {}))
 
 
@@ -119,11 +122,11 @@ def cards_overview(user: str) -> dict:
     화면이 '이 카드는 언제부터 언제까지 쓴 걸 언제 내는가' 를 날짜로 보여줄 수 있게
     설정값과 그 설정이 만들어내는 실제 기간을 함께 준다.
     """
-    d = store.load(user)
+    d = backing.load(user)
     conf = d.get("card_cycles", {})
     seen: dict[str, dict] = {}
     for t in d["transactions"]:
-        key = store.card_key(t)
+        key = backing.card_key(t)
         if not key:
             continue
         row = seen.setdefault(key, {"card": key, "issuer": t.get("issuer", ""),
@@ -204,5 +207,6 @@ __all__ = [
     "import_csv", "import_file", "installments", "mailbox", "months_of", "move_month",
     "fixed_costs", "parse_payslip", "payslip", "plan", "preview_file",
     "recalc_billing_months", "recurring",
-    "set_category", "set_cycle", "set_fixed", "set_income", "state", "store", "summary",
+    "backing", "set_category", "set_cycle", "set_fixed", "set_income", "state",
+    "store", "summary",
 ]

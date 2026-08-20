@@ -790,10 +790,17 @@ def _path(user: str) -> str:
 
 
 def _load(user: str) -> dict:
+    from app.db import stores
+    if stores.enabled():
+        return stores.wealth_load(user)
     return read_json(_path(user), {"profile": {}})
 
 
 def _save(user: str, d: dict) -> None:
+    from app.db import stores
+    if stores.enabled():
+        stores.wealth_save(user, d)
+        return
     write_json(_path(user), d)
 
 

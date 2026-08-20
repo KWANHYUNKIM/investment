@@ -35,10 +35,11 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
-from app.db.models import (AppUser, ApiQuotaUsage, Card, Holding, ImportBatch,
-                           IncomeProfile, InterestPoint, InterestRun, PageViewDaily,
-                           Region, RegionMonthAreaStat, RegionMonthStat, Transaction,
-                           UserCredential, WatchItem, WealthProfile)
+from app.db.models import (AppUser, ApiQuotaUsage, Card, CompanyProfile, Holding,
+                           ImportBatch, IncomeProfile, InterestPoint, InterestRun,
+                           PageViewDaily, Region, RegionMonthAreaStat, RegionMonthStat,
+                           Security, Transaction, UserCredential, WatchItem,
+                           WealthProfile)
 from app.db.session import get_sessionmaker
 
 _report: dict[str, dict[str, int]] = {}
@@ -384,6 +385,83 @@ def migrate_realestate(s: Session) -> None:
     s.flush()
 
 
+# --- 시장 기준정보 (DuckDB → PostgreSQL) --------------------------------------
+def migrate_market(s: Session, limit: int | None = None) -> None:
+    """종목·기업 프로파일을 옮긴다. **기준정보만** — 시세·재무 시계열은 DuckDB 에 남는다.
+
+    구분이 중요하다. 종목명·업종은 다른 표가 참조하는 값이라 무결성이 필요하지만,
+    prices 437만 행은 한 종목 10년치를 통째로 스캔하는 분석 워크로드라 컬럼 엔진이
+    유리하다. 여기 옮기면 저장공간과 속도를 둘 다 잃으면서 얻는 게 없다.
+
+    ``limit`` 은 로컬에서 일부만 넣고 싶을 때 쓴다 — 시가총액 큰 순서로 자른다.
+    무작위로 자르면 화면에서 아는 종목이 안 보여 '안 들어갔다' 로 오해하게 된다.
+    """
+    try:
+        import duckdb
+    except ImportError:
+        print("  duckdb 없음 — 시장 기준정보 건너뜀")
+        return
+
+    db = get_settings().data_dir / "market.duckdb"
+    if not db.exists():
+        print("  market.duckdb 없음 — 건너뜀")
+        return
+    try:
+        con = duckdb.connect(str(db), read_only=True)
+    except Exception as e:  # noqa: BLE001
+        # 서버가 떠 있으면 단일 쓰기 잠금에 막힌다. 이관 전체를 죽이지는 않는다.
+        print(f"  DuckDB 열기 실패({type(e).__name__}) — 서버를 내리고 다시 돌리세요")
+        return
+
+    try:
+        # 종목 — 시가총액 순으로 자른다(없으면 뒤로).
+        rows = con.execute("""
+            SELECT s.market, s.ticker, s.name, s.sector,
+                   p.wics_sector, p.industry, p.products, p.region,
+                   p.representative, p.homepage, p.listing_date, p.market_cap
+            FROM securities s
+            LEFT JOIN company_profile p
+              ON p.market = s.market AND p.ticker = s.ticker
+            ORDER BY coalesce(p.market_cap, 0) DESC
+        """).fetchall()
+    except Exception as e:  # noqa: BLE001
+        print(f"  DuckDB 조회 실패: {type(e).__name__}")
+        con.close()
+        return
+    con.close()
+
+    if limit:
+        rows = rows[:limit]
+
+    for (market, ticker, name, sector, wics, industry, products, region,
+         rep, homepage, listing, cap) in rows:
+        if not ticker or not market:
+            _log("시장", "건너뜀(키 없음)")
+            continue
+        stmt = pg_insert(Security.__table__).values(
+            market=market, ticker=ticker, name=name or ticker,
+            sector=sector, wics_sector=wics)
+        s.execute(stmt.on_conflict_do_update(
+            index_elements=["market", "ticker"],
+            set_={"name": stmt.excluded.name, "sector": stmt.excluded.sector,
+                  "wics_sector": stmt.excluded.wics_sector}))
+        _log("시장", "종목")
+
+        if not any((industry, products, region, rep, homepage, listing, cap)):
+            continue
+        pstmt = pg_insert(CompanyProfile.__table__).values(
+            market=market, ticker=ticker, industry=industry, products=products,
+            region=region, representative=rep, homepage=homepage,
+            listing_date=_date(listing), market_cap=_money(cap))
+        s.execute(pstmt.on_conflict_do_update(
+            index_elements=["market", "ticker"],
+            set_={"industry": pstmt.excluded.industry,
+                  "products": pstmt.excluded.products,
+                  "market_cap": pstmt.excluded.market_cap}))
+        _log("시장", "기업정보")
+    s.flush()
+
+
 # --- 운영 -------------------------------------------------------------------
 def migrate_ops(s: Session) -> None:
     d = _read("page_views.json") or {}
@@ -402,10 +480,11 @@ def migrate_ops(s: Session) -> None:
 
 
 # --- 실행 -------------------------------------------------------------------
-_AREAS = ("users", "budget", "portfolio", "realestate", "ops")
+_AREAS = ("users", "budget", "portfolio", "realestate", "market", "ops")
 
 
-def run(only: str | None = None, dry_run: bool = False) -> dict:
+def run(only: str | None = None, dry_run: bool = False,
+        market_limit: int | None = None) -> dict:
     session = get_sessionmaker()()
     try:
         # 이관은 소유자 권한으로 돈다 — 사람이 아니라 배치라 '현재 사용자' 가 없고,
@@ -428,6 +507,8 @@ def run(only: str | None = None, dry_run: bool = False) -> dict:
 
         if only in (None, "realestate"):
             migrate_realestate(session)
+        if only in (None, "market"):
+            migrate_market(session, limit=market_limit)
         if only in (None, "ops"):
             migrate_ops(session)
 
@@ -450,10 +531,13 @@ def main() -> None:
     ap.add_argument("--dry-run", action="store_true",
                     help="넣어 보고 롤백한다. 무엇이 몇 건 들어가는지만 확인.")
     ap.add_argument("--only", choices=_AREAS, help="한 영역만")
+    ap.add_argument("--market-limit", type=int, default=None,
+                    help="시장 기준정보를 시가총액 상위 N개만 넣는다(로컬용).")
     args = ap.parse_args()
 
     print(f"이관 {'(dry-run)' if args.dry_run else ''} — {_data_dir()}")
-    rep = run(only=args.only, dry_run=args.dry_run)
+    rep = run(only=args.only, dry_run=args.dry_run,
+              market_limit=args.market_limit)
 
     print("\n결과")
     for area, counts in rep.items():

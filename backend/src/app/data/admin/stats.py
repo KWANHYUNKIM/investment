@@ -19,10 +19,17 @@ def _path() -> str:
 
 
 def _load() -> dict:
+    from app.db import stores
+    if stores.enabled():
+        return stores.stats_load()
     return read_json(_path(), {"total": 0, "by_view": {}, "by_day": {}, "by_view_day": {}})
 
 
 def _save(d: dict) -> None:
+    from app.db import stores
+    if stores.enabled():
+        stores.stats_save(d)
+        return
     write_json(_path(), d, compact=False)
 
 

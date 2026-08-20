@@ -22,10 +22,18 @@ def _path(user: str) -> str:
 
 
 def _load(user: str) -> dict:
+    # 저장소만 갈아 끼운다 — 아래의 시세 붙이기·진단 로직은 어느 쪽인지 모른다.
+    from app.db import stores
+    if stores.enabled():
+        return stores.watchlist_load(user)
     return read_json(_path(user), {"watch": [], "holdings": []})
 
 
 def _save(user: str, d: dict) -> None:
+    from app.db import stores
+    if stores.enabled():
+        stores.watchlist_save(user, d)
+        return
     write_json(_path(user), d)
 
 
