@@ -10,6 +10,7 @@ import { Spinner } from "@/components/ui";
 import { RealEstateAptDetail } from "@/components/RealEstateAptDetail";
 import { FilterBar } from "@/components/RealEstate/FilterBar";
 import { ListPanel } from "@/components/RealEstate/ListPanel";
+import { InterestPanel } from "@/components/RealEstate/InterestPanel";
 import { DONG_ZOOM, MapLayers } from "@/components/RealEstate/MapCanvas";
 import { AreaUnit, TRADE_META, eok } from "@/components/RealEstate/format";
 import { useFavs, toggleFav } from "@/components/RealEstate/favs";
@@ -71,6 +72,8 @@ export function RealEstateMap() {
   const [sort, setSort] = useState<SortKey>("price_desc");
   const [areaUnit, setAreaUnit] = useState<AreaUnit>("m2");
   const [selectedApt, setSelectedApt] = useState<string | null>(null);
+  // 검색 관심도 패널 — 지도 오른쪽에 얹는다(왼쪽은 단지 목록이 쓴다).
+  const [showInterest, setShowInterest] = useState(false);
   const [panelOpen, setPanelOpen] = useState(true);
   const [autoSearch, setAutoSearch] = useState(true);
   const [viewport, setViewport] = useState<{ zoom: number; lat: number; lng: number } | null>(null);
@@ -334,6 +337,16 @@ export function RealEstateMap() {
             />
             지도 이동 시 자동 검색
           </label>
+
+          {/* 검색 관심도 — 거래량보다 먼저 움직이는 신호라 지도와 같은 자리에 둔다 */}
+          <button
+            onClick={() => setShowInterest((v) => !v)}
+            className={`rounded-md border px-2.5 py-1 text-[11px] font-bold transition ${
+              showInterest ? "border-[#217346] bg-[#217346] text-white" : "border-[#d0d0d0] bg-white text-[#555] hover:bg-[#f2f2f2]"
+            }`}
+          >
+            검색 관심도
+          </button>
         </div>
 
         <FilterBar
@@ -428,6 +441,21 @@ export function RealEstateMap() {
           >
             ↻ 이 지역 재검색
           </button>
+        )}
+
+        {/* 검색 관심도 — 오른쪽에 붙인다. 왼쪽은 단지 목록이 이미 쓰고 있고, 둘을
+            같은 변에 두면 지도가 양쪽에서 눌려 정작 지도가 안 보인다. */}
+        {showInterest && (
+          <div className="absolute right-0 top-0 z-[620] h-full">
+            <InterestPanel
+              regions={data.regions}
+              onPick={(lawd) => {
+                const r = data.regions.find((x) => x.lawd === lawd);
+                if (r) pickRegion(r);
+              }}
+              onClose={() => setShowInterest(false)}
+            />
+          </div>
         )}
       </div>
 

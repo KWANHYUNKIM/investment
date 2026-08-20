@@ -105,6 +105,52 @@ export interface RealEstateMapData {
   note?: string;
 }
 
+// 지역별 관심도 — 네이버 데이터랩 검색어 트렌드
+//
+// index 는 검색 **횟수가 아니다.** 데이터랩은 요청마다 최대값을 100 으로 잡는 상대값만
+// 주기 때문에, 모든 요청에 같은 앵커 키워드를 끼워 넣고 그 값으로 나눈 '앵커 대비 배수'다.
+// 이 축 위에서만 지역끼리 비교가 성립한다.
+export interface InterestPoint {
+  period: string;
+  ratio: number;
+}
+
+export interface InterestItem {
+  lawd: string;
+  sido: string;
+  region: string;
+  keyword: string;
+  index: number;
+  rank: number;
+  trend_pct: number | null;   // 최근 3구간 대비 그 앞 3구간
+  series: InterestPoint[];
+}
+
+export interface InterestBoard {
+  ready: boolean;
+  warming: boolean;
+  message?: string | null;
+  updated?: string;
+  anchor?: string;
+  unit?: string;
+  period?: { start: string; end: string };
+  count: number;
+  dropped?: string[];
+  items: InterestItem[];
+  source: string;
+  note: string;
+}
+
+export interface InterestCollectResult {
+  started: boolean;
+  reason?: string;
+  configured?: boolean;
+  running?: boolean;
+  done?: number;
+  total?: number;
+  msg?: string;
+}
+
 // 거래유형 — 네이버 부동산의 매매/전세/월세 전환에 대응
 export type TradeKind = "sale" | "jeonse" | "wolse";
 
@@ -248,6 +294,11 @@ export const realestateApi = {
   realestateTrades: () => request<RealEstateTrades>(`/api/data/realestate-trades`),
   realestateRent: () => request<RealEstateRent>(`/api/data/realestate-rent`),
   realestateMap: () => request<RealEstateMapData>(`/api/data/realestate-map`),
+  realestateInterest: () => request<InterestBoard>(`/api/data/realestate-interest`),
+  realestateInterestCollect: (months?: number) =>
+    request<InterestCollectResult>(
+      `/api/data/realestate-interest/collect${months ? `?months=${months}` : ""}`,
+      { method: "POST" }),
   realestateDeals: (lawd: string, ym?: string) =>
     request<RealEstateDeals>(`/api/data/realestate-deals?lawd=${encodeURIComponent(lawd)}${ym ? `&ym=${ym}` : ""}`),
   realestateKinds: () => request<{ kinds: PropertyKindMeta[] }>(`/api/data/realestate-kinds`),

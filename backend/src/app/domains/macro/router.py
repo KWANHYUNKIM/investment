@@ -41,6 +41,22 @@ def realestate_map_endpoint(svc: MacroService = Svc):
     return svc.realestate_map()
 
 
+@router.get("/realestate-interest")
+def realestate_interest_endpoint(svc: MacroService = Svc):
+    """지역별 부동산 관심도 — 네이버 데이터랩 검색어 트렌드(앵커 정규화).
+
+    거래량은 관심의 결과라 몇 주 늦는다. 검색은 그보다 먼저 튀므로 '검색은 올랐는데
+    거래는 아직 안 붙은 지역' 을 볼 수 있다.
+    """
+    return svc.realestate_interest()
+
+
+@router.post("/realestate-interest/collect")
+def realestate_interest_collect_endpoint(months: int | None = None, svc: MacroService = Svc):
+    """관심도 수집을 백그라운드로 시작(시군구 250곳이면 60여 번 호출이라 즉답 불가)."""
+    return svc.realestate_interest_collect(months)
+
+
 @router.get("/realestate-deals")
 def realestate_deals_endpoint(lawd: str, ym: str | None = None, svc: MacroService = Svc):
     """시군구(LAWD) 단지별 아파트 매매 실거래 상세 — 지도 마커 클릭 시 드릴다운."""

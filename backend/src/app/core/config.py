@@ -49,6 +49,18 @@ class Settings(BaseSettings):
     smtp_password: str = ""
     smtp_from: str = ""   # 미설정 시 smtp_user 사용
 
+    # 네이버 개발자센터(developers.naver.com) 오픈API — 검색어 트렌드(데이터랩)로
+    # 지역별 부동산 **관심도**를 만든다. 거래량은 관심의 결과라 늦고, 검색은 먼저 튄다.
+    # NCP(지도) 키와는 다른 포털이니 헷갈리지 말 것 — 이쪽은 Client ID 20자 / Secret 10자.
+    naver_client_id: str = ""
+    naver_client_secret: str = ""
+
+    # 앵커 키워드. 데이터랩은 요청마다 최대값을 100 으로 잡는 상대값만 주므로, 모든
+    # 요청에 같은 키워드를 끼워 넣고 그 값으로 나눠야 요청 간 비교가 성립한다.
+    # 전국구 대형 키워드를 쓰면 지역값이 전부 0.0x 로 뭉개지므로 중간 규모 지역을 쓴다.
+    naver_interest_anchor: str = "성남시 아파트"
+    naver_interest_months: int = 12
+
     # --- 가계부: 카드사 이용대금명세서 메일 자동 수집 (IMAP 수신) ---------------
     # 카드사가 매달 보내는 e-메일 명세서를 받은편지함에서 직접 읽어 파싱한다. 카드사
     # 공식 API 는 개인에게 열려 있지 않고, 승인문자는 할부·취소·청구월을 못 잡아서

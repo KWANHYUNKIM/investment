@@ -32,6 +32,21 @@ class MacroService:
         from app.data.macro import realestate_map
         return realestate_map.map_snapshot()
 
+    def realestate_interest(self) -> dict:
+        from app.data.macro import interest
+        return interest.snapshot()
+
+    def realestate_interest_collect(self, months: int | None) -> dict:
+        """지도에 이미 있는 시군구 목록을 그대로 대상으로 삼는다 — 관심도와 거래량을
+        같은 지역 집합 위에서 비교해야 '검색은 떴는데 거래는 아직' 이 성립한다."""
+        from app.core.config import get_settings
+        from app.data.macro import interest, realestate_map
+        snap = realestate_map.map_snapshot()
+        regions = [{"lawd": r["lawd"], "sido": r["sido"], "region": r["region"]}
+                   for r in snap.get("regions", [])]
+        return interest.start_warm(
+            regions, months=months or get_settings().naver_interest_months)
+
     def realestate_deals(self, lawd: str, ym: str | None) -> dict:
         from app.data.macro import realestate_map
         return realestate_map.region_deals(lawd, ym)
