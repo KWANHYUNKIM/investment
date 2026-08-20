@@ -93,3 +93,29 @@ def test_character_filter(monkeypatch) -> None:
     })
     assert [r["region"] for r in C.ranking("주거")["items"]] == ["노원구"]
     assert [r["region"] for r in C.ranking("업무·상업")["items"]] == ["종로구"]
+
+
+def test_quota_stop_keeps_what_was_already_collected(monkeypatch) -> None:
+    """일 한도에 걸려도 **그 전까지 받은 칸은 남아야** 한다.
+
+    저장이 루프 뒤에 한 번뿐이라, 예외가 그대로 올라가면 그 회차에 쓴 호출이
+    통째로 버려진다. 한도는 하루 단위라 그 손실이 하루치다.
+    """
+    saved: dict = {}
+    calls = {"n": 0}
+
+    def flaky(lawd, code=None):
+        calls["n"] += 1
+        if calls["n"] > 2:
+            raise C.CommerceError("data.go.kr 호출 한도 초과")
+        return 100
+
+    monkeypatch.setattr(C, "load", lambda: {})
+    monkeypatch.setattr(C, "save", lambda cells: saved.update(cells))
+    monkeypatch.setattr(C, "count_stores", flaky)
+    monkeypatch.setattr(C, "missing", lambda: [("11110", c) for c, _ in C.CATEGORIES])
+
+    res = C.refresh(budget=10)
+    assert res["filled"] == 2
+    assert len(saved["11110"]) == 2
+    assert "한도" in res["note"]

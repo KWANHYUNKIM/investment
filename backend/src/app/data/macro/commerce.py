@@ -172,6 +172,9 @@ def refresh(budget: int | None = None) -> dict:
     """
     s = get_settings()
     budget = int(budget or s.commerce_budget)
+    # 지난 회차 메시지를 지운다 — 안 지우면 아래 `if not msg` 가 매번 막혀서
+    # 화면에 몇 시간 전 진행률이 계속 걸린다.
+    _state["msg"] = ""
     todo = missing()[:budget]
     if not todo:
         _state["msg"] = "채울 칸 없음"
@@ -180,8 +183,15 @@ def refresh(budget: int | None = None) -> dict:
     have = load()
     filled = failed = 0
     now = int(time.time())
+    hit_limit = False
     for lawd, code in todo:
-        n = count_stores(lawd, code)
+        try:
+            n = count_stores(lawd, code)
+        except CommerceError:
+            # 일 한도 초과. 여기서 예외를 그대로 올리면 **이번 회차에 받아 둔 칸이
+            # 통째로 버려진다**(save 가 루프 뒤에 있다). 받은 것까지는 남긴다.
+            hit_limit = True
+            break
         if n is None:
             failed += 1
             if failed >= 20:        # 연속 실패는 대개 한도 초과다
@@ -197,6 +207,8 @@ def refresh(budget: int | None = None) -> dict:
     remaining = max(0, len(missing()))
     _state.update({"filled": _state["filled"] + filled,
                    "last_run": time.strftime("%Y-%m-%d %H:%M:%S")})
+    if hit_limit:
+        _state["msg"] = f"{filled}칸 채움 · 일 한도 초과로 중단 · {remaining}칸 남음"
     if not _state["msg"]:
         _state["msg"] = f"{filled}칸 채움 · {remaining}칸 남음"
     return {"filled": filled, "gaps": remaining, "note": _state["msg"]}
