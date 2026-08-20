@@ -201,6 +201,10 @@ def migrate_budget(s: Session, username: str, user_id: int) -> None:
             tx_type=t.get("tx_type") or "일시불",
             installment_months=inst.get("months"),
             installment_seq=inst.get("seq"),
+            # 카테고리를 빠뜨렸었다. 외래키가 NULL 을 허용해서 이관은 '성공' 했고,
+            # 60건 전부 분류가 비어 있는 걸 나중에야 알았다 — NULL 을 허용하는
+            # 컬럼일수록 옮겼는지 확인해야 한다.
+            category_code=t.get("category") or None,
             is_fixed=t.get("fixed"),
             fingerprint=fp[:64],
             issuer=t.get("issuer") or None,
@@ -210,7 +214,8 @@ def migrate_budget(s: Session, username: str, user_id: int) -> None:
             index_elements=["user_id", "fingerprint"],
             set_={"amount": stmt.excluded.amount, "charged": stmt.excluded.charged,
                   "fee": stmt.excluded.fee, "total": stmt.excluded.total,
-                  "billing_month": stmt.excluded.billing_month}))
+                  "billing_month": stmt.excluded.billing_month,
+                  "category_code": stmt.excluded.category_code}))
         _log("가계부", "거래")
 
     # 4) 수입 — 파일은 값 하나만 갖고 있다. 이력의 첫 행으로 넣는다.

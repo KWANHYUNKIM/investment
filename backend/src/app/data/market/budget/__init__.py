@@ -14,11 +14,39 @@
 """
 from __future__ import annotations
 
-from . import cards, categories, cycles, mailbox, payslip, recurring, store
+from . import cards, categories, cycles, mailbox, payslip, recurring
 from .categories import CATEGORIES, categorize
-from .store import (add_transactions, clear_import, clear_month, delete_transaction,
-                    move_month, recalc_billing_months, set_category, set_cycle,
-                    set_fixed, set_income)
+
+
+def _pick_store():
+    """저장소를 고른다 — 파일(기존) 또는 PostgreSQL.
+
+    두 판이 **같은 계약**을 지키므로(같은 함수 이름, 같은 dict 모양) 위쪽 코드는
+    어느 쪽인지 모른다. 집계·고정지출 판정·청구월 계산은 한 줄도 바뀌지 않는다.
+
+    스위치를 남기는 이유는 되돌릴 수 있어야 하기 때문이다. 저장소 교체는 문제가
+    며칠 뒤에 드러나는 종류라, 그때 설정 한 줄로 돌아갈 길이 없으면 곤란하다.
+    """
+    from app.core.config import get_settings
+    if get_settings().budget_storage == "postgres":
+        from . import store_pg
+        return store_pg
+    from . import store as store_json
+    return store_json
+
+
+store = _pick_store()
+
+add_transactions = store.add_transactions
+clear_import = store.clear_import
+clear_month = store.clear_month
+delete_transaction = store.delete_transaction
+move_month = store.move_month
+recalc_billing_months = store.recalc_billing_months
+set_category = store.set_category
+set_cycle = store.set_cycle
+set_fixed = store.set_fixed
+set_income = store.set_income
 from .summary import installments, months_of, plan, state, summary
 
 ISSUERS = cards.ISSUERS
