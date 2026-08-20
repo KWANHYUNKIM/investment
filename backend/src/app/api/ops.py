@@ -16,7 +16,8 @@ from app.core.config import get_settings
 from app.data.infra import store
 from app.data.fundamentals import fundamentals_crawler
 from app.data.schedulers import (
-    blog_scheduler, budget_mail_scheduler, costmodel_scheduler, delisting_scheduler,
+    blog_scheduler, budget_mail_scheduler, commerce_scheduler,
+    costmodel_scheduler, delisting_scheduler,
     growth_scheduler, industry_scheduler, movers_scheduler, premarket_scheduler,
     price_scheduler, realestate_scheduler, region_stats_scheduler,
     report_scheduler,
@@ -37,6 +38,7 @@ _SCHEDULERS: list[tuple[str, object, str]] = [
     ("growth", growth_scheduler, "성장테마·시황 피드"),
     ("realestate", realestate_scheduler, "부동산 실거래"),
     ("region_stats", region_stats_scheduler, "시군구 월별 집계(매매·전월세·평형)"),
+    ("commerce", commerce_scheduler, "지역 상권(업종 구성·성격)"),
     ("blog", blog_scheduler, "블로그 자동발행"),
     ("budget_mail", budget_mail_scheduler, "가계부 메일 명세서 수집"),
 ]

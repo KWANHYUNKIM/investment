@@ -21,8 +21,9 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.db.models import (AppUser, Holding, InterestPoint, InterestRun,
-                           PageViewDaily, Region, RegionMonthAreaStat,
-                           RegionMonthStat, WatchItem, WealthProfile)
+                           PageViewDaily, Region, RegionCommerce,
+                           RegionMonthAreaStat, RegionMonthStat,
+                           WatchItem, WealthProfile)
 from app.db.session import bind_request_context, get_sessionmaker
 
 
@@ -417,6 +418,55 @@ def interest_save(data: dict) -> None:
         s.close()
 
 
-__all__ = ["enabled", "interest_load", "interest_save", "region_stats_load",
+# --- 지역 상권 ----------------------------------------------------------------
+def commerce_load() -> dict:
+    """``{lawd: {category_code: {count, at}}}`` — 수집기가 쓰는 모양 그대로."""
+    s = get_sessionmaker()()
+    try:
+        _, by_id = _region_ids(s)
+        out: dict = {}
+        for r in s.scalars(select(RegionCommerce)).all():
+            lawd = by_id.get(r.region_id)
+            if not lawd:
+                continue
+            out.setdefault(lawd, {})[r.category_code] = {
+                "count": r.store_count,
+                "at": int(r.fetched_at.timestamp()) if r.fetched_at else 0,
+            }
+        return out
+    finally:
+        s.close()
+
+
+def commerce_save(cells: dict) -> None:
+    s = get_sessionmaker()()
+    try:
+        by_lawd, _ = _region_ids(s)
+        for lawd, cats in (cells or {}).items():
+            rid = by_lawd.get(lawd)
+            if rid is None:
+                continue
+            for code, v in cats.items():
+                from app.data.macro.commerce import _NAMES
+                stmt = pg_insert(RegionCommerce.__table__).values(
+                    region_id=rid, category_code=code,
+                    category_name=_NAMES.get(code, code),
+                    store_count=int(v.get("count") or 0),
+                    fetched_at=dt.datetime.fromtimestamp(v.get("at") or 0,
+                                                         tz=dt.timezone.utc))
+                s.execute(stmt.on_conflict_do_update(
+                    index_elements=["region_id", "category_code"],
+                    set_={"store_count": stmt.excluded.store_count,
+                          "fetched_at": stmt.excluded.fetched_at}))
+        s.commit()
+    except Exception:
+        s.rollback()
+        raise
+    finally:
+        s.close()
+
+
+__all__ = ["commerce_load", "commerce_save", "enabled", "interest_load",
+           "interest_save", "region_stats_load",
            "region_stats_save", "stats_load", "stats_save", "watchlist_load",
            "watchlist_save", "wealth_load", "wealth_save"]

@@ -184,6 +184,30 @@ export interface RegionSeries {
   note: string;
 }
 
+// 지역 상권 — 업종 구성이 그 동네가 무엇을 하는 곳인지를 말한다.
+//
+// work_index = (과학·기술 + 시설관리·임대) ÷ (교육 + 보건의료 + 수리·개인)
+// 사무실이 있어야 존재하는 업종과 사람이 살아야 존재하는 업종의 비다.
+// 실측: 중구 2.86 · 종로 1.74 · 강남 1.69 · 마포 1.27 · 강서 0.83 · 분당 0.61 · 노원 0.36
+export interface CommerceCategory {
+  code: string;
+  name: string;
+  count: number;
+  share: number;   // %
+}
+
+export interface RegionCommerce {
+  lawd: string;
+  available: boolean;
+  total: number;
+  counts: CommerceCategory[];
+  shares: Record<string, number>;
+  work_index: number | null;
+  character: "업무·상업" | "혼합" | "주거" | "자료 없음" | "판단 보류";
+  note: string;
+  coverage: { have: number; total: number; pct: number };
+}
+
 // 거래유형 — 네이버 부동산의 매매/전세/월세 전환에 대응
 export type TradeKind = "sale" | "jeonse" | "wolse";
 
@@ -329,6 +353,8 @@ export const realestateApi = {
   realestateMap: () => request<RealEstateMapData>(`/api/data/realestate-map`),
   realestateRegionSeries: (lawd: string, trade: TradeKind = "sale") =>
     request<RegionSeries>(`/api/data/realestate-region-series?lawd=${lawd}&trade=${trade}`),
+  realestateCommerce: (lawd: string) =>
+    request<RegionCommerce>(`/api/data/realestate-commerce?lawd=${lawd}`),
   realestateInterest: () => request<InterestBoard>(`/api/data/realestate-interest`),
   realestateInterestCollect: (months?: number) =>
     request<InterestCollectResult>(

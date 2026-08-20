@@ -54,6 +54,27 @@ def realestate_region_series_endpoint(
     return svc.realestate_region_series(lawd, trade)
 
 
+@router.get("/realestate-commerce")
+def realestate_commerce_endpoint(lawd: str, svc: MacroService = Svc):
+    """지역 상권 — 업종 구성과 성격.
+
+    업종 구성이 그 동네가 무엇을 하는 곳인지를 말한다. 사무실이 있어야 존재하는
+    업종(과학·기술·시설관리)과 사람이 살아야 존재하는 업종(교육·보건·수리)의 비로
+    업무지역·혼합·주거를 가른다.
+    """
+    return svc.realestate_commerce(lawd)
+
+
+@router.get("/realestate-commerce/ranking")
+def realestate_commerce_ranking_endpoint(
+    character: str | None = Query(default=None, pattern="^(업무·상업|혼합|주거)$"),
+    limit: int = Query(default=30, ge=1, le=250),
+    svc: MacroService = Svc,
+):
+    """업무지수 순위(수집이 끝난 지역만)."""
+    return svc.realestate_commerce_ranking(character, limit)
+
+
 @router.get("/realestate-interest")
 def realestate_interest_endpoint(svc: MacroService = Svc):
     """지역별 부동산 관심도 — 네이버 데이터랩 검색어 트렌드(앵커 정규화).

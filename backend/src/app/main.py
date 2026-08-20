@@ -26,6 +26,7 @@ from app.data.schedulers import premarket_scheduler
 from app.data.schedulers import movers_scheduler
 from app.data.schedulers import price_scheduler
 from app.data.schedulers import realestate_scheduler
+from app.data.schedulers import commerce_scheduler
 from app.data.schedulers import region_stats_scheduler
 from app.data.schedulers import report_scheduler
 from app.data.infra import store
@@ -83,6 +84,9 @@ def _startup() -> None:
     # Background region-stats scheduler: accumulate per-sigungu monthly
     # aggregates (sale/jeonse/wolse x area buckets) within a daily quota.
     region_stats_scheduler.start()
+    # Background commerce scheduler: store counts by district x industry,
+    # which reveal whether an area is a workplace or a residential one.
+    commerce_scheduler.start()
     # 원가모델 전 종목 배치: 매일 야간 1회 company_costmodels.json 을 갱신해
     # 원가분석 목록이 추정 대신 DART 실측으로 뜨게 한다(장중 부하·rate limit 회피).
     costmodel_scheduler.start()

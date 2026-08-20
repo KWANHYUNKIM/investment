@@ -81,6 +81,12 @@ class Settings(BaseSettings):
     # 최근 달을 얼마 만에 다시 받을지. 1,500칸을 순번제로 도는 주기의 기준이 된다.
     realestate_stats_stale_hours: float = 24.0
 
+    # 지역 상권(소상공인 상가정보). 시군구 250 × 업종 10 = 2,500칸인데 원본이 분기
+    # 갱신이라 한 번 받으면 한동안 유효하다 — 실거래처럼 되받을 필요가 없다.
+    commerce: bool = True
+    commerce_budget: int = 40                # 한 회차에 채울 칸
+    commerce_interval: float = 3600.0
+
     # NAVER API HUB (ncloud 콘솔) — 검색어 트렌드로 지역별 부동산 **관심도**를 만든다.
     # 거래량은 관심의 결과라 늦고, 검색은 먼저 튄다.
     #

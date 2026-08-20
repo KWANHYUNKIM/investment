@@ -101,6 +101,38 @@ class RegionMonthAreaStat(Base):
     month_stat: Mapped[RegionMonthStat] = relationship(back_populates="area_stats")
 
 
+class RegionCommerce(Base, TimestampMixin):
+    """시군구 × 업종대분류 점포 수 — 상권 규모와 **성격**을 함께 담는다.
+
+    왜 업종별로 나눠 담는가: 점포 총수만으로는 "사람이 많은 곳" 밖에 모른다. 업종
+    구성을 보면 **그 동네가 무엇을 하는 곳인지**가 나온다. 실측으로 확인했다 —
+    (과학기술+시설관리)/(교육+보건의료+수리개인) 이 종로 1.74 · 강남 1.69 ·
+    마포 1.27 · 강서 0.83 · 분당 0.61 · 노원 0.36 으로, 업무지역부터 순수 주거지역까지
+    한 줄로 늘어선다.
+
+    비율·지수는 저장하지 않는다. 전부 이 표에서 나오는 값이라 계산이 정답이고,
+    분류 기준을 바꿀 때마다 다시 채워 넣을 이유가 없다.
+    """
+
+    __tablename__ = "region_commerce"
+    __table_args__ = (
+        UniqueConstraint("region_id", "category_code",
+                         name="uq_region_commerce_region_id_category_code"),
+        Index("ix_region_commerce_region", "region_id"),
+        CheckConstraint("store_count >= 0", name="store_count_non_negative"),
+        {"schema": SCHEMA_REALESTATE},
+    )
+
+    id: Mapped[int] = pk()
+    region_id: Mapped[int] = mapped_column(
+        ForeignKey(f"{SCHEMA_REALESTATE}.region.id", ondelete="CASCADE"), nullable=False)
+    category_code: Mapped[str] = mapped_column(String(4), nullable=False)   # G2·I2·M1…
+    category_name: Mapped[str] = mapped_column(String(32), nullable=False)
+    store_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    # 원본이 분기 갱신이라 '언제 받은 값인가' 가 곧 신선도다.
+    fetched_at: Mapped[dt.datetime] = mapped_column(TZDateTime, nullable=False)
+
+
 class InterestRun(Base, TimestampMixin):
     """관심도 수집 한 번. **앵커가 무엇이었는지** 를 남기는 게 핵심이다.
 
@@ -149,5 +181,5 @@ class InterestPoint(Base):
     run: Mapped[InterestRun] = relationship(back_populates="points")
 
 
-__all__ = ["InterestPoint", "InterestRun", "Region", "RegionMonthAreaStat",
-           "RegionMonthStat"]
+__all__ = ["InterestPoint", "InterestRun", "Region", "RegionCommerce",
+           "RegionMonthAreaStat", "RegionMonthStat"]

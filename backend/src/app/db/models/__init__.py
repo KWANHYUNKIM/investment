@@ -12,13 +12,15 @@ from app.db.models.ops import (ApiQuotaUsage, BatchRun, DatasetSnapshot,
                                PageViewDaily)
 from app.db.models.portfolio import Holding, WatchItem, WealthProfile
 from app.db.models.realestate import (InterestPoint, InterestRun, Region,
-                                      RegionMonthAreaStat, RegionMonthStat)
+                                      RegionCommerce, RegionMonthAreaStat,
+                                      RegionMonthStat)
 
 __all__ = [
     "AppUser", "ApiQuotaUsage", "AuditEvent", "BatchRun", "Card", "Category",
     "CompanyProfile", "DatasetSnapshot", "EmailVerification", "Holding",
     "ImportBatch", "IncomeProfile", "InterestPoint", "InterestRun", "MailMessage",
-    "MerchantRule", "PageViewDaily", "Region", "RegionMonthAreaStat",
+    "MerchantRule", "PageViewDaily", "Region", "RegionCommerce",
+    "RegionMonthAreaStat",
     "RegionMonthStat", "Security", "Transaction", "UserCredential",
     "WatchItem", "WealthProfile",
 ]

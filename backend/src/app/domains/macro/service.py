@@ -67,6 +67,16 @@ class MacroService:
                      "최근 두 달은 신고 기한(계약 후 30일)이 남아 잠정치다."),
         }
 
+    def realestate_commerce(self, lawd: str) -> dict:
+        """한 시군구의 상권 구성 + 성격(업무·상업 / 혼합 / 주거)."""
+        from app.data.macro import commerce
+        return {**commerce.region(lawd), "coverage": commerce.coverage()}
+
+    def realestate_commerce_ranking(self, character: str | None, limit: int) -> dict:
+        """업무지수 순위. 같은 성격끼리 비교하려면 character 로 거른다."""
+        from app.data.macro import commerce
+        return {**commerce.ranking(character, limit), "coverage": commerce.coverage()}
+
     def realestate_interest(self) -> dict:
         from app.data.macro import interest
         return interest.snapshot()
