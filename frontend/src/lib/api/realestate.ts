@@ -152,22 +152,35 @@ export interface InterestCollectResult {
 }
 
 // 시군구 월별 추이 — 거래(후행)와 검색(선행)을 한 그래프에 겹쳐 시차를 본다.
+//
+// 금액의 뜻이 거래유형마다 다르다: 매매는 거래가, 전세·월세는 **보증금**이고,
+// 월세만 평균 월세(avg_rent_manwon)가 따로 붙는다. 하나로 뭉개면 평균이 무의미해진다.
+export interface AreaBucketStat {
+  count: number;
+  avg_eok: number | null;
+}
+
 export interface RegionMonth {
   ym: string;
   label: string;
-  count: number;            // 거래 건수
-  amount_eok: number;       // 거래대금(억)
-  avg_eok: number | null;   // 평균 거래가(억)
-  provisional: boolean;     // 이번 달은 신고 기한이 남아 잠정치
-  interest: number | null;  // 같은 달 검색 관심도(앵커 대비 배수)
+  count: number;
+  amount_eok: number;
+  avg_eok: number | null;
+  avg_rent_manwon: number | null;          // 월세일 때만
+  by_area: Record<string, AreaBucketStat>; // "60~85" 등
+  provisional: boolean;                    // 최근 2개월 — 신고 기한이 남아 계속 자란다
+  interest: number | null;                 // 같은 달 검색 관심도(앵커 대비 배수)
 }
 
 export interface RegionSeries {
   lawd: string;
+  trade: TradeKind;
   available: boolean;
   reason: string | null;
   months: RegionMonth[];
+  buckets: string[];                       // 평형 구간 표시 순서
   interest: { rank: number; index: number; trend_pct: number | null; keyword: string } | null;
+  coverage: { have: number; total: number; pct: number; months: number };
   note: string;
 }
 
@@ -314,8 +327,8 @@ export const realestateApi = {
   realestateTrades: () => request<RealEstateTrades>(`/api/data/realestate-trades`),
   realestateRent: () => request<RealEstateRent>(`/api/data/realestate-rent`),
   realestateMap: () => request<RealEstateMapData>(`/api/data/realestate-map`),
-  realestateRegionSeries: (lawd: string) =>
-    request<RegionSeries>(`/api/data/realestate-region-series?lawd=${lawd}`),
+  realestateRegionSeries: (lawd: string, trade: TradeKind = "sale") =>
+    request<RegionSeries>(`/api/data/realestate-region-series?lawd=${lawd}&trade=${trade}`),
   realestateInterest: () => request<InterestBoard>(`/api/data/realestate-interest`),
   realestateInterestCollect: (months?: number) =>
     request<InterestCollectResult>(

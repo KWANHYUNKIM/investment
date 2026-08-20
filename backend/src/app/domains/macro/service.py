@@ -32,16 +32,16 @@ class MacroService:
         from app.data.macro import realestate_map
         return realestate_map.map_snapshot()
 
-    def realestate_region_series(self, lawd: str) -> dict:
-        """한 시군구의 월별 거래량·평균가 + 같은 기간 검색 관심도.
+    def realestate_region_series(self, lawd: str, trade: str = "sale") -> dict:
+        """한 시군구의 월별 거래량·평균가(+평형별) + 같은 기간 검색 관심도.
 
         거래(후행)와 검색(선행)을 **한 그래프 위에** 올려야 시차가 보인다. 따로 두면
         '검색이 먼저 움직였다' 를 눈으로 확인할 방법이 없다.
         """
-        from app.data.macro import interest, realestate
-        # 저장된 것만 읽는다 — 지역을 누를 때마다 전국 1,500콜이 돌면 화면이 멈춘다.
-        snap = realestate.region_series(lawd)
-        series = snap.get("months") or []
+        from app.data.macro import interest, region_stats
+
+        st = region_stats.series(lawd, trade)
+        months = st["months"]
 
         board = interest.snapshot()
         item = next((i for i in board.get("items", []) if i["lawd"] == lawd), None)
@@ -49,15 +49,22 @@ class MacroService:
         heat = {str(p["period"])[:7].replace("-", ""): p["ratio"]
                 for p in (item or {}).get("series", [])}
 
+        cov = region_stats.coverage()
         return {
             "lawd": lawd,
-            "available": bool(series),
-            "reason": None if series else (snap.get("reason") or "이 지역의 월별 실거래가 아직 없습니다."),
-            "months": [{**m, "interest": heat.get(m["ym"])} for m in series],
+            "trade": trade,
+            "available": bool(months),
+            "reason": None if months else (
+                f"아직 수집 전입니다 — 전체 {cov['pct']}% 채워짐. "
+                "시간이 지나면 자동으로 채워집니다."),
+            "months": [{**m, "interest": heat.get(m["ym"])} for m in months],
+            "buckets": st["buckets"],
             "interest": {"rank": item["rank"], "index": item["index"],
                          "trend_pct": item["trend_pct"], "keyword": item["keyword"]} if item else None,
-            "note": ("거래량·평균가는 국토부 실거래(RTMS), 관심도는 네이버 검색 트렌드다. "
-                     "이번 달은 신고 기한이 남아 있어 잠정치(provisional)다."),
+            "coverage": cov,
+            "note": ("거래량·가격은 국토부 실거래(RTMS), 관심도는 네이버 검색 트렌드다. "
+                     "매매는 거래가, 전세·월세는 보증금 기준이며 월세는 평균 월세를 따로 준다. "
+                     "최근 두 달은 신고 기한(계약 후 30일)이 남아 잠정치다."),
         }
 
     def realestate_interest(self) -> dict:

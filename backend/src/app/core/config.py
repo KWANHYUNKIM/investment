@@ -49,6 +49,19 @@ class Settings(BaseSettings):
     smtp_password: str = ""
     smtp_from: str = ""   # 미설정 시 smtp_user 사용
 
+    # 시군구 월별 집계 누적 저장소(매매·전세·월세 × 평형). 24개월 × 250곳 × 3유형 =
+    # 18,000콜이라 한 번에 못 받는다. 지난 달은 다시 안 바뀌므로 없는 칸만 예산 안에서
+    # 조금씩 채우고, 신고 기한이 남은 최근 두 달만 다시 받는다.
+    realestate_stats: bool = True
+    realestate_stats_months: int = 24
+    # 예산은 일일 한도에서 역산한다. 개발계정 1,000건/일에서 지도 워밍이 쓰는 몫을
+    # 빼면 시간당 30건 정도가 안전선이다(30 × 24 = 720). 운영계정(10만건/일)으로
+    # 올리면 여기를 크게 키워 하루 만에 다 채울 수 있다.
+    realestate_stats_budget: int = 30
+    realestate_stats_interval: float = 3600.0   # 1시간마다 이어 받기
+    # 최근 달을 얼마 만에 다시 받을지. 1,500칸을 순번제로 도는 주기의 기준이 된다.
+    realestate_stats_stale_hours: float = 24.0
+
     # NAVER API HUB (ncloud 콘솔) — 검색어 트렌드로 지역별 부동산 **관심도**를 만든다.
     # 거래량은 관심의 결과라 늦고, 검색은 먼저 튄다.
     #

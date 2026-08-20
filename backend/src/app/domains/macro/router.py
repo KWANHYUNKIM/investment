@@ -7,7 +7,7 @@ drop-in migration.
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 
 from .deps import get_macro_service
 from .service import MacroService
@@ -42,9 +42,16 @@ def realestate_map_endpoint(svc: MacroService = Svc):
 
 
 @router.get("/realestate-region-series")
-def realestate_region_series_endpoint(lawd: str, svc: MacroService = Svc):
-    """시군구 월별 거래량·평균가 + 같은 기간 검색 관심도(한 그래프에 겹쳐 보기 위한 것)."""
-    return svc.realestate_region_series(lawd)
+def realestate_region_series_endpoint(
+    lawd: str,
+    trade: str = Query(default="sale", pattern="^(sale|jeonse|wolse)$"),
+    svc: MacroService = Svc,
+):
+    """시군구 월별 거래량·평균가(+평형별) + 같은 기간 검색 관심도.
+
+    ``trade``: ``sale``(매매·거래가) | ``jeonse``(전세·보증금) | ``wolse``(월세·보증금+월세)
+    """
+    return svc.realestate_region_series(lawd, trade)
 
 
 @router.get("/realestate-interest")
