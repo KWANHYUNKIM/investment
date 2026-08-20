@@ -262,10 +262,10 @@ export function RealEstateMap() {
     setFlyTarget({ lat: a.lat, lng: a.lng, zoom: Math.max(viewport?.zoom ?? 15, 15) });
   }
 
-  if (err) return <div className="py-20 text-center text-sm text-rose-600">{err}</div>;
+  if (err) return <div className="flex h-full items-center justify-center text-sm text-rose-600">{err}</div>;
   if (!data) {
     return (
-      <div className="flex items-center justify-center gap-2 py-24 text-sm text-[#888]">
+      <div className="flex h-full items-center justify-center gap-2 text-sm text-[#888]">
         <Spinner /> 불러오는 중…
       </div>
     );
@@ -276,9 +276,12 @@ export function RealEstateMap() {
     && apts?.trade === filters.trade && apts?.kind === kind;
 
   return (
-    <div className="flex flex-col gap-2.5">
+    /* 지도는 보이는 면적이 곧 정보량이라 사이드바 옆까지 꽉 채운다. 바깥(page.tsx)에서
+       1600px 래퍼 밖에 두고, 여기서는 main 높이를 셋으로 나눈다 — 헤더/지도/주석.
+       min-h-0 이 없으면 가운데 지도가 내용 높이만큼 부풀어 주석이 화면 밖으로 밀린다. */
+    <div className="flex h-full min-h-0 flex-col bg-[#fafafa]">
       {/* 상단 바 — 검색 + 필터 (네이버 부동산 헤더) */}
-      <div className="rounded-md border border-[#d0d0d0] bg-white px-3 py-2.5 shadow-sm">
+      <div className="shrink-0 border-b border-[#d0d0d0] bg-white px-3 py-2.5 shadow-sm">
         <div className="mb-2.5 flex flex-wrap items-center gap-2">
           <div className="relative min-w-[220px] flex-1 md:max-w-sm">
             <input
@@ -346,7 +349,7 @@ export function RealEstateMap() {
       </div>
 
       {/* 지도 + 목록 — 네이버처럼 목록이 지도 위에 얹힌다 */}
-      <div className="relative h-[calc(100vh-260px)] min-h-[560px] w-full overflow-hidden rounded-md border border-[#d0d0d0] bg-white shadow-sm">
+      <div className="relative min-h-0 w-full flex-1 overflow-hidden bg-white">
         <MapCanvas
           regions={regionsForMap}
           apartments={showList ? filtered : null}
@@ -428,7 +431,7 @@ export function RealEstateMap() {
         )}
       </div>
 
-      <p className="text-[11px] leading-relaxed text-[#999]">
+      <p className="max-h-16 shrink-0 overflow-y-auto border-t border-[#e5e5e5] bg-white px-3 py-1.5 text-[11px] leading-relaxed text-[#999]">
         {data.ready
           ? `${data.latest_label} 기준 · 시군구 ${data.count}곳 · 좌표확보 ${data.geocoded}/${data.count}`
           : "실거래 수집 중 — 지도는 먼저 표시됩니다."}

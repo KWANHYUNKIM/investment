@@ -293,8 +293,13 @@ function Home() {
         {/* min-w-0: 플렉스 아이템 기본 min-width:auto 때문에 내용(엑셀 그리드·우측 패널)이
             넓으면 main 이 뷰포트 밖으로 밀려 우측이 잘린다. 반드시 0 으로 풀어준다. */}
         <main className="min-h-0 min-w-0 flex-1">
+          {/* 화면을 꽉 쓰는 탭들은 아래 1600px 래퍼 밖에 둔다. 엑셀 그리드(전종목 분석)와
+              지도(부동산)는 가운데 정렬해 여백을 주면 오히려 못 쓰게 된다 — 지도는 보이는
+              면적이 곧 정보량이라 사이드바 바로 옆까지 붙여야 한다. */}
           {tab === "market" ? (
             <MarketView />
+          ) : tab === "realestate" ? (
+            <RealEstateMap />
           ) : (
             <div className="h-full overflow-y-auto bg-[#fafafa]">
               {/* 와이드 모니터에서 본문이 2,000px 넘게 늘어나면 표 칸이 벌어지고 문단이 읽기
@@ -341,7 +346,6 @@ function Home() {
                 {tab === "report" && <MarketReport />}
                 {tab === "industry" && <IndustryMap />}
                 {tab === "crisis" && <CrisisSim />}
-                {tab === "realestate" && <RealEstateMap />}
                 {tab === "admin" && isAdmin && <Admin />}
               </div>
             </div>
