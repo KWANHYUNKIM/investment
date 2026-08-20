@@ -1,7 +1,9 @@
 """회원가입/로그인 인증 (다중 사용자, 외부망 노출 대비).
 
 의존성 없이 표준 라이브러리만 사용:
-  - 비밀번호: PBKDF2-HMAC-SHA256(사용자별 랜덤 salt, 20만 회) 해시로 저장.
+  - 비밀번호: PBKDF2-HMAC-SHA256(사용자별 랜덤 salt, 60만 회) 해시로 저장.
+    반복수는 저장해 두고 검증에 그 값을 쓴다. 로그인에 성공하면 현재 기준으로
+    조용히 다시 해시하므로, 기준을 올려도 기존 사용자가 잠기지 않는다.
   - 토큰: HMAC-SHA256 서명 stateless 토큰(payload.signature, 만료 포함), 공용 secret.
   - 저장: ``data/auth.json`` = {secret, users:{username:{salt,hash,iter,email,name,created}}}.
 
@@ -24,7 +26,15 @@ from fastapi import Depends, Header, HTTPException
 from app.core.config import get_settings
 from app.core.jsonstore import read_json, write_json
 
-_ITER = 200_000
+# PBKDF2-HMAC-SHA256 반복수. OWASP 권장치(2023~)가 600,000회다.
+#
+# 이 값은 시간이 지나면 부족해진다 — 하드웨어가 빨라지면 대입도 빨라지기 때문이다.
+# 그래서 숫자를 올리는 것만으로 끝내지 않고, **로그인에 성공할 때 조용히 다시
+# 해시한다**(_maybe_rehash). 사용자가 비밀번호를 재설정하지 않아도 옛 해시가
+# 자연히 사라진다. 알고리즘 이름을 함께 저장해 두는 것도 같은 이유다 — 언젠가
+# argon2 로 옮길 때 전 사용자를 한 번에 초기화시키지 않으려면 그 칸이 필요하다.
+_HASH_NAME = "sha256"
+_ITER = 600_000
 _TTL = 7 * 24 * 3600
 _USERNAME_RE = re.compile(r"^[A-Za-z0-9_.\-]{3,20}$")
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
@@ -95,8 +105,13 @@ def list_users() -> list[dict]:
     return out
 
 
-def _hash_pw(password: str, salt: bytes) -> bytes:
-    return hashlib.pbkdf2_hmac("sha256", (password or "").encode("utf-8"), salt, _ITER)
+def _hash_pw(password: str, salt: bytes, iterations: int | None = None) -> bytes:
+    """반복수를 인자로 받는다 — 옛 해시를 검증하려면 **그때 쓰던 값**이 필요하다.
+
+    기본값만 쓰면 반복수를 올리는 순간 기존 사용자가 전부 로그인 불가가 된다.
+    """
+    return hashlib.pbkdf2_hmac(_HASH_NAME, (password or "").encode("utf-8"), salt,
+                               int(iterations or _ITER))
 
 
 # --- 이메일 인증코드 -------------------------------------------------------
@@ -184,11 +199,42 @@ def register(username: str, password: str, email: str = "", name: str = "", code
 
 
 def verify_password(username: str, password: str) -> bool:
-    u = _load().get("users", {}).get((username or "").strip())
+    """저장된 반복수로 검증하고, 그 값이 현재 기준보다 낮으면 조용히 다시 해시한다.
+
+    재해시를 로그인 시점에 하는 이유: 평문 비밀번호를 손에 쥐고 있는 순간이 여기뿐이다.
+    저장된 것은 해시라 반복수만 올려 다시 계산할 수가 없다.
+    """
+    username = (username or "").strip()
+    u = _load().get("users", {}).get(username)
     if not u:
+        # 없는 아이디에도 같은 시간을 쓴다 — 응답 속도로 아이디 존재 여부가 새면
+        # 그 자체가 정보 노출이다.
+        _hash_pw(password, b"\x00" * 16)
         return False
-    calc = _hash_pw(password, bytes.fromhex(u["salt"]))
-    return hmac.compare_digest(calc.hex(), u.get("hash", ""))
+    stored_iter = int(u.get("iter") or _ITER)
+    calc = _hash_pw(password, bytes.fromhex(u["salt"]), stored_iter)
+    if not hmac.compare_digest(calc.hex(), u.get("hash", "")):
+        return False
+    if stored_iter < _ITER:
+        _maybe_rehash(username, password)
+    return True
+
+
+def _maybe_rehash(username: str, password: str) -> None:
+    """옛 반복수로 저장된 해시를 현재 기준으로 다시 만든다. 실패해도 로그인은 성공."""
+    try:
+        salt = secrets.token_bytes(16)
+        d = _load()
+        user = d.get("users", {}).get(username)
+        if not user:
+            return
+        user["salt"] = salt.hex()
+        user["hash"] = _hash_pw(password, salt, _ITER).hex()
+        user["iter"] = _ITER
+        _save(d)
+    except Exception:  # noqa: BLE001
+        # 재해시는 보안 개선이지 로그인의 전제가 아니다 — 실패해도 막지 않는다.
+        pass
 
 
 def login(username: str, password: str) -> str:
