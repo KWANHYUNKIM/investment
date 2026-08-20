@@ -38,7 +38,13 @@ import urllib.request
 from app.core.config import get_settings
 from app.core.jsonstore import read_json, write_json
 
-_API = "https://openapi.naver.com/v1/datalab/search"
+# NAVER API HUB (네이버 클라우드 콘솔). 옛 developers.naver.com 의
+# ``openapi.naver.com/v1/datalab/search`` 는 **신규 등록이 막혔다** — 앱 설정에서 고르면
+# "신규로 등록할 수 없는 API" 로 거부된다. 기존 키는 2027-06-30 까지만 살아 있고,
+# 새로 붙이는 쪽은 이 HUB 엔드포인트다.
+#
+# 인증 헤더도 다르다: Client-Id/Secret 이 아니라 NCP API 게이트웨이 키를 쓴다.
+_API = "https://naverapihub.apigw.ntruss.com/search-trend/v1/search"
 
 # 한 요청에 넣을 수 있는 키워드 그룹은 5개. 그중 하나는 앵커가 가져가므로 지역은 4개.
 _GROUPS_PER_CALL = 5
@@ -68,8 +74,8 @@ def _post(body: dict) -> dict:
         _API,
         data=json.dumps(body).encode("utf-8"),
         headers={
-            "X-Naver-Client-Id": s.naver_client_id,
-            "X-Naver-Client-Secret": s.naver_client_secret,
+            "x-ncp-apigw-api-key-id": s.naver_client_id,
+            "x-ncp-apigw-api-key": s.naver_client_secret,
             "Content-Type": "application/json",
         },
     )
@@ -78,10 +84,16 @@ def _post(body: dict) -> dict:
             return json.loads(r.read().decode("utf-8"))
     except urllib.error.HTTPError as e:
         detail = e.read().decode("utf-8", "replace")[:200]
-        if e.code == 401:
+        if e.code in (401, 403):
+            # 게이트웨이가 두 가지를 구분해 준다 — 키가 틀린 건지, 상품을 안 켠 건지.
+            if "subscription" in detail.lower():
+                raise DatalabError(
+                    "NAVER API HUB 에서 Search Trend 상품을 구독하지 않았습니다 — "
+                    "ncloud 콘솔 > NAVER API HUB > 검색어 트렌드 이용 신청."
+                ) from e
             raise DatalabError(
                 "네이버 인증 실패 — NAVER_CLIENT_ID/SECRET 을 확인하세요. "
-                "developers.naver.com 의 '애플리케이션 정보' 에 있는 Client Secret 이어야 합니다."
+                "ncloud 콘솔의 API Gateway 인증키(Access Key ID / Secret)여야 합니다."
             ) from e
         if e.code == 429:
             raise DatalabError("네이버 데이터랩 호출 한도 초과 — 잠시 후 다시 시도하세요.") from e
@@ -90,9 +102,48 @@ def _post(body: dict) -> dict:
         raise DatalabError(f"데이터랩 접속 실패: {type(e).__name__}") from e
 
 
+def _drop_partial(series: list[dict], unit: str) -> list[dict]:
+    """아직 안 끝난 마지막 구간을 버린다.
+
+    오늘이 8월 20일이면 데이터랩이 주는 8월 값은 **20일치**다. 그걸 완성된 달과
+    나란히 놓으면 모든 지역의 추세가 일제히 마이너스로 나온다 — 실제로 처음 돌렸을 때
+    181곳이 전부 -13~-38% 였다. 시장이 식은 게 아니라 달이 안 끝난 것이다.
+    """
+    if not series:
+        return series
+    now = time.localtime()
+    cutoff = {"month": "%Y-%m-01", "week": None, "date": "%Y-%m-%d"}.get(unit)
+    if not cutoff:
+        return series           # 주 단위는 경계를 단정하기 어려워 손대지 않는다
+    current = time.strftime(cutoff, now)
+    return [p for p in series if str(p.get("period", "")) != current]
+
+
 def _mean(series: list[dict]) -> float:
     vals = [float(p.get("ratio") or 0) for p in series]
     return sum(vals) / len(vals) if vals else 0.0
+
+
+def _normalize(raw: list[dict], anchor_series: list[dict]) -> list[dict]:
+    """구간별로 앵커와 나눈다 — 축을 맞추면서 **계절성까지 함께 걷어낸다.**
+
+    전체 평균으로 한 번만 나누면 요청 간 비교는 되지만 계절성이 남는다. 부동산
+    검색은 봄 이사철(2~4월)에 몰리고 여름에 빠지므로, 7월과 3월을 견주면 181곳이
+    전부 마이너스로 나온다(처음 돌렸을 때 실제로 그랬다). 그건 시장이 식은 게 아니라
+    달력이 그런 것이라 '어디가 뜨고 있나' 에 답하지 못한다.
+
+    같은 달의 앵커로 나누면 전국이 공유하는 계절 성분이 분자·분모에서 상쇄되고,
+    **그 지역만의 움직임**이 남는다. 앵커가 0 인 구간은 나눌 수 없어 건너뛴다.
+    """
+    amap = {str(p.get("period")): float(p.get("ratio") or 0) for p in anchor_series}
+    out = []
+    for p in raw:
+        a = amap.get(str(p.get("period")), 0.0)
+        if a <= 0:
+            continue
+        out.append({"period": p.get("period"),
+                    "ratio": round(float(p.get("ratio") or 0) / a, 4)})
+    return out
 
 
 def _query(keyword_groups: list[dict], start: str, end: str, unit: str) -> dict[str, list[dict]]:
@@ -108,8 +159,33 @@ def _query(keyword_groups: list[dict], start: str, end: str, unit: str) -> dict[
 
 
 # --- 수집 ------------------------------------------------------------------
-def _keyword(region: str) -> str:
-    """'강남구' → '강남구 아파트'. 지역명만 쓰면 맛집·날씨 검색까지 섞인다."""
+# 시도를 앞에 붙일 때 쓰는 짧은 이름. 사람들이 실제로 검색하는 말이어야 해서
+# '서울특별시 강서구' 가 아니라 '서울 강서구' 로 만든다.
+_SIDO_SHORT = {
+    "서울특별시": "서울", "부산광역시": "부산", "대구광역시": "대구", "인천광역시": "인천",
+    "광주광역시": "광주", "대전광역시": "대전", "울산광역시": "울산", "세종특별자치시": "세종",
+    "경기도": "경기", "강원특별자치도": "강원", "강원도": "강원",
+    "충청북도": "충북", "충청남도": "충남", "전라북도": "전북",
+    "전북특별자치도": "전북", "전라남도": "전남", "경상북도": "경북", "경상남도": "경남",
+    "제주특별자치도": "제주",
+}
+
+# 여러 시도에 같은 이름이 있는 시군구. 이것들만 시도를 붙인다 — 안 겹치는 지역까지
+# 붙이면 '서울 노원구 아파트' 처럼 아무도 안 치는 말이 되어 검색량이 깎인다.
+_AMBIGUOUS = {
+    "중구", "동구", "서구", "남구", "북구", "강서구", "성산구", "고성군",
+    "남원시", "동면", "일산동구", "일산서구", "단원구", "상록구",
+}
+
+
+def _keyword(region: str, sido: str = "") -> str:
+    """'강남구' → '강남구 아파트'. 지역명만 쓰면 맛집·날씨 검색까지 섞인다.
+
+    이름이 겹치는 시군구는 시도를 붙여 가른다. 붙이지 않으면 서울 강서구와 부산
+    강서구가 **같은 키워드**가 되어 두 지역에 똑같은 값이 들어간다(실제로 그랬다).
+    """
+    if region in _AMBIGUOUS and sido:
+        return f"{_SIDO_SHORT.get(sido, sido)} {region} 아파트"
     return f"{region} 아파트"
 
 
@@ -137,10 +213,13 @@ def collect(regions: list[dict], *, months: int = 12,
     dropped: list[str] = []
     for chunk in chunks:
         groups = [{"groupName": "__anchor__", "keywords": [anchor_kw]}]
-        groups += [{"groupName": r["lawd"], "keywords": [_keyword(r["region"])]} for r in chunk]
+        groups += [{"groupName": r["lawd"], "keywords": [_keyword(r["region"], r.get("sido", ""))]}
+                   for r in chunk]
 
         series = _query(groups, start, end, unit)
-        anchor = _mean(series.get("__anchor__", []))
+        # 앵커도 같은 구간으로 잘라야 한다 — 한쪽만 미완성 달을 품으면 축이 틀어진다.
+        anchor_series = _drop_partial(series.get("__anchor__", []), unit)
+        anchor = _mean(anchor_series)
         if anchor <= 0:
             # 앵커가 0 이면 이 요청의 값들은 다른 요청과 이을 축이 없다. 지어내지 않고 버린다.
             dropped += [r["lawd"] for r in chunk]
@@ -148,15 +227,14 @@ def collect(regions: list[dict], *, months: int = 12,
             continue
 
         for r in chunk:
-            raw = series.get(r["lawd"], [])
+            raw = _drop_partial(series.get(r["lawd"], []), unit)
+            ser = _normalize(raw, anchor_series)
             items.append({
                 "lawd": r["lawd"], "sido": r["sido"], "region": r["region"],
-                "keyword": _keyword(r["region"]),
+                "keyword": _keyword(r["region"], r.get("sido", "")),
                 # 앵커 대비 배수 — 요청이 달라도 같은 축 위에 놓인다.
-                "index": round(_mean(raw) / anchor, 4),
-                "series": [{"period": p.get("period"),
-                            "ratio": round(float(p.get("ratio") or 0) / anchor, 4)}
-                           for p in raw],
+                "index": round(_mean(ser), 4),
+                "series": ser,
             })
         _warm["done"] += 1
         if pause:
@@ -212,9 +290,11 @@ def snapshot() -> dict:
 def _note() -> dict:
     return {
         "source": "네이버 데이터랩 검색어 트렌드",
-        "note": ("검색량은 절대 횟수가 아니라 앵커 키워드 대비 상대값이다. 요청마다 100 의 "
-                 "기준이 달라지는 데이터랩 특성 때문에, 모든 요청에 같은 앵커를 넣고 그 값으로 "
-                 "나눠 하나의 축으로 맞춘다. 지역 간 비교는 이 축 위에서만 의미가 있다."),
+        "note": ("검색량은 절대 횟수가 아니라 앵커 키워드 대비 배수다. 요청마다 100 의 기준이 "
+                 "달라지는 데이터랩 특성 때문에, 모든 요청에 같은 앵커를 넣고 **같은 달의 앵커"
+                 "값으로** 나눈다. 그러면 요청 간 축이 맞을 뿐 아니라 봄 이사철 같은 전국 공통 "
+                 "계절성도 상쇄돼, 추세가 그 지역만의 움직임을 가리킨다. 아직 안 끝난 이번 "
+                 "달은 집계가 덜 돼 빼고 센다."),
     }
 
 

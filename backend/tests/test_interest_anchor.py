@@ -133,6 +133,59 @@ def test_keyword_pins_the_topic(creds):
     assert I._keyword("강남구") == "강남구 아파트"
 
 
+def test_duplicate_region_names_are_split_by_sido(creds):
+    """실측에서 터진 버그 — 서울 강서구와 부산 강서구가 같은 6.75배를 받았다.
+
+    키워드가 '강서구 아파트' 하나라 두 지역이 **같은 검색량**을 나눠 가진 것이다.
+    이름이 겹치는 시군구는 시도를 붙여 갈라야 한다.
+    """
+    seoul = I._keyword("강서구", "서울특별시")
+    busan = I._keyword("강서구", "부산광역시")
+    assert seoul != busan
+    assert seoul == "서울 강서구 아파트"
+    assert busan == "부산 강서구 아파트"
+
+
+def test_unambiguous_region_keeps_the_bare_name(creds):
+    """안 겹치는 지역까지 시도를 붙이면 아무도 안 치는 말이 되어 검색량이 깎인다."""
+    assert I._keyword("노원구", "서울특별시") == "노원구 아파트"
+    assert I._keyword("하남시", "경기도") == "하남시 아파트"
+
+
+def test_incomplete_current_month_is_dropped(creds):
+    """오늘이 20일이면 이번 달 값은 20일치다. 완성된 달과 나란히 두면 전 지역이
+    일제히 마이너스로 나온다 — 시장이 식은 게 아니라 달이 안 끝난 것이다."""
+    import time
+    current = time.strftime("%Y-%m-01")
+    ser = [{"period": "2026-01-01", "ratio": 50}, {"period": current, "ratio": 9}]
+    assert I._drop_partial(ser, "month") == [{"period": "2026-01-01", "ratio": 50}]
+
+
+def test_seasonality_cancels_out(creds):
+    """봄 이사철처럼 **전국이 함께 겪는** 오르내림은 추세에서 빠져야 한다.
+
+    지역과 앵커가 똑같은 계절 곡선을 그리면 그 지역은 '변화 없음'이어야 한다.
+    전체 평균으로 한 번만 나누면 여기서 -50% 가 찍혔다.
+    """
+    season = [100, 100, 100, 50, 50, 50]        # 봄 성수기 → 여름 비수기
+    anchor = [{"period": f"2026-0{i + 1}-01", "ratio": v} for i, v in enumerate(season)]
+    region = [{"period": f"2026-0{i + 1}-01", "ratio": v * 3} for i, v in enumerate(season)]
+
+    out = I._normalize(region, anchor)
+    assert [p["ratio"] for p in out] == [3.0] * 6      # 계절 성분이 상쇄된다
+
+    items = [{"index": I._mean(out), "series": out}]
+    I._rank(items)
+    assert items[0]["trend_pct"] == 0.0
+
+
+def test_period_missing_from_anchor_is_skipped(creds):
+    """앵커에 없는 구간은 나눌 수가 없다 — 지어내지 않고 건너뛴다."""
+    anchor = [{"period": "2026-01-01", "ratio": 10}]
+    region = [{"period": "2026-01-01", "ratio": 20}, {"period": "2026-02-01", "ratio": 99}]
+    assert I._normalize(region, anchor) == [{"period": "2026-01-01", "ratio": 2.0}]
+
+
 def test_collect_without_credentials_refuses(monkeypatch):
     monkeypatch.setattr(I, "configured", lambda: False)
     with pytest.raises(I.DatalabError):

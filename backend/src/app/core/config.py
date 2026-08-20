@@ -49,9 +49,12 @@ class Settings(BaseSettings):
     smtp_password: str = ""
     smtp_from: str = ""   # 미설정 시 smtp_user 사용
 
-    # 네이버 개발자센터(developers.naver.com) 오픈API — 검색어 트렌드(데이터랩)로
-    # 지역별 부동산 **관심도**를 만든다. 거래량은 관심의 결과라 늦고, 검색은 먼저 튄다.
-    # NCP(지도) 키와는 다른 포털이니 헷갈리지 말 것 — 이쪽은 Client ID 20자 / Secret 10자.
+    # NAVER API HUB (ncloud 콘솔) — 검색어 트렌드로 지역별 부동산 **관심도**를 만든다.
+    # 거래량은 관심의 결과라 늦고, 검색은 먼저 튄다.
+    #
+    # 옛 developers.naver.com 경로는 신규 등록이 막혔다(앱 설정에서 고르면 "신규로
+    # 등록할 수 없는 API"). 지금은 지도와 **같은 ncloud 콘솔**에서 발급한 API Gateway
+    # 인증키를 쓴다 — Access Key ID 10자 / Secret 40자. 이름만 client_id 로 남겨 둔다.
     naver_client_id: str = ""
     naver_client_secret: str = ""
 
