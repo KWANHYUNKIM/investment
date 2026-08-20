@@ -84,17 +84,52 @@ function dongBubble(d: DongAgg, trade: TradeKind): string {
 }
 
 /** 시군구 집계 버블 */
-function regionBubble(r: RealEstateRegion, selected: boolean, trade: TradeKind): string {
+// 검색 관심도 — 네이버 부동산이 인기 지역을 눈에 띄게 하듯, 마커 자체가 열기를 말하게 한다.
+// 목록을 따로 열어 보지 않아도 지도를 훑는 것만으로 '어디가 뜨나' 가 보여야 한다.
+export interface HeatItem { rank: number; index: number; trend_pct: number | null }
+export type HeatMap = Record<string, HeatItem>;
+
+// 상위권만 색으로 구분한다. 181곳을 전부 물들이면 지도가 색칠공부가 되고, 정작
+// 어디가 위인지 안 보인다.
+function heatStyle(rank: number): { bg: string; fg: string; label: string } | null {
+  if (rank <= 3) return { bg: "#c0392b", fg: "#fff", label: `관심 ${rank}위` };
+  if (rank <= 10) return { bg: "#e8873a", fg: "#fff", label: `관심 ${rank}위` };
+  if (rank <= 30) return { bg: "#f0c419", fg: "#4a3b00", label: `관심 ${rank}위` };
+  return null;
+}
+
+function regionBubble(r: RealEstateRegion, selected: boolean, trade: TradeKind,
+                      heat?: HeatItem): string {
   const meta = TRADE_META[trade];
-  const title = `${r.sido} ${r.region}${r.approx ? " (근사)" : ""} · 거래 ${r.count}건 · 평균 ${r.avg_eok ?? "—"}억`;
+  const hs = heat ? heatStyle(heat.rank) : null;
+  const trend = heat?.trend_pct;
+  const title = `${r.sido} ${r.region}${r.approx ? " (근사)" : ""} · 거래 ${r.count}건 · 평균 ${r.avg_eok ?? "—"}억`
+    + (heat ? ` · 검색 관심도 ${heat.rank}위(${heat.index.toFixed(2)}배)` : "");
+
+  // 상위권 배지 — 마커 위에 얹어 지도를 훑을 때 먼저 눈에 걸리게 한다.
+  const badge = hs
+    ? `<div style="position:absolute;top:-9px;left:50%;transform:translateX(-50%);
+                   background:${hs.bg};color:${hs.fg};font-size:9px;font-weight:800;
+                   border-radius:7px;padding:1px 5px;white-space:nowrap;
+                   box-shadow:0 1px 3px rgba(0,0,0,.25);">${hs.label}</div>`
+    : "";
+
+  // 상승 중인 곳은 삼각형 하나로 표시한다. 순위는 '지금 크다', 추세는 '커지는 중'
+  // 이라 둘이 다른 말을 하므로 같이 보여야 판단이 된다.
+  const arrow = trend !== null && trend !== undefined && Math.abs(trend) >= 10
+    ? `<span style="color:${trend > 0 ? "#c0392b" : "#3b7dd8"};font-size:9px;font-weight:800;">
+         ${trend > 0 ? "▲" : "▼"}${Math.abs(Math.round(trend))}%</span>`
+    : "";
+
   return `
     <div title="${title.replace(/"/g, "&quot;")}"
-         style="transform:translate(-50%,-50%);cursor:pointer;
+         style="position:relative;transform:translate(-50%,-50%);cursor:pointer;
                 background:${selected ? meta.color : "#fff"};
-                border:${selected ? `2px solid ${meta.color}` : "1px solid #e2e2e2"};
+                border:${selected ? `2px solid ${meta.color}` : hs ? `1.5px solid ${hs.bg}` : "1px solid #e2e2e2"};
                 border-radius:10px;padding:3px 9px 4px;font-family:inherit;line-height:1.2;
                 white-space:nowrap;text-align:center;box-shadow:0 2px 6px rgba(0,0,0,.16);">
-      <div style="font-size:11px;font-weight:800;color:${selected ? "#fff" : "#2a2a2a"};">${r.region}</div>
+      ${badge}
+      <div style="font-size:11px;font-weight:800;color:${selected ? "#fff" : "#2a2a2a"};">${r.region} ${arrow}</div>
       <div style="font-size:10px;font-weight:700;color:${selected ? "#fff" : meta.color};">거래 ${r.count}건</div>
       <div style="font-size:10px;color:${selected ? "rgba(255,255,255,.85)" : "#8a8a8a"};">평균 ${r.avg_eok ?? "—"}억</div>
     </div>`;
@@ -157,10 +192,11 @@ const MAP_KINDS: { key: MapKind; label: string }[] = [
 
 export default function MapCanvas({
   regions, apartments, selectedLawd, selectedApt, trade, areaUnit, favs,
-  flyTarget, layers, onLayers, schools, stations,
+  flyTarget, layers, onLayers, schools, stations, heat,
   onSelectRegion, onSelectApt, onAptDetail, onViewport,
 }: {
   regions: RealEstateRegion[];
+  heat?: HeatMap;            // lawd → 검색 관심도(없으면 마커는 지금 모습 그대로)
   apartments: RealEstateApartment[] | null;
   selectedLawd: string | null;
   selectedApt: string | null;      // favKey
@@ -301,8 +337,10 @@ export default function MapCanvas({
         const marker = new naver.maps.Marker({
           position: new naver.maps.LatLng(r.lat, r.lng),
           map,
-          icon: { content: regionBubble(r, isSel, trade), anchor: new naver.maps.Point(0, 0) },
-          zIndex: isSel ? 60 : 20,
+          icon: { content: regionBubble(r, isSel, trade, heat?.[r.lawd]),
+                  anchor: new naver.maps.Point(0, 0) },
+          // 관심도 상위는 위로 올린다 — 겹칠 때 가려지면 표시한 의미가 없다.
+          zIndex: isSel ? 60 : heat?.[r.lawd] ? 40 - Math.min(heat[r.lawd].rank, 30) + 20 : 20,
         });
         naver.maps.Event.addListener(marker, "click", () => cbRef.current.onSelectRegion(r));
         markersRef.current.push(marker);
@@ -336,7 +374,7 @@ export default function MapCanvas({
         markersRef.current.push(marker);
       });
     }
-  }, [regions, apartments, dongs, selectedLawd, selectedApt, trade, areaUnit, favs, zoom, status]);
+  }, [regions, apartments, dongs, selectedLawd, selectedApt, trade, areaUnit, favs, zoom, status, heat]);
 
   // 6) 주변시설 레이어 — 학교/지하철은 실거래 마커와 따로 그린다(껐다 켜도 재계산 최소).
   useEffect(() => {

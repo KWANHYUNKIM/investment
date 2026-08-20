@@ -130,26 +130,68 @@ def test_trend_compares_recent_three_to_previous_three(creds, monkeypatch, tmp_p
 
 def test_keyword_pins_the_topic(creds):
     """'강남구' 만 쓰면 맛집·날씨 검색이 섞인다 — 부동산으로 못박는다."""
-    assert I._keyword("강남구") == "강남구 아파트"
+    kw = I.build_keywords([{"lawd": "11680", "sido": "서울특별시", "region": "강남구"}])
+    assert kw["11680"] == "강남구 아파트"
 
 
-def test_duplicate_region_names_are_split_by_sido(creds):
-    """실측에서 터진 버그 — 서울 강서구와 부산 강서구가 같은 6.75배를 받았다.
+def test_parent_city_prefix_is_stripped(creds):
+    """실측에서 가장 크게 틀렸던 것 — RTMS 는 '수원시 장안구' 로 주는데, 그대로
+    검색하면 아무도 안 치는 말이라 값이 바닥에 깔린다.
 
-    키워드가 '강서구 아파트' 하나라 두 지역이 **같은 검색량**을 나눠 가진 것이다.
-    이름이 겹치는 시군구는 시도를 붙여 갈라야 한다.
+    '성남시 분당구 아파트' 0.04배 vs '분당구 아파트' 0.72배 — 18배 차이였다.
     """
-    seoul = I._keyword("강서구", "서울특별시")
-    busan = I._keyword("강서구", "부산광역시")
-    assert seoul != busan
-    assert seoul == "서울 강서구 아파트"
-    assert busan == "부산 강서구 아파트"
+    kw = I.build_keywords([
+        {"lawd": "41135", "sido": "경기도", "region": "성남시 분당구"},
+        {"lawd": "41287", "sido": "경기도", "region": "고양시 일산서구"},
+    ])
+    assert kw["41135"] == "분당구 아파트"
+    assert kw["41287"] == "일산서구 아파트"
 
 
-def test_unambiguous_region_keeps_the_bare_name(creds):
-    """안 겹치는 지역까지 시도를 붙이면 아무도 안 치는 말이 되어 검색량이 깎인다."""
-    assert I._keyword("노원구", "서울특별시") == "노원구 아파트"
-    assert I._keyword("하남시", "경기도") == "하남시 아파트"
+def test_duplicate_region_names_are_split(creds):
+    """서울 강서구와 부산 강서구가 같은 키워드면 두 지역에 똑같은 값이 들어간다
+    (실측에서 둘 다 6.75배로 나왔다)."""
+    kw = I.build_keywords([
+        {"lawd": "11500", "sido": "서울특별시", "region": "강서구"},
+        {"lawd": "26440", "sido": "부산광역시", "region": "강서구"},
+    ])
+    assert kw["11500"] == "서울 강서구 아파트"
+    assert kw["26440"] == "부산 강서구 아파트"
+
+
+def test_duplicate_after_stripping_uses_the_parent_city(creds):
+    """'포항시 남구' 를 '남구' 로 줄이면 울산 남구와 부딪힌다 — 모시로 가른다."""
+    kw = I.build_keywords([
+        {"lawd": "47111", "sido": "경상북도", "region": "포항시 남구"},
+        {"lawd": "31140", "sido": "울산광역시", "region": "남구"},
+    ])
+    assert kw["47111"] == "포항 남구 아파트"
+    assert kw["31140"] == "울산 남구 아파트"
+
+
+def test_unique_name_keeps_the_bare_form(creds):
+    """안 겹치는 지역까지 앞말을 붙이면 '서울 노원구 아파트' 가 되어 검색량이 깎인다."""
+    kw = I.build_keywords([
+        {"lawd": "11350", "sido": "서울특별시", "region": "노원구"},
+        {"lawd": "41450", "sido": "경기도", "region": "하남시"},
+    ])
+    assert kw["11350"] == "노원구 아파트"
+    assert kw["41450"] == "하남시 아파트"
+
+
+def test_ambiguity_is_measured_not_hardcoded(creds):
+    """겹침 목록을 손으로 적어 두면 지역이 늘 때 조용히 틀어진다.
+
+    같은 '중구' 라도 목록에 하나뿐이면 앞말을 붙이지 않아야 한다.
+    """
+    only = I.build_keywords([{"lawd": "11140", "sido": "서울특별시", "region": "중구"}])
+    assert only["11140"] == "중구 아파트"
+
+    both = I.build_keywords([
+        {"lawd": "11140", "sido": "서울특별시", "region": "중구"},
+        {"lawd": "26110", "sido": "부산광역시", "region": "중구"},
+    ])
+    assert both["11140"] == "서울 중구 아파트"
 
 
 def test_incomplete_current_month_is_dropped(creds):

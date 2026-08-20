@@ -5,13 +5,14 @@ import dynamic from "next/dynamic";
 import {
   api, RealEstateMapData, RealEstateRegion, RealEstateApartments, RealEstateApartment,
   TradeKind, PropertyKind, PropertyKindMeta, MapBounds, PoiSchool, PoiStation,
+  type InterestBoard,
 } from "@/lib/api";
 import { Spinner } from "@/components/ui";
 import { RealEstateAptDetail } from "@/components/RealEstateAptDetail";
 import { FilterBar } from "@/components/RealEstate/FilterBar";
 import { ListPanel } from "@/components/RealEstate/ListPanel";
 import { InterestPanel } from "@/components/RealEstate/InterestPanel";
-import { DONG_ZOOM, MapLayers } from "@/components/RealEstate/MapCanvas";
+import { DONG_ZOOM, MapLayers, HeatMap } from "@/components/RealEstate/MapCanvas";
 import { AreaUnit, TRADE_META, eok } from "@/components/RealEstate/format";
 import { useFavs, toggleFav } from "@/components/RealEstate/favs";
 import {
@@ -74,6 +75,7 @@ export function RealEstateMap() {
   const [selectedApt, setSelectedApt] = useState<string | null>(null);
   // 검색 관심도 패널 — 지도 오른쪽에 얹는다(왼쪽은 단지 목록이 쓴다).
   const [showInterest, setShowInterest] = useState(false);
+  const [heat, setHeat] = useState<HeatMap | null>(null);
   const [panelOpen, setPanelOpen] = useState(true);
   const [autoSearch, setAutoSearch] = useState(true);
   const [viewport, setViewport] = useState<{ zoom: number; lat: number; lng: number } | null>(null);
@@ -115,6 +117,21 @@ export function RealEstateMap() {
     return () => { alive = false; if (timer) clearTimeout(timer); };
     // selectRegion 은 렌더마다 새로 만들어지지만 최신 클로저를 쓰므로 의존성에 넣지 않는다.
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // 관심도는 패널과 무관하게 한 번 받아 둔다. 목록을 열어야만 보이면 '지도를 훑다가
+  // 눈에 걸린다' 가 성립하지 않는다. 없거나 실패하면 마커는 지금 모습 그대로 남는다.
+  useEffect(() => {
+    let alive = true;
+    api.realestateInterest()
+      .then((d: InterestBoard) => {
+        if (!alive || !d.ready) return;
+        setHeat(Object.fromEntries(d.items.map((it) => [
+          it.lawd, { rank: it.rank, index: it.index, trend_pct: it.trend_pct },
+        ])));
+      })
+      .catch(() => { /* 관심도는 곁들이는 정보 — 없다고 지도를 막지 않는다 */ });
+    return () => { alive = false; };
   }, []);
 
   // 지원 매물 종류(네이버의 매물종류 탭) — 유형별 전월세 제공 여부까지 서버가 알려준다.
@@ -339,6 +356,23 @@ export function RealEstateMap() {
           </label>
 
           {/* 검색 관심도 — 거래량보다 먼저 움직이는 신호라 지도와 같은 자리에 둔다 */}
+          {/* 관심도 범례 — 마커의 색이 무슨 뜻인지 화면 안에서 답한다. */}
+          {heat && (
+            <div className="flex items-center gap-1.5 text-[10px] text-[#888]">
+              <span>검색 관심도</span>
+              {([["#c0392b", "1~3위"], ["#e8873a", "~10위"], ["#f0c419", "~30위"]] as const).map(
+                ([c, label]) => (
+                  <span key={c} className="flex items-center gap-0.5">
+                    <span className="inline-block h-2 w-2 rounded-sm" style={{ background: c }} />
+                    {label}
+                  </span>
+                ),
+              )}
+              <span className="text-[#c0392b]">▲</span>
+              <span>상승</span>
+            </div>
+          )}
+
           <button
             onClick={() => setShowInterest((v) => !v)}
             className={`rounded-md border px-2.5 py-1 text-[11px] font-bold transition ${
@@ -365,6 +399,7 @@ export function RealEstateMap() {
       <div className="relative min-h-0 w-full flex-1 overflow-hidden bg-white">
         <MapCanvas
           regions={regionsForMap}
+          heat={heat ?? undefined}
           apartments={showList ? filtered : null}
           selectedLawd={sel?.lawd ?? null}
           selectedApt={selectedApt}

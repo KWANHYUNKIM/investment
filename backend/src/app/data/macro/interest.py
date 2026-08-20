@@ -170,23 +170,46 @@ _SIDO_SHORT = {
     "제주특별자치도": "제주",
 }
 
-# 여러 시도에 같은 이름이 있는 시군구. 이것들만 시도를 붙인다 — 안 겹치는 지역까지
-# 붙이면 '서울 노원구 아파트' 처럼 아무도 안 치는 말이 되어 검색량이 깎인다.
-_AMBIGUOUS = {
-    "중구", "동구", "서구", "남구", "북구", "강서구", "성산구", "고성군",
-    "남원시", "동면", "일산동구", "일산서구", "단원구", "상록구",
-}
 
+def _short(region: str) -> str:
+    """'수원시 장안구' → '장안구'. 사람들이 실제로 치는 단위까지 줄인다.
 
-def _keyword(region: str, sido: str = "") -> str:
-    """'강남구' → '강남구 아파트'. 지역명만 쓰면 맛집·날씨 검색까지 섞인다.
-
-    이름이 겹치는 시군구는 시도를 붙여 가른다. 붙이지 않으면 서울 강서구와 부산
-    강서구가 **같은 키워드**가 되어 두 지역에 똑같은 값이 들어간다(실제로 그랬다).
+    RTMS 는 자치구를 '수원시 장안구' 처럼 모시 이름을 붙여 준다. 그대로 검색하면
+    아무도 안 치는 말이라 검색량이 바닥으로 깔린다 — 실측에서 '성남시 분당구
+    아파트' 가 0.04배, '분당구 아파트' 가 0.72배로 **18배** 차이가 났다.
     """
-    if region in _AMBIGUOUS and sido:
-        return f"{_SIDO_SHORT.get(sido, sido)} {region} 아파트"
-    return f"{region} 아파트"
+    return region.split()[-1] if " " in region else region
+
+
+def _parent(region: str, sido: str) -> str:
+    """겹치는 이름을 가를 때 앞에 붙일 말. 모시가 있으면 모시, 없으면 시도."""
+    if " " in region:
+        return region.split()[0].removesuffix("시")      # 포항시 남구 → '포항 남구'
+    return _SIDO_SHORT.get(sido, sido)                   # 울산광역시 남구 → '울산 남구'
+
+
+def build_keywords(regions: list[dict]) -> dict[str, str]:
+    """시군구 목록 → ``lawd → 검색 키워드``.
+
+    겹치는 이름에만 앞말을 붙인다. 안 겹치는 지역까지 붙이면 '서울 노원구 아파트'
+    처럼 아무도 안 치는 말이 되어 오히려 검색량이 깎인다. 그래서 겹침 여부를
+    **이번 목록에서 직접 세어** 정한다 — 손으로 적어 두면 지역이 늘 때 틀어진다.
+
+    (붙이지 않으면 서울 강서구와 부산 강서구가 같은 키워드가 되어 두 지역에 똑같은
+    값이 들어간다. 실측에서 둘 다 6.75배로 나왔던 게 이 경우다.)
+    """
+    counts: dict[str, int] = {}
+    for r in regions:
+        key = _short(r["region"])
+        counts[key] = counts.get(key, 0) + 1
+
+    out: dict[str, str] = {}
+    for r in regions:
+        key = _short(r["region"])
+        if counts[key] > 1:
+            key = f'{_parent(r["region"], r.get("sido", ""))} {key}'.strip()
+        out[r["lawd"]] = f"{key} 아파트"     # '아파트' 를 붙여 맛집·날씨 검색을 걷어낸다
+    return out
 
 
 def collect(regions: list[dict], *, months: int = 12,
@@ -205,6 +228,8 @@ def collect(regions: list[dict], *, months: int = 12,
     end = time.strftime("%Y-%m-%d")
     start = time.strftime("%Y-%m-%d", time.localtime(time.time() - months * 31 * 86400))
 
+    # 키워드는 목록 전체를 보고 한 번에 정한다 — 겹침 판정에 다른 지역이 필요하다.
+    keywords = build_keywords(regions)
     chunks = [regions[i:i + _REGIONS_PER_CALL]
               for i in range(0, len(regions), _REGIONS_PER_CALL)]
     _warm.update({"total": len(chunks), "done": 0})
@@ -213,7 +238,7 @@ def collect(regions: list[dict], *, months: int = 12,
     dropped: list[str] = []
     for chunk in chunks:
         groups = [{"groupName": "__anchor__", "keywords": [anchor_kw]}]
-        groups += [{"groupName": r["lawd"], "keywords": [_keyword(r["region"], r.get("sido", ""))]}
+        groups += [{"groupName": r["lawd"], "keywords": [keywords[r["lawd"]]]}
                    for r in chunk]
 
         series = _query(groups, start, end, unit)
@@ -231,7 +256,7 @@ def collect(regions: list[dict], *, months: int = 12,
             ser = _normalize(raw, anchor_series)
             items.append({
                 "lawd": r["lawd"], "sido": r["sido"], "region": r["region"],
-                "keyword": _keyword(r["region"], r.get("sido", "")),
+                "keyword": keywords[r["lawd"]],
                 # 앵커 대비 배수 — 요청이 달라도 같은 축 위에 놓인다.
                 "index": round(_mean(ser), 4),
                 "series": ser,
