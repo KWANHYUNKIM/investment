@@ -96,20 +96,30 @@ def main() -> None:
                   s.scalar(select(func.count()).select_from(Holding)
                            .where(Holding.user_id == uid)))
 
+    # 부동산 집계·관심도는 예산제로 조금씩 쌓이는 산출물이라, 아직 한 번도 안 돌린
+    # 환경에는 원본 파일이 없다. 가계부·포트폴리오와 같이 "없으면 건너뛴다" —
+    # 대조할 원본이 없는 것을 실패로 세면 검증 결과가 거짓말이 된다.
     print("\n부동산")
-    stats = json.loads((data / "realestate_region_stats.json").read_text(encoding="utf-8"))
-    cells = stats.get("cells", {})
-    check("월별 집계 셀", len(cells),
-          s.scalar(select(func.count()).select_from(RegionMonthStat)))
-    check("거래건수 총합", sum(int(c.get("count") or 0) for c in cells.values()),
-          s.scalar(select(func.coalesce(func.sum(RegionMonthStat.deal_count), 0))))
-    check("평형 세부 행", sum(len(c.get("by_area") or {}) for c in cells.values()),
-          s.scalar(select(func.count()).select_from(RegionMonthAreaStat)))
+    stats_f = data / "realestate_region_stats.json"
+    if stats_f.exists():
+        cells = json.loads(stats_f.read_text(encoding="utf-8")).get("cells", {})
+        check("월별 집계 셀", len(cells),
+              s.scalar(select(func.count()).select_from(RegionMonthStat)))
+        check("거래건수 총합", sum(int(c.get("count") or 0) for c in cells.values()),
+              s.scalar(select(func.coalesce(func.sum(RegionMonthStat.deal_count), 0))))
+        check("평형 세부 행", sum(len(c.get("by_area") or {}) for c in cells.values()),
+              s.scalar(select(func.count()).select_from(RegionMonthAreaStat)))
+    else:
+        print("  [건너뜀] realestate_region_stats.json 없음 — 아직 수집 전")
 
-    interest = json.loads((data / "realestate_interest.json").read_text(encoding="utf-8"))
-    src_pts = sum(len(i.get("series") or []) for i in interest.get("items", []))
-    check("관심도 데이터 점", src_pts,
-          s.scalar(select(func.count()).select_from(InterestPoint)))
+    interest_f = data / "realestate_interest.json"
+    if interest_f.exists():
+        interest = json.loads(interest_f.read_text(encoding="utf-8"))
+        src_pts = sum(len(i.get("series") or []) for i in interest.get("items", []))
+        check("관심도 데이터 점", src_pts,
+              s.scalar(select(func.count()).select_from(InterestPoint)))
+    else:
+        print("  [건너뜀] realestate_interest.json 없음 — 아직 수집 전")
 
     s.close()
     print(f"\n통과 {_ok} · 실패 {_bad}")

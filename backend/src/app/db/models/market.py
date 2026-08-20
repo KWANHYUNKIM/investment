@@ -71,7 +71,9 @@ class CompanyProfile(Base, TimestampMixin):
     industry: Mapped[str | None] = mapped_column(String(128))
     products: Mapped[str | None] = mapped_column(Text)
     region: Mapped[str | None] = mapped_column(String(64))
-    representative: Mapped[str | None] = mapped_column(String(64))
+    # 공동대표는 한 칸에 여러 명과 직위 설명이 들어온다("A and B (individual
+    # representative directors)" — 실측 67자). 사람 이름 폭이 아니라 자유서술 폭이다.
+    representative: Mapped[str | None] = mapped_column(String(255))
     homepage: Mapped[str | None] = mapped_column(String(255))
     listing_date: Mapped[dt.date | None] = mapped_column(Date)
     market_cap: Mapped[Decimal | None] = mapped_column(Numeric(24, 2))
