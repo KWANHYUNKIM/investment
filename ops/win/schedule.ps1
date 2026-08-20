@@ -7,9 +7,13 @@
   PC 를 껐다 켜거나 서버가 죽으면 아무것도 안 돈다. 그래서 OS 레벨에 두 개를 건다:
 
     Investment-Backend   로그온 시 백엔드 기동(배치 잠금 대기 포함)
+    Investment-Backup    매일 02:40 DB 백업(뜨고 → 열어서 확인 → 암호화)
     Investment-Nightly   매일 03:10 야간 배치(원가모델 → 파서검증 → 감사리포트)
 
   야간 배치는 서버를 잠깐 내렸다가 다시 올린다(DuckDB 단일 쓰기).
+
+  백업을 야간 배치보다 **먼저** 돌린다. 배치가 데이터를 망가뜨렸을 때 그 직전 상태가
+  남아 있어야 되돌릴 수 있다 — 배치 뒤에 뜨면 망가진 것을 백업하게 된다.
 
 .EXAMPLE
   .\ops\win\schedule.ps1 install          # 등록
@@ -23,18 +27,22 @@ param(
     [ValidateSet("install", "uninstall", "status", "run")]
     [string]$Action = "status",
 
-    [ValidateSet("backend", "nightly")]
+    [ValidateSet("backend", "nightly", "backup")]
     [string]$Task = "nightly",
 
-    [string]$NightlyAt = "03:10"
+    [string]$NightlyAt = "03:10",
+    # 백업은 야간 배치보다 앞선다 — 배치가 망가뜨렸을 때 직전 상태로 돌아갈 수 있게.
+    [string]$BackupAt = "02:40"
 )
 
 $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $Serve = Join-Path $Root "ops\win\serve.ps1"
 $Batch = Join-Path $Root "ops\win\batch.ps1"
+$Backup = Join-Path $Root "ops\win\backup.ps1"
 $NameBackend = "Investment-Backend"
 $NameNightly = "Investment-Nightly"
+$NameBackup = "Investment-Backup"
 
 function New-PsAction([string]$ScriptPath, [string]$Arguments) {
     New-ScheduledTaskAction -Execute "powershell.exe" `
@@ -62,10 +70,19 @@ switch ($Action) {
                 -MultipleInstances IgnoreNew) `
             -Description "야간 배치: 원가모델 → 파서검증 → 감사리포트" | Out-Null
         Write-Host "등록: $NameNightly (매일 $NightlyAt)"
+
+        # 백업 — DB 컨테이너만 있으면 되므로 백엔드 상태와 무관하게 돈다.
+        Register-ScheduledTask -TaskName $NameBackup -Force `
+            -Action (New-PsAction $Backup "") `
+            -Trigger (New-ScheduledTaskTrigger -Daily -At $BackupAt) `
+            -Settings (New-ScheduledTaskSettingsSet -StartWhenAvailable `
+                -DontStopIfGoingOnBatteries -ExecutionTimeLimit (New-TimeSpan -Minutes 30)) `
+            | Out-Null
+        Write-Host "등록: $NameBackup (매일 $BackupAt DB 백업 → 검증 → 암호화)"
         Write-Host "`n확인: .\ops\win\schedule.ps1 status"
     }
     "uninstall" {
-        foreach ($n in @($NameBackend, $NameNightly)) {
+        foreach ($n in @($NameBackend, $NameBackup, $NameNightly)) {
             if (Get-ScheduledTask -TaskName $n -ErrorAction SilentlyContinue) {
                 Unregister-ScheduledTask -TaskName $n -Confirm:$false
                 Write-Host "해제: $n"
@@ -73,7 +90,11 @@ switch ($Action) {
         }
     }
     "run" {
-        $n = if ($Task -eq "backend") { $NameBackend } else { $NameNightly }
+        $n = switch ($Task) {
+            "backend" { $NameBackend }
+            "backup"  { $NameBackup }
+            default   { $NameNightly }
+        }
         if (-not (Get-ScheduledTask -TaskName $n -ErrorAction SilentlyContinue)) {
             throw "$n 이 등록되어 있지 않습니다. 먼저 install 하세요."
         }
@@ -81,7 +102,7 @@ switch ($Action) {
         Write-Host "$n 실행 요청됨 — 진행 상황은 data\logs\ 를 보세요."
     }
     "status" {
-        foreach ($n in @($NameBackend, $NameNightly)) {
+        foreach ($n in @($NameBackend, $NameBackup, $NameNightly)) {
             $t = Get-ScheduledTask -TaskName $n -ErrorAction SilentlyContinue
             if (-not $t) { Write-Host "$n : 미등록"; continue }
             $i = Get-ScheduledTaskInfo -TaskName $n

@@ -1,0 +1,58 @@
+#!/bin/sh
+# 푸시 전 점검 — 백엔드 테스트 + 의존성 취약점.
+#
+# **pre-commit 이 아니라 pre-push 인 이유.** 커밋은 자주 하고 중간 상태로도 한다.
+# 거기서 몇십 초씩 잡으면 사람들이 --no-verify 를 습관처럼 붙이게 되고, 그러면 훅이
+# 있으나 마나가 된다. 푸시는 "이제 남에게 보낸다" 는 경계라 검사가 값을 한다.
+#
+# 설치:
+#   git config core.hooksPath ops/git-hooks
+#
+# 급할 때는 건너뛸 수 있다(git push --no-verify). 막을 수단이 아니라 잊지 않게 하는
+# 장치다 — 빠져나갈 길이 없으면 훅 자체를 꺼 버린다.
+
+set -e
+ROOT="$(git rev-parse --show-toplevel)"
+PY="$ROOT/backend/.venv/Scripts/python.exe"
+[ -x "$PY" ] || PY="$ROOT/backend/.venv/bin/python"
+
+if [ ! -x "$PY" ]; then
+    echo "[pre-push] 가상환경을 찾을 수 없어 건너뜁니다."
+    exit 0
+fi
+
+cd "$ROOT/backend"
+export PYTHONPATH=src
+export PYTHONIOENCODING=utf-8
+
+echo "[pre-push] 백엔드 테스트"
+# 출력을 파일로 받는다. 파이프로 tail 에 넘기면 pytest 의 종료코드를 잃는다.
+OUT="$(mktemp)"
+if "$PY" -m pytest -q --no-header > "$OUT" 2>&1; then
+    tail -1 "$OUT"
+else
+    tail -25 "$OUT"
+    rm -f "$OUT"
+    echo "[pre-push] 테스트 실패 — 고치고 다시 푸시하세요."
+    exit 1
+fi
+rm -f "$OUT"
+
+echo "[pre-push] 의존성 취약점"
+if "$PY" -m pip_audit --version > /dev/null 2>&1; then
+    OUT="$(mktemp)"
+    if "$PY" -m pip_audit --progress-spinner off > "$OUT" 2>&1; then
+        echo "  취약점 없음"
+    else
+        tail -20 "$OUT"
+        rm -f "$OUT"
+        echo "[pre-push] 취약점이 있습니다. 올리려면: python -m pip_audit --fix"
+        echo "           급하면 git push --no-verify"
+        exit 1
+    fi
+    rm -f "$OUT"
+else
+    echo "  pip-audit 미설치 — 건너뜀 (pip install -r backend/requirements-dev.txt)"
+fi
+
+echo "[pre-push] 통과"
