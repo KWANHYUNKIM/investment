@@ -1,5 +1,5 @@
 # --- Web framework ---
-fastapi==0.115.6
+fastapi==0.141.1
 uvicorn[standard]==0.34.0
 pydantic==2.10.4
 pydantic-settings==2.7.1
@@ -8,7 +8,7 @@ pydantic-settings==2.7.1
 duckdb==1.1.3
 pandas==2.2.3
 numpy==2.2.1
-pyarrow==18.1.0
+pyarrow==25.0.1
 
 # --- Market data sources ---
 pykrx==1.0.51          # Korea: KOSPI/KOSDAQ OHLCV + fundamentals
@@ -27,7 +27,7 @@ anthropic>=0.40.0
 
 # --- 가계부: 급여명세서 파싱(엑셀/PDF) + 파일 업로드 ---
 openpyxl==3.1.5          # .xlsx 읽기 (pandas 엔진)
-pypdf==6.14.2            # PDF 텍스트 추출
+pypdf==6.16.1            # PDF 텍스트 추출
 python-multipart==0.0.32 # FastAPI 파일 업로드
 msoffcrypto-tool==6.0.0  # 카드사 메일 명세서: 암호 걸린 .xlsx/.xls 해제
 cryptography==50.0.0     # 위 의존성 + pypdf 의 AES 암호 PDF 해제

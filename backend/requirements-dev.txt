@@ -1,0 +1,9 @@
+# 개발·검증 전용. 운영 이미지에는 넣지 않는다.
+#
+# pip-audit 을 여기 둔 이유: 인증을 아무리 잘 짜도 라이브러리로 뚫린다.
+# 실제로 처음 돌렸을 때 36건이 나왔고, 그중 starlette(웹 계층)와
+# pypdf(신뢰할 수 없는 PDF 를 파싱하는 곳)가 직접적인 위험이었다.
+#
+#   .venv/Scripts/python.exe -m pip_audit
+pip-audit>=2.10
+pytest>=8.0

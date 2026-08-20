@@ -73,12 +73,32 @@ $size = [math]::Round((Get-Item $out).Length / 1MB, 2)
 $tables = Test-Dump $out
 Write-Host "백업 완료: $(Split-Path $out -Leaf)  ($size MB, 표 $tables 개) — 열어서 확인함"
 
+# 암호화. 덤프에는 가계부 거래 전부와 계정 해시가 들어 있고, 백업은 본체보다 관리가
+# 허술한 곳(외장 디스크·클라우드 드라이브)으로 옮겨 다닌다 — 옮기는 순간 접근통제도
+# RLS 도 따라가지 않는다.
+#
+# **검증을 암호화 전에 한다.** 순서를 바꾸면 깨진 덤프를 암호화해 두고 멀쩡한 줄 알게 된다.
+#
+# 키가 어디 있는지는 파이썬이 판단한다(환경변수 → backend/.env). 여기서 환경변수만
+# 보면, 키를 .env 에 넣어 둔 날에도 "키 없음" 으로 조용히 평문 저장이 된다.
+Push-Location (Join-Path $Root "backend")
+$env:PYTHONPATH = "src"
+& .\.venv\Scripts\python.exe -m scripts.backup_crypt encrypt $out
+$encOk = ($LASTEXITCODE -eq 0)
+Pop-Location
+
+if (-not $encOk) {
+    Write-Warning "암호화하지 못해 **평문으로** 남았습니다: $(Split-Path $out -Leaf)"
+    Write-Warning "  이 파일 하나가 곧 전체 DB 입니다. 키를 만들어 backend/.env 에 BACKUP_KEY 로 넣으세요:"
+    Write-Warning "    cd backend; .\.venv\Scripts\python.exe -m scripts.backup_crypt keygen"
+}
+
 # 보관 기간이 지난 것 정리. 최소 3개는 남긴다 — 기간만으로 지우면 오래 안 돌린 뒤
 # 한 번 돌렸을 때 옛 백업이 통째로 사라진다.
-$all = Get-ChildItem $Dir -Filter "investment_*.dump" | Sort-Object LastWriteTime -Descending
+$all = Get-ChildItem $Dir -Filter "investment_*.dump*" | Sort-Object LastWriteTime -Descending
 $old = $all | Select-Object -Skip 3 | Where-Object { $_.LastWriteTime -lt (Get-Date).AddDays(-$Keep) }
 foreach ($f in $old) {
     Remove-Item $f.FullName -Force
     Write-Host "  오래된 백업 삭제: $($f.Name)"
 }
-Write-Host "보관 중: $((Get-ChildItem $Dir -Filter 'investment_*.dump').Count) 개"
+Write-Host "보관 중: $((Get-ChildItem $Dir -Filter 'investment_*.dump*').Count) 개"

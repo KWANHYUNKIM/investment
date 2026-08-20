@@ -137,6 +137,11 @@ class Settings(BaseSettings):
     # 비워 두면 기존 data/auth.json 의 값을 쓴다(설정 전에 로그인이 깨지지 않게).
     auth_secret: str = ""
 
+    # 백업 덤프 암호화 키(hex 64자). 비우면 백업이 **평문으로** 저장된다.
+    #   .venv/Scripts/python.exe -m scripts.backup_crypt keygen
+    # 키를 잃으면 그 백업도 함께 잃는다 — 복호화할 방법이 없다.
+    backup_key: str = ""
+
     # Demo mode: synthesize small intraday ticks on top of the settled snapshot
     # so the live grid visibly moves without a brokerage streaming API.
     mock_ticks: bool = True
