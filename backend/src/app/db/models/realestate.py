@@ -133,6 +133,74 @@ class RegionCommerce(Base, TimestampMixin):
     fetched_at: Mapped[dt.datetime] = mapped_column(TZDateTime, nullable=False)
 
 
+class RegionMigration(Base, TimestampMixin):
+    """시군구 × 시군구 × 월 인구이동 — **사람이 어디에서 어디로 옮겼는가**.
+
+    ``region`` 을 FK 로 걸지 않는다. 원본이 통합시를 **시 단위**로 준다 —
+    "경기도 수원시 4111000000" 한 줄이고, 우리 ``region`` 은 장안·권선·팔달·영통
+    네 줄이다. FK 를 억지로 걸면 넷 중 하나에 몰아넣거나 이동량을 4등분하게 되는데
+    둘 다 거짓이다. 원본이 준 코드를 그대로 자연키로 두고, 화면에서 붙일 때만
+    ``lawd → 시 코드`` 로 올려 본다.
+
+    나이를 구간으로 접어 담는다. 원본은 성별 × 만 나이 한 살 단위(222칸)인데,
+    그대로 두면 컬럼이 222개가 되고 실제로 보는 질문은 "청년이 드나드는가" 다.
+    20~34세를 따로 세는 이유는 취업·독립·결혼으로 **실제로 집을 옮기는 나이대**이고,
+    전체는 늘어도 이 구간이 빠지는 동네가 있기 때문이다.
+    """
+
+    __tablename__ = "region_migration"
+    __table_args__ = (
+        UniqueConstraint("year_month", "from_code", "to_code",
+                         name="uq_region_migration_year_month_from_code_to_code"),
+        # 화면의 주 질의 둘: 이 지역으로 들어온 흐름 / 이 지역에서 나간 흐름.
+        Index("ix_region_migration_to_month", "to_code", "year_month"),
+        Index("ix_region_migration_from_month", "from_code", "year_month"),
+        CheckConstraint("total_cnt >= 0", name="total_cnt_non_negative"),
+        {"schema": SCHEMA_REALESTATE},
+    )
+
+    id: Mapped[int] = pk()
+    year_month: Mapped[str] = mapped_column(String(6), nullable=False)      # YYYYMM
+    from_code: Mapped[str] = mapped_column(String(10), nullable=False)      # 전출 행정기관코드
+    to_code: Mapped[str] = mapped_column(String(10), nullable=False)        # 전입
+    # 이름을 함께 담는다. 코드 체계가 바뀌어도(강원 42→51, 전북 45→52) 과거 행이
+    # 무엇이었는지 읽을 수 있어야 한다.
+    from_name: Mapped[str] = mapped_column(String(64), nullable=False, server_default=text("''"))
+    to_name: Mapped[str] = mapped_column(String(64), nullable=False, server_default=text("''"))
+
+    total_cnt: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    male_cnt: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    female_cnt: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    age_0_19: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    age_20_34: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    age_35_49: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    age_50_64: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    age_65_plus: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+
+
+class MigrationBatch(Base, TimestampMixin):
+    """수집 진척 — 어느 달의 어느 시도쌍까지 받았는가.
+
+    한 달치가 시도쌍 289개 × 페이지라 한 번에 다 못 받는다(일 한도). 어디까지
+    했는지를 데이터에서 되짚으려면 '행이 0건인 쌍' 과 '아직 안 받은 쌍' 을 구분할 수
+    없다 — 제주↔강원처럼 정말 0인 쌍이 있기 때문이다. 그래서 따로 남긴다.
+    """
+
+    __tablename__ = "migration_batch"
+    __table_args__ = (
+        UniqueConstraint("year_month", "from_sido", "to_sido",
+                         name="uq_migration_batch_year_month_from_sido_to_sido"),
+        {"schema": SCHEMA_REALESTATE},
+    )
+
+    id: Mapped[int] = pk()
+    year_month: Mapped[str] = mapped_column(String(6), nullable=False)
+    from_sido: Mapped[str] = mapped_column(String(2), nullable=False)
+    to_sido: Mapped[str] = mapped_column(String(2), nullable=False)
+    row_cnt: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    fetched_at: Mapped[dt.datetime] = mapped_column(TZDateTime, nullable=False)
+
+
 class InterestRun(Base, TimestampMixin):
     """관심도 수집 한 번. **앵커가 무엇이었는지** 를 남기는 게 핵심이다.
 

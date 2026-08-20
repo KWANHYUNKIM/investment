@@ -77,6 +77,17 @@ class MacroService:
         from app.data.macro import commerce
         return {**commerce.ranking(character, limit), "coverage": commerce.coverage()}
 
+    def realestate_migration(self, lawd: str, months: int) -> dict:
+        """한 지역의 인구이동 — 전입·전출·순이동·청년 순이동 + 상대 지역 흐름."""
+        from app.data.macro import migration
+        return {**migration.region(lawd, months), "coverage": migration.coverage()}
+
+    def realestate_migration_ranking(self, metric: str, months: int, limit: int) -> dict:
+        """순이동 순위. 유입 상위와 유출 상위를 함께 준다 — 한쪽만 보면 방향을 못 읽는다."""
+        from app.data.macro import migration
+        return {**migration.ranking(metric, months, limit),
+                "coverage": migration.coverage()}
+
     def realestate_interest(self) -> dict:
         from app.data.macro import interest
         return interest.snapshot()

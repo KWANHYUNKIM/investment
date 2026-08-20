@@ -87,6 +87,16 @@ class Settings(BaseSettings):
     commerce_budget: int = 40                # 한 회차에 채울 칸
     commerce_interval: float = 3600.0
 
+    # 인구이동(행안부 지역별 인구이동 현황). 한 달치가 시도쌍 289개라 나눠 받는다.
+    # 예산 단위는 '시도쌍' 이고 쌍 하나가 페이지 1~8콜쯤 든다.
+    migration: bool = True
+    migration_budget: int = 30
+    # 보관·집계 기간. 12개월이면 시도쌍 3,468개(약 30분·만 콜)라 우선 3개월만 채운다.
+    # 늘리려면 이 값만 올리면 된다 — 이미 받은 구간은 건너뛴다.
+    migration_months: int = 3
+    migration_workers: int = 6               # 받아 오기만 병렬(저장은 한 줄)
+    migration_interval: float = 3600.0
+
     # NAVER API HUB (ncloud 콘솔) — 검색어 트렌드로 지역별 부동산 **관심도**를 만든다.
     # 거래량은 관심의 결과라 늦고, 검색은 먼저 튄다.
     #

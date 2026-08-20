@@ -75,6 +75,33 @@ def realestate_commerce_ranking_endpoint(
     return svc.realestate_commerce_ranking(character, limit)
 
 
+@router.get("/realestate-migration")
+def realestate_migration_endpoint(
+    lawd: str,
+    months: int = Query(default=12, ge=1, le=36),
+    svc: MacroService = Svc,
+):
+    """지역 인구이동 — 사람이 어디에서 어디로 옮겨 갔는가.
+
+    가격은 결과고 이동은 원인에 가깝다. 20~34세 순이동을 따로 주는 이유는 전체가
+    늘어도 청년이 빠지는 동네가 있고, 그 둘이 가격에 다르게 작용하기 때문이다.
+
+    통합시는 원본이 시 단위로만 준다 — 분당구를 물으면 성남시 이동이 돌아온다.
+    """
+    return svc.realestate_migration(lawd, months)
+
+
+@router.get("/realestate-migration/ranking")
+def realestate_migration_ranking_endpoint(
+    metric: str = Query(default="net_young", pattern="^(net_young|net_total)$"),
+    months: int = Query(default=12, ge=1, le=36),
+    limit: int = Query(default=20, ge=1, le=250),
+    svc: MacroService = Svc,
+):
+    """순이동 순위. 기본이 청년 순이동이다 — 전체 순이동은 고령 유입에 끌려간다."""
+    return svc.realestate_migration_ranking(metric, months, limit)
+
+
 @router.get("/realestate-interest")
 def realestate_interest_endpoint(svc: MacroService = Svc):
     """지역별 부동산 관심도 — 네이버 데이터랩 검색어 트렌드(앵커 정규화).

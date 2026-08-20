@@ -208,6 +208,48 @@ export interface RegionCommerce {
   coverage: { have: number; total: number; pct: number };
 }
 
+// 인구이동 — 가격은 결과고 이동은 원인에 가깝다.
+//
+// 20~34세를 따로 세는 이유: 전체는 늘어도 청년이 빠지는 동네가 실제로 있고,
+// 그 둘이 가격에 다르게 작용한다(청년 유입은 임대·상권·신축 수요를 같이 끌고 온다).
+export interface MigrationPartner {
+  cd: string;
+  name: string;
+  total: number;
+  young: number;
+}
+
+export interface MigrationPoint {
+  ym: string;
+  in: number;
+  out: number;
+  net: number;
+  in_young: number;
+  out_young: number;
+  net_young: number;
+}
+
+export interface RegionMigration {
+  lawd: string;
+  code: string;
+  available: boolean;
+  months: string[];
+  in_total: number;
+  out_total: number;
+  net: number;
+  in_young: number;
+  out_young: number;
+  net_young: number;
+  churn: number;
+  net_rate: number;
+  direction: "유입" | "유출" | "균형";
+  young_direction: "청년 유입" | "청년 유출" | "균형";
+  inbound: MigrationPartner[];
+  outbound: MigrationPartner[];
+  series: MigrationPoint[];
+  note: string;
+}
+
 // 거래유형 — 네이버 부동산의 매매/전세/월세 전환에 대응
 export type TradeKind = "sale" | "jeonse" | "wolse";
 
@@ -353,6 +395,8 @@ export const realestateApi = {
   realestateMap: () => request<RealEstateMapData>(`/api/data/realestate-map`),
   realestateRegionSeries: (lawd: string, trade: TradeKind = "sale") =>
     request<RegionSeries>(`/api/data/realestate-region-series?lawd=${lawd}&trade=${trade}`),
+  realestateMigration: (lawd: string, months = 3) =>
+    request<RegionMigration>(`/api/data/realestate-migration?lawd=${lawd}&months=${months}`),
   realestateCommerce: (lawd: string) =>
     request<RegionCommerce>(`/api/data/realestate-commerce?lawd=${lawd}`),
   realestateInterest: () => request<InterestBoard>(`/api/data/realestate-interest`),

@@ -15,14 +15,14 @@ from __future__ import annotations
 import datetime as dt
 from decimal import Decimal
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.db.models import (AppUser, Holding, InterestPoint, InterestRun,
-                           PageViewDaily, Region, RegionCommerce,
-                           RegionMonthAreaStat, RegionMonthStat,
+                           MigrationBatch, PageViewDaily, Region, RegionCommerce,
+                           RegionMigration, RegionMonthAreaStat, RegionMonthStat,
                            WatchItem, WealthProfile)
 from app.db.session import bind_request_context, get_sessionmaker
 
@@ -466,7 +466,133 @@ def commerce_save(cells: dict) -> None:
         s.close()
 
 
+# --- 인구이동 ------------------------------------------------------------------
+# 행이 많다(한 달 전국이 4만 행 안팎). 그래서 다른 저장소들처럼 "전부 읽어 dict 로"
+# 하지 않고, 필요한 지역·기간만 SQL 로 좁혀 온다.
+_MIG_COLS = ("total_cnt", "male_cnt", "female_cnt",
+             "age_0_19", "age_20_34", "age_35_49", "age_50_64", "age_65_plus")
+
+
+def migration_done() -> set[tuple[str, str, str]]:
+    """이미 받은 (달, 전출시도, 전입시도).
+
+    데이터가 있는지로 되짚으면 안 된다 — 제주↔강원처럼 **정말 0건인 쌍**과
+    아직 안 받은 쌍을 구분할 수 없기 때문이다.
+    """
+    s = get_sessionmaker()()
+    try:
+        return {(b.year_month, b.from_sido, b.to_sido)
+                for b in s.scalars(select(MigrationBatch)).all()}
+    finally:
+        s.close()
+
+
+def migration_save(ym: str, from_sido: str, to_sido: str, rows: list[dict]) -> None:
+    """한 시도쌍의 한 달치를 통째로 넣고, 받았다는 사실을 남긴다.
+
+    행 저장과 진척 기록이 **한 트랜잭션**이어야 한다. 따로 커밋하면 중간에 죽었을 때
+    '받았다고 표시됐는데 행이 없는' 구간이 생기고, 그건 영영 다시 안 받는다.
+    """
+    s = get_sessionmaker()()
+    try:
+        for r in rows:
+            stmt = pg_insert(RegionMigration.__table__).values(
+                year_month=r["ym"], from_code=r["from_cd"], to_code=r["to_cd"],
+                from_name=r["from_name"][:64], to_name=r["to_name"][:64],
+                total_cnt=r["total"], male_cnt=r["male"], female_cnt=r["female"],
+                age_0_19=r["age_0_19"], age_20_34=r["age_20_34"],
+                age_35_49=r["age_35_49"], age_50_64=r["age_50_64"],
+                age_65_plus=r["age_65_plus"])
+            s.execute(stmt.on_conflict_do_update(
+                index_elements=["year_month", "from_code", "to_code"],
+                set_={c: getattr(stmt.excluded, c) for c in _MIG_COLS}))
+        stmt = pg_insert(MigrationBatch.__table__).values(
+            year_month=ym, from_sido=from_sido, to_sido=to_sido,
+            row_cnt=len(rows), fetched_at=dt.datetime.now(dt.timezone.utc))
+        s.execute(stmt.on_conflict_do_update(
+            index_elements=["year_month", "from_sido", "to_sido"],
+            set_={"row_cnt": stmt.excluded.row_cnt,
+                  "fetched_at": stmt.excluded.fetched_at}))
+        s.commit()
+    except Exception:
+        s.rollback()
+        raise
+    finally:
+        s.close()
+
+
+def migration_rows(code: str, yms: list[str]) -> list[dict]:
+    """한 지역이 걸린 행만. 들어온 것과 나간 것 양쪽이다."""
+    if not yms:
+        return []
+    t = RegionMigration.__table__
+    s = get_sessionmaker()()
+    try:
+        q = select(t).where(t.c.year_month.in_(yms),
+                            (t.c.to_code == code) | (t.c.from_code == code))
+        return [{"ym": r.year_month, "to_cd": r.to_code, "from_cd": r.from_code,
+                 "to_name": r.to_name, "from_name": r.from_name,
+                 "total": r.total_cnt, "male": r.male_cnt, "female": r.female_cnt,
+                 "young": r.age_20_34,
+                 "age_0_19": r.age_0_19, "age_20_34": r.age_20_34,
+                 "age_35_49": r.age_35_49, "age_50_64": r.age_50_64,
+                 "age_65_plus": r.age_65_plus}
+                for r in s.execute(q)]
+    finally:
+        s.close()
+
+
+def migration_ranking(metric: str, yms: list[str], limit: int) -> dict:
+    """순이동 순위 — 전입 합계와 전출 합계를 지역별로 각각 구해 뺀다.
+
+    파이썬으로 하면 전국 수십만 행을 다 끌어와야 한다. 지역 단위 합계는 DB 가 할 일이다.
+    자기 지역 안에서의 이동(from == to)은 양쪽에서 상쇄되지만, 규모(churn)를
+    부풀리므로 아예 뺀다.
+    """
+    if not yms:
+        return {"metric": metric, "count": 0, "items": []}
+    col = "age_20_34" if metric == "net_young" else "total_cnt"
+    t = RegionMigration.__table__
+    s = get_sessionmaker()()
+    try:
+        base = t.c.year_month.in_(yms) & (t.c.from_code != t.c.to_code)
+        ins = {r[0]: (r[1], r[2] or 0) for r in s.execute(
+            select(t.c.to_code, func.max(t.c.to_name), func.sum(t.c[col]))
+            .where(base).group_by(t.c.to_code))}
+        outs = {r[0]: (r[1] or 0) for r in s.execute(
+            select(t.c.from_code, func.sum(t.c[col])).where(base).group_by(t.c.from_code))}
+
+        items = []
+        for code in set(ins) | set(outs):
+            name, i = ins.get(code, ("", 0))
+            o = outs.get(code, 0)
+            churn = i + o
+            items.append({"code": code, "name": name or code,
+                          "in": int(i), "out": int(o), "net": int(i - o),
+                          "churn": int(churn),
+                          "net_rate": round((i - o) / churn * 100, 1) if churn else 0.0})
+        items.sort(key=lambda x: -x["net"])
+        return {"metric": metric, "months": sorted(yms), "count": len(items),
+                "top": items[:limit], "bottom": items[-limit:][::-1]}
+    finally:
+        s.close()
+
+
+def migration_coverage() -> dict:
+    s = get_sessionmaker()()
+    try:
+        pairs = s.scalar(select(func.count()).select_from(MigrationBatch.__table__)) or 0
+        rows = s.scalar(select(func.count()).select_from(RegionMigration.__table__)) or 0
+        yms = [r[0] for r in s.execute(
+            select(MigrationBatch.__table__.c.year_month).distinct())]
+        return {"pairs": int(pairs), "rows": int(rows), "months": sorted(yms)}
+    finally:
+        s.close()
+
+
 __all__ = ["commerce_load", "commerce_save", "enabled", "interest_load",
+           "migration_coverage", "migration_done", "migration_ranking",
+           "migration_rows", "migration_save",
            "interest_save", "region_stats_load",
            "region_stats_save", "stats_load", "stats_save", "watchlist_load",
            "watchlist_save", "wealth_load", "wealth_save"]

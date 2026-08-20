@@ -6,6 +6,7 @@ import { TRADE_META, area as fmtArea, buildAge, eok, manwon, priceRange, AreaUni
 import { useEffect, useRef } from "react";
 import { RegionTrend } from "@/components/RealEstate/RegionTrend";
 import { CommercePanel } from "@/components/RealEstate/CommercePanel";
+import { MigrationPanel } from "@/components/RealEstate/MigrationPanel";
 import { favKey, SORTS, SortKey } from "./filters";
 
 /* 네이버 부동산 좌측 목록 — 단지 카드 + 정렬 + 관심단지 */
@@ -97,12 +98,11 @@ export function ListPanel({
         </button>
       </div>
 
-      {/* 지역 추이 — 단지 목록보다 위에 둔다. '이 동네가 어떻게 움직여 왔나' 가
-          개별 단지를 보기 전에 답해져야 하는 질문이라서다. */}
-      {/* 이 동네가 무엇을 하는 곳인지 — 추이보다 위에 둔다. 같은 값이라도 성격이
-          다르면 다르게 움직이므로, 숫자를 보기 전에 배경이 먼저 와야 한다. */}
+      {/* 단지 목록보다 위에 셋을 쌓는다. 개별 단지를 보기 전에 답해져야 하는 질문이
+          이 순서라서다 — 무엇을 하는 동네인가(상권) → 사람이 드나드는가(이동) →
+          값이 어떻게 움직여 왔나(추이). */}
       <CommercePanel key={`c-${region.lawd}`} lawd={region.lawd} region={region.region} />
-
+      <MigrationPanel key={`m-${region.lawd}`} lawd={region.lawd} region={region.region} />
       <RegionTrend key={region.lawd} lawd={region.lawd} region={region.region} />
 
       {/* 지도에서 고른 단지 — 목록 맨 위에 고정한다. 스크롤만으로는 '어느 걸 눌렀는지'
