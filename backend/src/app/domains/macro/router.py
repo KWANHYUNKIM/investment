@@ -41,6 +41,12 @@ def realestate_map_endpoint(svc: MacroService = Svc):
     return svc.realestate_map()
 
 
+@router.get("/realestate-region-series")
+def realestate_region_series_endpoint(lawd: str, svc: MacroService = Svc):
+    """시군구 월별 거래량·평균가 + 같은 기간 검색 관심도(한 그래프에 겹쳐 보기 위한 것)."""
+    return svc.realestate_region_series(lawd)
+
+
 @router.get("/realestate-interest")
 def realestate_interest_endpoint(svc: MacroService = Svc):
     """지역별 부동산 관심도 — 네이버 데이터랩 검색어 트렌드(앵커 정규화).

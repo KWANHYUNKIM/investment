@@ -3,6 +3,7 @@
 import type { RealEstateApartment, RealEstateRegion, TradeKind } from "@/lib/api";
 import { Spinner } from "@/components/ui";
 import { TRADE_META, area as fmtArea, buildAge, eok, manwon, priceRange, AreaUnit } from "./format";
+import { RegionTrend } from "@/components/RealEstate/RegionTrend";
 import { favKey, SORTS, SortKey } from "./filters";
 
 /* 네이버 부동산 좌측 목록 — 단지 카드 + 정렬 + 관심단지 */
@@ -82,6 +83,10 @@ export function ListPanel({
           ×
         </button>
       </div>
+
+      {/* 지역 추이 — 단지 목록보다 위에 둔다. '이 동네가 어떻게 움직여 왔나' 가
+          개별 단지를 보기 전에 답해져야 하는 질문이라서다. */}
+      <RegionTrend key={region.lawd} lawd={region.lawd} region={region.region} />
 
       {/* 정렬 */}
       <div className="flex items-center gap-2 border-b border-[#eee] px-3.5 py-1.5">

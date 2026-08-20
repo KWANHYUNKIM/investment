@@ -19,6 +19,7 @@ import requests
 
 from app.core.cache import TTLCache
 from app.core.config import get_settings
+from app.core.jsonstore import read_json, write_json
 from app.data.infra.lawd_codes import SIGUNGU
 
 _URL = "https://apis.data.go.kr/1613000/RTMSDataSvcAptTrade/getRTMSDataSvcAptTrade"
@@ -170,6 +171,32 @@ def deals(lawd: str, ymd: str | None = None, limit: int = 300) -> list[dict]:
     return out[:limit]
 
 
+def _series_path() -> str:
+    return str(get_settings().data_dir / "realestate_region_series.json")
+
+
+def _save_region_series(series: dict[str, list[dict]], yms: list[str]) -> None:
+    write_json(_series_path(), {
+        "updated": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "months": yms,
+        "series": series,
+    })
+
+
+def region_series(lawd: str) -> dict:
+    """한 시군구의 월별 거래량·평균가. **가져오지 않고 저장된 것만 읽는다.**
+
+    지역을 누를 때마다 전국 수집이 돌면 화면이 몇 분씩 멈춘다. 채우는 일은
+    스케줄러(``growth_scheduler``)가 맡고, 여기서는 있는 것만 준다.
+    """
+    d = read_json(_series_path(), None)
+    if not d:
+        return {"available": False, "months": [],
+                "reason": "실거래 월별 집계가 아직 없습니다 — 수집이 끝나면 자동으로 채워집니다."}
+    return {"available": True, "updated": d.get("updated"),
+            "months": (d.get("series") or {}).get(lawd, [])}
+
+
 def snapshot(months: int = MONTHS, force: bool = False) -> dict:
     hit = None if force else _cache.get()
     if hit:
@@ -259,8 +286,28 @@ def snapshot(months: int = MONTHS, force: bool = False) -> dict:
         for r in region_rows if r["count"] > 0
     ]
 
+    # 시군구별 월별 시계열 — 이미 받아 둔 결과를 접기만 한다(추가 호출 없음).
+    # 지금까지는 최신월만 남기고 버렸는데, 그러면 '이 지역이 어떻게 움직여 왔나' 를
+    # 물을 때 다시 1,500콜을 때려야 한다. 같은 데이터를 두 번 받을 이유가 없다.
+    series_acc: dict[str, list[dict]] = {}
+    for r in sorted(results, key=lambda x: x["ym"]):
+        if not r["ok"]:
+            continue        # 실패한 칸을 0 으로 적으면 '거래 없음' 과 구분되지 않는다
+        series_acc.setdefault(r["lawd"], []).append({
+            "ym": r["ym"], "label": f'{r["ym"][:4]}.{r["ym"][4:]}',
+            "count": r["count"],
+            "amount_eok": round(r["manwon"] / 10000.0, 1),
+            "avg_eok": round(r["manwon"] / 10000.0 / r["count"], 2) if r["count"] else None,
+            "provisional": r["ym"] == cur_ym,
+        })
+
+    # 디스크에도 남긴다. 이 스냅샷은 메모리 캐시(12h)라 서버를 내리면 사라지는데,
+    # 그러면 지역 그래프를 한 번 그릴 때마다 전국 1,500콜을 다시 때리게 된다.
+    _save_region_series(series_acc, yms)
+
     data = {
         "available": True,
+        "region_series": series_acc,
         "scope": "전국 250개 시군구",
         "source": "국토교통부 실거래가(RTMS) · data.go.kr",
         "latest_ym": head["ym"], "latest_label": head["label"],
