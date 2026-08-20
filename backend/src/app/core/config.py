@@ -49,6 +49,20 @@ class Settings(BaseSettings):
     smtp_password: str = ""
     smtp_from: str = ""   # 미설정 시 smtp_user 사용
 
+    # --- PostgreSQL ---------------------------------------------------------
+    # 사용자 데이터(계정·가계부·포트폴리오)와 기준정보의 시스템 오브 레코드.
+    # 시세·재무 같은 분석용 대용량 시계열은 DuckDB 에 남긴다(app/db/models/market.py 참고).
+    #
+    # 로컬:  docker compose -f ops/postgres/docker-compose.yml up -d
+    database_url: str = "postgresql+psycopg://investment:investment_local_only@localhost:5432/investment"
+    # 풀 크기는 스케줄러 수를 고려해 정한다 — 배치가 커넥션을 물면 웹 요청이 굶는다.
+    db_pool_size: int = 5
+    db_max_overflow: int = 10
+    db_echo: bool = False
+    # 앱이 갈아입을 역할. 비우면 접속 계정 그대로 쓴다(마이그레이션·검증용).
+    # 운영에서 비워 두면 RLS 가 적용되지 않으므로 반드시 채운다.
+    db_app_role: str = "app_rw"
+
     # 시군구 월별 집계 누적 저장소(매매·전세·월세 × 평형). 24개월 × 250곳 × 3유형 =
     # 18,000콜이라 한 번에 못 받는다. 지난 달은 다시 안 바뀌므로 없는 칸만 예산 안에서
     # 조금씩 채우고, 신고 기한이 남은 최근 두 달만 다시 받는다.

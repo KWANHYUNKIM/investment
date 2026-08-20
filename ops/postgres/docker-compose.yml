@@ -1,0 +1,44 @@
+# 개발용 PostgreSQL. 운영은 관리형(RDS/Cloud SQL)을 쓰더라도, 로컬이 같은 메이저
+# 버전이어야 마이그레이션이 운영에서 처음 터지는 일을 막는다.
+#
+#   docker compose -f ops/postgres/docker-compose.yml up -d
+#   docker compose -f ops/postgres/docker-compose.yml logs -f
+#
+# 데이터는 이름 있는 볼륨에 둔다 — 바인드 마운트로 두면 Windows 파일권한 때문에
+# initdb 가 실패하거나 성능이 크게 떨어진다.
+services:
+  db:
+    image: postgres:17-alpine
+    container_name: investment-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: investment
+      POSTGRES_USER: investment
+      POSTGRES_PASSWORD: investment_local_only
+      # 한국어 정렬·대소문자 처리를 운영과 맞춘다. C.UTF-8 로 두면 '가나다' 정렬이
+      # 바이트순이 되어 화면 정렬과 DB 정렬이 어긋난다.
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C.UTF-8"
+      TZ: Asia/Seoul
+    command:
+      # 애플리케이션 시각은 전부 UTC 로 저장한다(timestamptz). 서버 기본 시간대를
+      # UTC 로 못박아 두면 컨테이너 TZ 가 바뀌어도 저장값이 흔들리지 않는다.
+      - postgres
+      - -c
+      - timezone=UTC
+      - -c
+      - log_min_duration_statement=500     # 0.5초 넘는 쿼리는 남긴다(느린 쿼리 추적)
+      - -c
+      - shared_preload_libraries=pg_stat_statements
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      # depends_on 만으로는 "포트가 열림"까지만 보장된다. 실제 쿼리가 되는지 본다.
+      test: ["CMD-SHELL", "pg_isready -U investment -d investment"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  pgdata:

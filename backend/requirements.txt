@@ -31,3 +31,8 @@ pypdf==6.14.2            # PDF 텍스트 추출
 python-multipart==0.0.32 # FastAPI 파일 업로드
 msoffcrypto-tool==6.0.0  # 카드사 메일 명세서: 암호 걸린 .xlsx/.xls 해제
 cryptography==50.0.0     # 위 의존성 + pypdf 의 AES 암호 PDF 해제
+
+# --- PostgreSQL (사용자 데이터·기준정보의 시스템 오브 레코드) ---
+sqlalchemy==2.0.52
+alembic==1.19.1
+psycopg[binary]==3.3.4
