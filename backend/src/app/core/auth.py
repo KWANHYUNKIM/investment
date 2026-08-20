@@ -24,7 +24,7 @@ import time
 from fastapi import Depends, Header, HTTPException
 
 from app.core.config import get_settings
-from app.core.jsonstore import read_json, write_json
+from app.core import auth_store as _store
 
 # PBKDF2-HMAC-SHA256 반복수. OWASP 권장치(2023~)가 600,000회다.
 #
@@ -67,40 +67,37 @@ def rate_limit(bucket: str, max_hits: int, window: int) -> None:
                     del _rate_hits[k]
 
 
+# 저장소는 ``auth_store`` 가 고른다 — 파일(기존) 또는 PostgreSQL.
+#
+# DB 판으로 가면 **전 계정 해시를 한 번에 가져오는 질의 자체가 없다.** 동작마다 좁은
+# 통로(SECURITY DEFINER 함수)만 열려 있어서, 코드가 실수해도 덤프가 안 만들어진다.
 def _path() -> str:
-    return str(get_settings().data_dir / "auth.json")
+    return _store._path()
 
 
 def _load() -> dict:
-    # 파일이 없거나 secret 이 빠져 있으면 새로 만든다(기존 토큰은 그대로 유지된다).
-    return read_json(_path(), {"secret": secrets.token_hex(32), "users": {}})
+    """파일 판 전용. 남아 있는 이유는 되돌릴 수 있어야 하기 때문이다."""
+    return _store.file_load()
 
 
 def _save(d: dict) -> None:
-    # 계정 파일이라 소유자만 읽게 잠근다. ensure_ascii 는 예전 파일과 같은 표기 유지.
-    write_json(_path(), d, compact=False, ensure_ascii=True, mode=0o600)
+    _store.file_save(d)
 
 
 def has_users() -> bool:
-    return bool(_load().get("users"))
+    return _store.has_users()
 
 
 def user_exists(username: str) -> bool:
-    return (username or "") in _load().get("users", {})
+    return _store.username_taken((username or "").strip())
 
 
 def list_users() -> list[dict]:
-    """관리자용 사용자 목록(비밀번호 해시 제외)."""
-    users = _load().get("users", {})
+    """관리자 목록. **해시는 어느 판에서도 나오지 않는다.**"""
     out = []
-    for name, u in users.items():
-        out.append({
-            "username": name,
-            "email": u.get("email"),
-            "name": u.get("name"),
-            "created": u.get("created"),
-            "is_admin": is_admin(name),
-        })
+    for u in _store.list_accounts():
+        name = u["username"]
+        out.append({**u, "is_admin": is_admin(name)})
     out.sort(key=lambda x: x.get("created") or 0)
     return out
 
@@ -144,9 +141,7 @@ def send_code(email: str) -> dict:
     if not _EMAIL_RE.match(email):
         raise HTTPException(400, "올바른 이메일 주소를 입력하세요.")
     code = f"{secrets.randbelow(1_000_000):06d}"
-    d = _load()
-    d.setdefault("codes", {})[email] = {"code": code, "exp": int(time.time()) + _CODE_TTL}
-    _save(d)
+    _store.put_code(email, code, _CODE_TTL)
     try:
         sent = _send_email(email, "[투자 자산 관리] 인증코드",
                            f"인증코드: {code}\n\n10분 안에 입력해 주세요. 본인이 요청하지 않았다면 무시하세요.")
@@ -162,16 +157,7 @@ def send_code(email: str) -> dict:
 
 
 def verify_code(email: str, code: str, consume: bool = True) -> bool:
-    email = (email or "").strip().lower()
-    d = _load()
-    rec = d.get("codes", {}).get(email)
-    if not rec or int(rec.get("exp", 0)) < time.time():
-        return False
-    ok = hmac.compare_digest(str(rec.get("code")), str(code or "").strip())
-    if ok and consume:
-        d["codes"].pop(email, None)
-        _save(d)
-    return ok
+    return _store.check_code((email or "").strip().lower(), code, consume)
 
 
 # --- 회원가입 / 로그인 -----------------------------------------------------
@@ -186,15 +172,18 @@ def register(username: str, password: str, email: str = "", name: str = "", code
         raise HTTPException(400, "회원가입에는 유효한 이메일이 필요합니다.")
     if not verify_code(email, code):
         raise HTTPException(400, "이메일 인증코드가 올바르지 않거나 만료되었습니다.")
-    d = _load()
-    if username in d["users"]:
+    if _store.username_taken(username):
         raise HTTPException(400, "이미 존재하는 아이디입니다.")
     salt = secrets.token_bytes(16)
-    d["users"][username] = {
-        "salt": salt.hex(), "hash": _hash_pw(password, salt).hex(), "iter": _ITER,
-        "email": email, "name": (name or "").strip(), "created": int(time.time()),
-    }
-    _save(d)
+    try:
+        _store.create_account(username, email, (name or "").strip(),
+                              algorithm="pbkdf2_sha256", iterations=_ITER,
+                              salt=salt, password_hash=_hash_pw(password, salt))
+    except Exception as e:  # noqa: BLE001
+        # 중복은 DB 제약이 마지막으로 한 번 더 잡는다 — 두 요청이 동시에 들어와도 뚫리지 않게.
+        if "username_taken" in str(e) or "uq_app_user" in str(e):
+            raise HTTPException(400, "이미 존재하는 아이디입니다.") from e
+        raise
     return issue_token(username)
 
 
@@ -205,15 +194,17 @@ def verify_password(username: str, password: str) -> bool:
     저장된 것은 해시라 반복수만 올려 다시 계산할 수가 없다.
     """
     username = (username or "").strip()
-    u = _load().get("users", {}).get(username)
-    if not u:
+    cred = _store.credential(username)
+    if not cred:
         # 없는 아이디에도 같은 시간을 쓴다 — 응답 속도로 아이디 존재 여부가 새면
         # 그 자체가 정보 노출이다.
         _hash_pw(password, b"\x00" * 16)
         return False
-    stored_iter = int(u.get("iter") or _ITER)
-    calc = _hash_pw(password, bytes.fromhex(u["salt"]), stored_iter)
-    if not hmac.compare_digest(calc.hex(), u.get("hash", "")):
+    if cred.get("status") not in (None, "active"):
+        return False
+    stored_iter = int(cred.get("iterations") or _ITER)
+    calc = _hash_pw(password, cred["salt"], stored_iter)
+    if not hmac.compare_digest(calc, cred["hash"]):
         return False
     if stored_iter < _ITER:
         _maybe_rehash(username, password)
@@ -224,23 +215,22 @@ def _maybe_rehash(username: str, password: str) -> None:
     """옛 반복수로 저장된 해시를 현재 기준으로 다시 만든다. 실패해도 로그인은 성공."""
     try:
         salt = secrets.token_bytes(16)
-        d = _load()
-        user = d.get("users", {}).get(username)
-        if not user:
-            return
-        user["salt"] = salt.hex()
-        user["hash"] = _hash_pw(password, salt, _ITER).hex()
-        user["iter"] = _ITER
-        _save(d)
+        _store.rehash(username, algorithm="pbkdf2_sha256", iterations=_ITER,
+                      salt=salt, password_hash=_hash_pw(password, salt, _ITER))
     except Exception:  # noqa: BLE001
         # 재해시는 보안 개선이지 로그인의 전제가 아니다 — 실패해도 막지 않는다.
         pass
 
 
 def login(username: str, password: str) -> str:
-    if not verify_password((username or "").strip(), password):
+    username = (username or "").strip()
+    if not verify_password(username, password):
         raise HTTPException(401, "아이디 또는 비밀번호가 올바르지 않습니다.")
-    return issue_token((username or "").strip())
+    try:
+        _store.touch_login(username)      # 기록 실패가 로그인을 막지는 않는다
+    except Exception:  # noqa: BLE001
+        pass
+    return issue_token(username)
 
 
 def _mask(username: str) -> str:
@@ -253,22 +243,23 @@ def find_ids_by_email(email: str) -> list[str]:
     email = (email or "").strip().lower()
     if not email:
         return []
-    return [_mask(u) for u, v in _load().get("users", {}).items() if v.get("email") == email]
+    return [_mask(u) for u in _store.find_usernames_by_email(email)]
 
 
 def reset_password(username: str, email: str, new_password: str, code: str = "") -> None:
     username, email = (username or "").strip(), (email or "").strip().lower()
-    d = _load()
-    u = d.get("users", {}).get(username)
-    if not u or not u.get("email") or u.get("email") != email:
-        raise HTTPException(401, "아이디와 이메일이 일치하지 않습니다.")
-    if not verify_code(email, code):
-        raise HTTPException(400, "이메일 인증코드가 올바르지 않거나 만료되었습니다.")
     if len(new_password or "") < 6:
         raise HTTPException(400, "새 비밀번호는 6자 이상이어야 합니다.")
+    # 인증코드를 **먼저** 확인한다. 아이디·이메일 대조를 먼저 하면 그 응답 차이로
+    # 어떤 조합이 존재하는지 알아낼 수 있다.
+    if not verify_code(email, code):
+        raise HTTPException(400, "이메일 인증코드가 올바르지 않거나 만료되었습니다.")
     salt = secrets.token_bytes(16)
-    u["salt"], u["hash"] = salt.hex(), _hash_pw(new_password, salt).hex()
-    _save(d)
+    ok = _store.reset_credential(username, email, algorithm="pbkdf2_sha256",
+                                 iterations=_ITER, salt=salt,
+                                 password_hash=_hash_pw(new_password, salt))
+    if not ok:
+        raise HTTPException(401, "아이디와 이메일이 일치하지 않습니다.")
 
 
 def change_password(username: str, old_password: str, new_password: str) -> None:
@@ -276,11 +267,9 @@ def change_password(username: str, old_password: str, new_password: str) -> None
         raise HTTPException(401, "현재 비밀번호가 올바르지 않습니다.")
     if len(new_password or "") < 6:
         raise HTTPException(400, "새 비밀번호는 6자 이상이어야 합니다.")
-    d = _load()
     salt = secrets.token_bytes(16)
-    d["users"][username]["salt"] = salt.hex()
-    d["users"][username]["hash"] = _hash_pw(new_password, salt).hex()
-    _save(d)
+    _store.rehash(username, algorithm="pbkdf2_sha256", iterations=_ITER,
+                  salt=salt, password_hash=_hash_pw(new_password, salt))
 
 
 # --- 토큰 (stateless, HMAC 서명) -------------------------------------------
@@ -293,7 +282,8 @@ def _b64d(s: str) -> bytes:
 
 
 def _secret() -> bytes:
-    return bytes.fromhex(_load().get("secret", ""))
+    """토큰 서명 키. **DB 에 두지 않는다** — DB 가 뚫려도 토큰을 위조할 수 없게."""
+    return _store.signing_secret()
 
 
 def issue_token(username: str) -> str:

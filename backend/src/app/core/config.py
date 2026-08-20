@@ -130,6 +130,13 @@ class Settings(BaseSettings):
     # (공개 URL 노출 시 누구나 send-code→reset-password 로 계정 탈취 가능)
     auth_expose_dev_code: bool = False
 
+    # 토큰 서명 키(hex). **DB 에 두지 않는다** — DB 가 뚫렸을 때 해시는 못 풀어도
+    # 서명 키가 같이 나가면 아무 계정으로나 토큰을 위조할 수 있다. 키를 환경변수에
+    # 두면 DB 침해와 토큰 위조가 분리된다.
+    #   python -c "import secrets; print(secrets.token_hex(32))"
+    # 비워 두면 기존 data/auth.json 의 값을 쓴다(설정 전에 로그인이 깨지지 않게).
+    auth_secret: str = ""
+
     # Demo mode: synthesize small intraday ticks on top of the settled snapshot
     # so the live grid visibly moves without a brokerage streaming API.
     mock_ticks: bool = True

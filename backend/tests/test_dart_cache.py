@@ -74,11 +74,22 @@ def test_missing_version_is_a_miss(cache) -> None:
     assert cache.get("005930") is None
 
 
-def test_expired_is_a_miss(tmp_path, cache) -> None:
-    short = ReportCache("notes", version=7, ttl=0.05)
+def test_expired_is_a_miss(tmp_path, cache, monkeypatch) -> None:
+    """만료를 **시계로 재지 않는다.**
+
+    원래는 TTL 0.05초를 두고 sleep 으로 넘겼는데, 저장·조회가 파일 입출력이라
+    디스크가 느린 날에는 넣자마자 읽어도 이미 만료다(실제로 그렇게 깨졌다).
+    테스트가 하드웨어 속도에 달려 있으면 실패가 신호가 아니라 잡음이 된다.
+    시각을 직접 옮겨 만료 조건만 검증한다.
+    """
+    from app.data.fundamentals import dart_cache as DC
+
+    short = ReportCache("notes", version=7, ttl=60)
     short.put("005930", {"a": 1})
     assert short.get("005930") == {"a": 1}
-    time.sleep(0.08)
+
+    later = time.time() + 61
+    monkeypatch.setattr(DC.time, "time", lambda: later)
     assert short.get("005930") is None
 
 
